@@ -1,0 +1,113 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from .adb import ADBController 
+from .image import ImageProcessor 
+from config import GARDEN_REGION, PLANTS, NUM_ROWS, ROW_HEIGHT, ROW_END_X, SWIPE_DURATION, ROW_START_POINTS, DEVICE_SERIAL
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+adb = ADBController(serial=DEVICE_SERIAL)        
+img = ImageProcessor()      
+MAX_ATTEMPTS = 3
+THRESHOLD = 0.75                  # Độ chính xác tìm kiếm
+CLICK_DELAY = 1.5
+
+def tim_cua_hang():
+    adb.press_key(19, False, 2)
+
+    adb.tap(674, 831)
+    return True
+
+def nhat_vang():
+    screen_path = "cache/screen.png"
+    template_path = "assets/items/vang3.png"
+    found = False
+    attempt = 0
+    while attempt < MAX_ATTEMPTS and not found:
+        adb.screenshot_full(screen_path)
+        points = img.find_template(screen_path=screen_path, template_path=template_path, threshold=THRESHOLD)
+        if points:
+            x, y = points
+            logger.info(f"[FOUND] Bảng tại: ({x}, {y}) → Tap được!")
+            adb.tap(x, y)  # Tự động nhấn nếu cần
+        else:
+            logger.warning("Không tìm thấy bảng!")
+            attempt += 1
+            time.sleep(1)
+    return True
+def dat_vp():
+    screen_path = "cache/screen.png"
+    template_path = "assets/items/ch_trong.png"
+    found = False
+    attempt = 0
+    while attempt < MAX_ATTEMPTS and not found:
+        adb.screenshot_full(screen_path)
+        points = img.find_template(screen_path=screen_path, template_path=template_path, threshold=THRESHOLD)
+        if points:
+            x, y = points
+            logger.info(f"[FOUND] Bảng tại: ({x}, {y}) → Tap được!")
+            adb.tap(x, y)  # Tự động nhấn nếu cần
+        else:
+            logger.warning("Không tìm thấy bảng!")
+            attempt += 1
+            time.sleep(1)
+    return True
+
+def select_kho2():
+    screen_path = "cache/screen.png"
+    template_path_0 = "assets/items/kho_thanh_pham_0.png"
+    template_path = "assets/items/kho_thanh_pham.png"
+    adb.screenshot_full(screen_path)
+    pos = img.find_template(screen_path=screen_path, template_path=template_path, threshold=THRESHOLD)
+    if pos:
+        return True
+    pos = img.find_template(screen_path=screen_path, template_path=template_path_0, threshold=THRESHOLD)
+    if pos:
+        x, y = pos
+        adb.tap(x, y)
+        return True
+    else:
+        logger.warning("Không tìm thấy bảng!")
+    return False
+
+
+def keo_cua_hang_sang_phai():
+    screen_path = "cache/screen.png"
+    template_path = "assets/items/quay_hang_on.png"
+    adb.screenshot_full(screen_path)
+    pos = img.find_template(screen_path=screen_path, template_path=template_path, threshold=THRESHOLD)   
+    if pos:
+        x, y = pos
+        logger.info(f"[FOUND] Bảng tại: ({x}, {y}) → Tap được!")     
+        adb.scroll_right(500,300,540, 600)
+
+def keo_cua_hang_sang_trai():
+    screen_path = "cache/screen.png"
+    template_path = "assets/items/quay_hang_on.png"
+    adb.screenshot_full(screen_path)
+    pos = img.find_template(screen_path=screen_path, template_path=template_path, threshold=THRESHOLD)   
+    if pos:
+        x, y = pos
+        logger.info(f"[FOUND] Bảng tại: ({x}, {y}) → Tap được!")     
+        adb.scroll_left(300, 500,540, 600)
+
+def len_may(count: int=1, duration: int=50,sleep: float=0.7):
+    for _ in range(count):
+        adb.scroll_up(450, 500, 70, duration)
+        time.sleep(sleep)
+
+def xuong_may(count: int=1, duration: int=50,sleep: float=0.7):
+    for _ in range(count):
+        adb.scroll_down(500, 450, 70, duration)
+        time.sleep(sleep)
+
+def xuong_nha(duration: int=50,sleep: float=0.7):
+    adb.scroll_up(450, 500, 70, duration)
+    time.sleep(sleep)
+    adb.scroll_up(450, 500, 70, duration)
+    
+        
+ 
+
