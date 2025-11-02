@@ -4,6 +4,7 @@ from core.thu_hoach import thuhoach
 if __name__ == "__main__":
     print("AUTO KHU VƯỜN TRÊN MÂY – KHỞI ĐỘNG!")
     try:
-        lua_chon_vp("assets/items/kho_tinh_dau_tao.png")
+        dat_vp("assets/items/kho_thanh_pham_0.png","assets/items/kho_thanh_pham.png", "assets/items/kho_tinh_dau_tao.png", 1)
+        # lua_chon_vp("assets/items/kho_tinh_dau_tao.png")
     except Exception as e:
         print(f"LỖI: {e}")

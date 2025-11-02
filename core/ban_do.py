@@ -125,7 +125,7 @@ def xuong_nha(duration: int=50,sleep: float=0.7):
 def dat_vp(template_path_kho_not_select: str, template_path_kho: str, template_path_vp: str, repeat: int=1):
     for i in range(repeat):
         dat_vq_1_man(template_path_kho_not_select, template_path_kho, template_path_vp)
-        
+
 
 def dat_vq_1_man(template_path_kho_not_select: str, template_path_kho: str, template_path_vp: str):
     # thu hoach vang
@@ -184,6 +184,6 @@ def dat_ban_vp_qc(select_quang_cao: bool=False, number: int=10):
     pos = img.find_template(screen_path=screen_path, template_path=template_path_dat_ban, threshold=THRESHOLD)
     if (pos):
         x,y = pos
-        adb.taps(x,y,10,0.1)
+        adb.tap(x,y)
 
 
