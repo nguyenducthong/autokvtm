@@ -17,9 +17,9 @@ import hashlib
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict
 import logging
-
+import pytesseract
 logger = logging.getLogger(__name__)
-
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 class ImageProcessor:
     def __init__(self, cache_dir: str = "cache/images"):
         self.cache_dir = cache_dir
@@ -140,4 +140,44 @@ class ImageProcessor:
             center_x = max_loc[0] + w // 2
             center_y = max_loc[1] + h // 2
             return (center_x, center_y)
+        return None
+    
+    def find_template_item(self, screen_path: str, template_path: str, threshold: float=0.8):
+        screen = cv2.imread(screen_path)
+        template = cv2.imread(template_path)
+        if template is None:
+            print(f"Không tải được ảnh mẫu: {template_path}")
+            return None
+
+        h, w = template.shape[:2]
+        result = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
+        locations = np.where(result >= threshold)
+
+        if len(locations[0]) > 0:
+            # Lấy vị trí tốt nhất
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+            center_x = max_loc[0] + w // 2
+            center_y = max_loc[1] + h // 2
+
+            # Vẽ khung quanh icon
+            cv2.rectangle(screen, max_loc, (max_loc[0] + w, max_loc[1] + h), (0, 255, 0), 2)
+            # Cắt vùng số lượng (bên dưới icon)
+            number_region = screen[max_loc[1] + h :max_loc[1] + h + 30, max_loc[0]:max_loc[0] + w +20]  # điều chỉnh nếu cần
+            # OCR: đọc số
+            gray = cv2.cvtColor(number_region, cv2.COLOR_BGR2GRAY)
+            # Tăng độ tương phản
+            gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+            
+            config = '--psm 7 -c tessedit_char_whitelist=0123456789x'  # chỉ nhận số + x
+            text = pytesseract.image_to_string(gray, config=config).strip()
+            number = text.replace('x', '').replace('X', '')
+            count = int(number) if number else 0
+            # print(f"Tìm thấy tại: ({max_loc[0]}, {max_loc[1]})")
+            # print(f"Số lượng: {number}")
+            # cv2.putText(screen, text, (max_loc[0], max_loc[1] + h + 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+
+            # cv2.imwrite('debug_result.png', screen)
+            # cv2.imwrite('debug_number_only.png', number_region)
+            # print("Đã lưu ảnh kết quả: debug_result.png")
+            return (center_x, center_y, count)
         return None

@@ -108,7 +108,10 @@ class ADBController:
         self.device.shell(f"input tap {x} {y}")
         logger.info(f"[TAP] ({x}, {y})")
         time.sleep(delay)
-
+    def taps(self, x: int, y: int, count: int= 1, delay: float = 0.5):
+        """Tap nhiều vào tọa độ tuyệt đối"""
+        for i in range(count):
+            self.tap(x, y, delay)
     def tap_relative(self, x: int, y: int, offset: Tuple[int, int] = (0, 0), delay: float = 0.5):
         """Tap tọa độ tương đối + offset (dùng với vùng chụp)"""
         abs_x, abs_y = x + offset[0], y + offset[1]

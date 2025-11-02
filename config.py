@@ -1,4 +1,4 @@
-DEVICE_SERIAL = "emulator-5556"
+DEVICE_SERIAL = "emulator-5554"
 GARDEN_REGION = (100, 380, 880, 1100)
 NUM_ROWS = 2
 ROW_HEIGHT = 300  # Khoảng cách giữa 2 hàng
