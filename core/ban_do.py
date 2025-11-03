@@ -6,7 +6,7 @@ from .image import ImageProcessor
 from config import GARDEN_REGION, PLANTS, NUM_ROWS, ROW_HEIGHT, ROW_END_X, SWIPE_DURATION, ROW_START_POINTS, DEVICE_SERIAL
 import time
 import logging
-
+from utils.logger import log_time
 logger = logging.getLogger(__name__)
 adb = ADBController(serial=DEVICE_SERIAL)        
 img = ImageProcessor()      
@@ -30,12 +30,12 @@ def nhat_vang():
         points = img.find_template(screen_path=screen_path, template_path=template_path, threshold=THRESHOLD)
         if points:
             x, y = points
-            logger.info(f"[FOUND] Bảng tại: ({x}, {y}) → Tap được!")
-            adb.tap(x, y)  # Tự động nhấn nếu cần
+            logger.info(f"Thu hoạch vàng: ({x}, {y}) → Tap được!")
+            adb.tap(x, y, 0.1)  # Tự động nhấn nếu cần
         else:
-            logger.warning("Không tìm thấy bảng!")
+            logger.warning("Không tìm thấy ô vàng!")
             attempt += 1
-            time.sleep(1)
+            time.sleep(0.1)
     return True
 def tim_o_trong():
     screen_path = "cache/screen.png"
@@ -47,13 +47,13 @@ def tim_o_trong():
         points = img.find_template(screen_path=screen_path, template_path=template_path, threshold=THRESHOLD)
         if points:
             x, y = points
-            logger.info(f"[FOUND] Bảng tại: ({x}, {y}) → Tap được!")
+            logger.info(f"Đạt VP tại: ({x}, {y})")
             return points
             # adb.tap(x, y)  # Tự động nhấn nếu cần
         else:
-            logger.warning("Không tìm thấy bảng!")
+            logger.warning("Không tìm thấy ô đặt vật phẩm")
             attempt += 1
-            time.sleep(1)
+            time.sleep(0.5)
     return None
 
 def select_kho2():
@@ -77,14 +77,18 @@ def select_kho(template_path_not_select: str, template_path_select: str):
     adb.screenshot_full(screen_path)
     pos = img.find_template(screen_path=screen_path, template_path=template_path_select, threshold=THRESHOLD)
     if pos:
-        return pos
-    pos = img.find_template(screen_path=screen_path, template_path=template_path_not_select, threshold=THRESHOLD)
-    if pos:
-        # x, y = pos
-        # adb.tap(x, y)
+        x, y = pos
+        logger.info(f"Tìm thấy kho đã select: ({x}, {y})")
         return pos
     else:
-        logger.warning("Không tìm thấy bảng!")
+        logger.warning(f"Không tìm thấy kho kiểm tra file {template_path_select}")
+    pos = img.find_template(screen_path=screen_path, template_path=template_path_not_select, threshold=THRESHOLD)
+    if pos:
+        x, y = pos
+        logger.info(f"Tìm thấy kho chưa select: ({x}, {y})")
+        return pos
+    else:
+        logger.warning(f"Không tìm thấy kho kiểm tra file {template_path_not_select}")
         return None
 
 def keo_cua_hang_sang_phai():
@@ -121,16 +125,16 @@ def xuong_nha(duration: int=50,sleep: float=0.7):
     adb.scroll_up(450, 500, 70, duration)
     time.sleep(sleep)
     adb.scroll_up(450, 500, 70, duration)
-
+@log_time
 def dat_vp(template_path_kho_not_select: str, template_path_kho: str, template_path_vp: str, repeat: int=1):
     for i in range(repeat):
+        print(f"Chay lần {i}")
         dat_vq_1_man(template_path_kho_not_select, template_path_kho, template_path_vp)
-
 
 def dat_vq_1_man(template_path_kho_not_select: str, template_path_kho: str, template_path_vp: str):
     # thu hoach vang
     nhat_vang()
-    time.sleep(3)
+    time.sleep(1)
     check = True
     while check == True:
         pos = tim_o_trong()
@@ -141,9 +145,11 @@ def dat_vq_1_man(template_path_kho_not_select: str, template_path_kho: str, temp
             pos = select_kho(template_path_kho_not_select, template_path_kho)
             if (pos):
                 x,y = pos
-                adb.tap(x,y)  
+                adb.tap(x,y,0.1)  
                 # tim_vp_truyen vào
                 lua_chon_vp(template_path_vp)
+            else:
+                check = False
         else:
             check = False
     
@@ -157,7 +163,7 @@ def lua_chon_vp(path_vp: str, select_quang_cao: bool=False):
         item = img.find_template_item(screen_path=screen_path, template_path=path_vp, threshold=THRESHOLD)
         if (item):
             x,y, number = item
-            adb.tap(x,y)
+            adb.tap(x,y,0.1)
             dat_ban_vp_qc(select_quang_cao, number)
 
 
@@ -172,18 +178,19 @@ def dat_ban_vp_qc(select_quang_cao: bool=False, number: int=10):
         # Tắt qc
         if (pos):
             x,y = pos
-            adb.tap(x,y)
+            adb.tap(x,y,0.01)
     if (number < 20):
         for i in range(2):
-            pos = img.find_template(screen_path=screen_path, template_path=template_path_cong, threshold=THRESHOLD) 
+            pos = img.find_template(screen_path=screen_path, template_path=template_path_cong, threshold=0.9) 
             if (pos):
+                print("tìm được o +")
                 x,y = pos
-                adb.taps(x,y,10,0.1)
+                adb.taps(x,y,8,0.01)
                 if(i==0):
                     adb.screenshot_full(screen_path)
     pos = img.find_template(screen_path=screen_path, template_path=template_path_dat_ban, threshold=THRESHOLD)
     if (pos):
         x,y = pos
-        adb.tap(x,y)
+        adb.tap(x,y,0.01)
 
 

@@ -162,7 +162,7 @@ class ImageProcessor:
             # Vẽ khung quanh icon
             cv2.rectangle(screen, max_loc, (max_loc[0] + w, max_loc[1] + h), (0, 255, 0), 2)
             # Cắt vùng số lượng (bên dưới icon)
-            number_region = screen[max_loc[1] + h :max_loc[1] + h + 30, max_loc[0]:max_loc[0] + w +20]  # điều chỉnh nếu cần
+            number_region = screen[max_loc[1] + h :max_loc[1] + 80, max_loc[0]:max_loc[0] + 80]  # điều chỉnh nếu cần
             # OCR: đọc số
             gray = cv2.cvtColor(number_region, cv2.COLOR_BGR2GRAY)
             # Tăng độ tương phản
@@ -173,7 +173,7 @@ class ImageProcessor:
             number = text.replace('x', '').replace('X', '')
             count = int(number) if number else 0
             # print(f"Tìm thấy tại: ({max_loc[0]}, {max_loc[1]})")
-            # print(f"Số lượng: {number}")
+            print(f"Text {text} Số lượng: {number}")
             # cv2.putText(screen, text, (max_loc[0], max_loc[1] + h + 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
             # cv2.imwrite('debug_result.png', screen)

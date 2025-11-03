@@ -103,12 +103,12 @@ class ADBController:
     # =============================================================
     # 2. TAP / CLICK
     # =============================================================
-    def tap(self, x: int, y: int, delay: float = 0.5):
+    def tap(self, x: int, y: int, delay: float = 0.1):
         """Tap vào tọa độ tuyệt đối"""
         self.device.shell(f"input tap {x} {y}")
         logger.info(f"[TAP] ({x}, {y})")
         time.sleep(delay)
-    def taps(self, x: int, y: int, count: int= 1, delay: float = 0.5):
+    def taps(self, x: int, y: int, count: int= 1, delay: float = 0.01):
         """Tap nhiều vào tọa độ tuyệt đối"""
         for i in range(count):
             self.tap(x, y, delay)

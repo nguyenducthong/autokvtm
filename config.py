@@ -37,3 +37,56 @@ PLANTS = [
     }
     # Thêm cây mới chỉ cần copy 1 dòng
 ]
+
+
+WAREHOUSE_ITEM_KSK = [
+    {
+        "code": "KSK_KEM",
+        "name": "Kem",
+        "path": "assets/items/vpsk_kem.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+    },
+    {
+        "code": "KSK_KINH",
+        "name": "Kính",
+        "path": "assets/items/vpsk_kinh.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+    },
+    {
+        "code": "KSK_DUA",
+        "name": "Dừa",
+        "path": "assets/items/vpsk_dua.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+    },
+    {
+        "code": "KSK_BO",
+        "name": "Bò",
+        "path": "assets/items/vpsk_bo.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+    },
+    {
+        "code": "KSK_CUU",
+        "name": "Cừu",
+        "path": "assets/items/vpsk_cuu.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+    },
+    {
+        "code": "KSK_GA",
+        "name": "Gà",
+        "path": "assets/items/vpsk_ga.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+    },
+    {
+        "code": "KSK_HEO",
+        "name": "Heo",
+        "path": "assets/items/vpsk_heo.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+    }
+]
