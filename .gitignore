@@ -1,0 +1,22 @@
+# Python cache files
+__pycache__/
+*.py[cod]  # .pyc, .pyo, .pyd
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+cache/
+debug/
+*.egg
+
+# Virtual environment (nếu có)
+venv/
+env/
+.venv/
+
+# IDE/Editor files (tùy chọn)
+.idea/
+.vscode/
+*.swp
+*.swo
