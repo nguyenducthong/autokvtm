@@ -306,9 +306,72 @@ class ADBController:
     
   
 # core/adb.py
-def screenshot_scrcpy(save_path="cache/screen.png"):
-    """Dùng scrcpy + screencap → ảnh sạch 100%"""
-    os.system("adb shell screencap -p /sdcard/screen.png")
-    os.system(f"adb pull /sdcard/screen.png {save_path}")
-    return cv2.imread(save_path)
+    def screenshot_scrcpy(save_path="cache/screen.png"):
+        """Dùng scrcpy + screencap → ảnh sạch 100%"""
+        os.system("adb shell screencap -p /sdcard/screen.png")
+        os.system(f"adb pull /sdcard/screen.png {save_path}")
+        return cv2.imread(save_path)
 
+
+
+    def send_touch_sendevent(self, points):
+        points = self.interpolate_points(points=points, steps_per_segment= 7)
+        """Gửi touch bằng sendevent"""
+        event = "/dev/input/event2"
+
+        # 1. BTN_TOUCH DOWN
+        self.device.shell(f"sendevent {event} 1 330 1")
+        
+        # 2. TOUCH DOWN + tọa độ đầu
+        # x1,y1 = self.px_to_system(points[0][0], points[0][1])
+        # print(f"Tọa down độ kéo  x:y : {points[0][0]}: {points[0][1]}")
+        self.device.shell(f"sendevent {event} 3 57 0")
+        self.device.shell(f"sendevent {event} 3 53 {points[0][0]}")
+        self.device.shell(f"sendevent {event} 3 54 {points[0][1]}")
+        self.device.shell(f"sendevent {event} 0 0 0")
+        # time.sleep(0.08)
+
+        # 3. MOVE
+        for x, y in points[1:]:
+            # print(f"Tọa độ kéo  x:y : {x}: {y}")
+            self.device.shell(f"sendevent {event} 3 53 {x}")
+            self.device.shell(f"sendevent {event} 3 54 {y}")
+            self.device.shell(f"sendevent {event} 0 0 0")
+            # time.sleep(0.01)
+
+        # 4. BTN_TOUCH UP
+        self.device.shell(f"sendevent {event} 1 330 0")
+        self.device.shell(f"sendevent {event} 3 57 -1")
+        self.device.shell(f"sendevent {event} 0 0 0")
+
+
+    def px_to_system(self, x_px, y_px):
+        """Chuyển tọa độ bạn thấy (px) → hệ thống nhận"""
+        return int(1000 - y_px), int(x_px)
+    
+    def interpolate_points(self, points, steps_per_segment=6):
+        """
+        Sinh điểm giữa 2 điểm – làm kéo mượt
+        steps_per_segment = 5 → 5 điểm giữa mỗi đoạn
+        """
+        interpolateds = []
+        for i in range(len(points)):
+            interpolateds.append(self.px_to_system(points[i][0], points[i][1]))
+        points = interpolateds
+        interpolated = [points[0]]  # Giữ điểm đầu
+        
+        for i in range(1, len(points) - 1):
+            x1, y1 = points[i]
+            x2, y2 = points[i+1]
+            
+            # Sinh steps_per_segment điểm giữa
+            for step in range(1, steps_per_segment + 1):
+                t = step / (steps_per_segment + 1)  # 0.2, 0.4, 0.6, 0.8
+                
+                interp_x = int(x1 + (x2 - x1) * t)
+                interp_y = int(y1 + (y2 - y1) * t)
+                
+                interpolated.append((interp_x, interp_y))
+        
+        interpolated.append(points[-1])  # Giữ điểm cuối
+        return interpolated

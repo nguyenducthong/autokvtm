@@ -16,8 +16,11 @@ CLICK_DELAY = 1.5
 
 
 def thuhoach():
-    points = [(300,755),(360,920),(455,920),(550,920),(645,920),(740,920),(835,920)]
-    adb.tap(360,920)
+    points = [(330,790), (330,930), (900,930), (330,700),(900,700),(330,480),(900,480),(330,260),(900,260)]
+    adb.tap(380,930)
+    harvest_sendevent_android9(points)
 
-    adb.sendevent_swipe(points, 1200)
+def harvest_sendevent_android9(points):
+    # DOWN
+    adb.send_touch_sendevent(points)
 

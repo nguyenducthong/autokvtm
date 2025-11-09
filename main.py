@@ -83,7 +83,8 @@ def main():
 
 if __name__ == "__main__":
     print("AUTO KHU VƯỜN TRÊN MÂY – KHỞI ĐỘNG!")
-    main()
+    thuhoach()
+    # main()
     # try:
     #     dat_vp("assets/items/kho_thanh_pham_0.png","assets/items/kho_thanh_pham.png", "assets/items/kho_tinh_dau_tao.png", 1)
     #     # lua_chon_vp("assets/items/kho_tinh_dau_tao.png")
