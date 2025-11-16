@@ -3,24 +3,25 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from .adb import ADBController 
 from .image import ImageProcessor 
-from config import GARDEN_REGION, PLANTS, NUM_ROWS, ROW_HEIGHT, ROW_END_X, SWIPE_DURATION, ROW_START_POINTS, DEVICE_SERIAL
+from config import GARDEN_REGION, PLANTS, DEVICE_SERIAL
 import time
 import logging
 from utils.logger import log_time
-logger = logging.getLogger(__name__)
-adb = ADBController(serial=DEVICE_SERIAL)        
+logger = logging.getLogger(__name__)       
 img = ImageProcessor()      
 MAX_ATTEMPTS = 3
 THRESHOLD = 0.75                  # Độ chính xác tìm kiếm
 CLICK_DELAY = 1.5
 
-def tim_cua_hang():
+def tim_cua_hang(serial):
+    adb = ADBController(serial=serial) 
     adb.press_key(19, False, 2)
 
     adb.tap(674, 831)
     return True
 
-def nhat_vang():
+def nhat_vang(serial):
+    adb = ADBController(serial=serial) 
     screen_path = "cache/screen.png"
     template_path = "assets/items/vang3.png"
     found = False
@@ -37,7 +38,8 @@ def nhat_vang():
             attempt += 1
             time.sleep(0.1)
     return True
-def tim_o_trong():
+def tim_o_trong(serial):
+    adb = ADBController(serial=serial) 
     screen_path = "cache/screen.png"
     template_path = "assets/items/ch_trong.png"
     found = False
@@ -56,8 +58,9 @@ def tim_o_trong():
             time.sleep(0.5)
     return None
 
-def select_kho2():
-    screen_path = "cache/screen.png"
+def select_kho2(serial):
+    adb = ADBController(serial=serial) 
+    screen_path = f"cache/{serial}_screen.png"
     template_path_0 = "assets/items/kho_thanh_pham_0.png"
     template_path = "assets/items/kho_thanh_pham.png"
     adb.screenshot_full(screen_path)
@@ -125,6 +128,7 @@ def xuong_nha(duration: int=50,sleep: float=0.7):
     adb.scroll_up(450, 500, 70, duration)
     time.sleep(sleep)
     adb.scroll_up(450, 500, 70, duration)
+    
 @log_time
 def dat_vp(template_path_kho_not_select: str, template_path_kho: str, template_path_vp: str, repeat: int=1):
     for i in range(repeat):

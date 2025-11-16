@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from .adb import ADBController 
 from .image import ImageProcessor 
-from config import DEVICE_SERIAL, GARDEN_REGION, PLANTS, NUM_ROWS, ROW_HEIGHT, ROW_END_X, SWIPE_DURATION, ROW_START_POINTS
+from config import DEVICE_SERIAL, GARDEN_REGION, PLANTS
 import time
 import logging
 
@@ -62,33 +62,6 @@ def harvest_all_plants():
 
     logger.info(f"Thu hoạch xong: {', '.join(harvested_types)}")
     return harvested_types
-def harvest_by_rows():
-    """Quét 2 hàng trên 1 màn hình: từ dưới lên trên"""
-    logger.info("BẮT ĐẦU QUÉT 2 HÀNG...")
-
-    left = GARDEN_REGION[0]
-    top_base = GARDEN_REGION[1]
-    width = GARDEN_REGION[2]
-
-    # Bắt đầu từ hàng dưới (hàng 1)
-    for row in range(NUM_ROWS - 1, -1, -1):  # 1 → 0
-        y_center = top_base + row * ROW_HEIGHT + ROW_HEIGHT // 2
-
-        start_x = left + 120
-        end_x = left + width - 120
-
-        logger.info(f"Quét hàng {row+1}/2: y={y_center}")
-
-        # 1. Tap vào cây đầu hàng
-        adb.tap(start_x, y_center)
-        time.sleep(1.2)
-
-        # 2. Kéo từ trái sang phải
-        adb.swipe(start_x, y_center, end_x, y_center, duration=1000)
-        time.sleep(0.8)
-
-    logger.info("QUÉT 2 HÀNG HOÀN TẤT!")
-    return True
 
 def replant_harvested(types_harvested):
     """Trồng lại các loại cây đã thu hoạch"""
@@ -118,27 +91,7 @@ def replant_harvested(types_harvested):
 #         except Exception as e:
 #             logger.error(f"Lỗi: {e}")
 #             time.sleep(10)
-def harvest_by_config():
-    """Kéo theo cấu hình 1.1 và 2.1 → tự động hết hàng"""
-    logger.info("BẮT ĐẦU KÉO THEO CẤU HÌNH...")
 
-    for i, (start_x, start_y) in enumerate(ROW_START_POINTS):
-        row_name = f"Hàng {i+1}"
-        end_x = ROW_END_X
-        end_y = start_y  # Cùng Y → kéo ngang
-
-        logger.info(f"{row_name}: Kéo từ ({start_x}, {start_y}) → ({end_x}, {end_y})")
-
-        # 1. Tap vào điểm đầu → hiện giỏ
-        adb.tap(start_x, start_y)
-        time.sleep(1.5)
-
-        # 2. Kéo hết hàng
-        adb.swipe(start_x, start_y, end_x, end_y, duration=SWIPE_DURATION)
-        time.sleep(0.8)
-
-    logger.info("KÉO THEO CẤU HÌNH HOÀN TẤT!")
-    return True
 
 
 def main_loop():

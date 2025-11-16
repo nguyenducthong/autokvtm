@@ -1,14 +1,3 @@
-# core/image.py
-"""
-Image Processor – Xử lý toàn bộ ảnh trong Auto Khu Vườn Trên Mây
-Tính năng:
-    - Template matching (tìm ảnh mẫu)
-    - Cache ảnh + kết quả
-    - Tự động resize ảnh mẫu
-    - Lọc nhiễu, tăng độ chính xác
-    - Debug: vẽ khung tìm được
-"""
-
 import cv2
 import numpy as np
 import os
@@ -18,7 +7,11 @@ from datetime import datetime
 from typing import List, Tuple, Optional, Dict
 import logging
 import pytesseract
+# from .adb import ADBController 
+# from config import DEVICE_SERIAL
+from PIL import Image, ImageEnhance, ImageFilter
 logger = logging.getLogger(__name__)
+# adb = ADBController(serial=DEVICE_SERIAL)  
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 class ImageProcessor:
     def __init__(self, cache_dir: str = "cache/images"):
@@ -174,10 +167,9 @@ class ImageProcessor:
             count = int(number) if number else 0
             # print(f"Tìm thấy tại: ({max_loc[0]}, {max_loc[1]})")
             print(f"Text {text} Số lượng: {number}")
-            # cv2.putText(screen, text, (max_loc[0], max_loc[1] + h + 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
-            # cv2.imwrite('debug_result.png', screen)
-            # cv2.imwrite('debug_number_only.png', number_region)
-            # print("Đã lưu ảnh kết quả: debug_result.png")
             return (center_x, center_y, count)
         return None
+    
+
+    

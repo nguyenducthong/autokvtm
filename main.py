@@ -1,7 +1,8 @@
 from core.actions import main_loop
 from core.ban_do import tim_cua_hang, dat_vp, select_kho2, nhat_vang,keo_cua_hang_sang_phai,len_may, lua_chon_vp
 from core.thu_hoach import thuhoach
-from config import WAREHOUSE_ITEM_KSK
+from core.trong_cay import main_tc
+from config import WAREHOUSE_ITEM_KSK, CONFIG_TEMP_TC
 import time
 def hien_thi_menu_kho():
     print("\n" + "="*60)
@@ -83,7 +84,12 @@ def main():
 
 if __name__ == "__main__":
     print("AUTO KHU VƯỜN TRÊN MÂY – KHỞI ĐỘNG!")
-    thuhoach()
+    # points = [(330,790), (330,930), (900,930), (330,700),(900,700),(330,480),(900,480),(330,260),(900,260)]
+    # tap = (330,930)
+    # thuhoach(points, tap)
+
+    main_tc(CONFIG_TEMP_TC)
+
     # main()
     # try:
     #     dat_vp("assets/items/kho_thanh_pham_0.png","assets/items/kho_thanh_pham.png", "assets/items/kho_tinh_dau_tao.png", 1)

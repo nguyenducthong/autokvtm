@@ -315,7 +315,7 @@ class ADBController:
 
 
     def send_touch_sendevent(self, points):
-        points = self.interpolate_points(points=points, steps_per_segment= 7)
+        points = self.interpolate_points(points=points, steps_per_segment= 2)
         """Gửi touch bằng sendevent"""
         event = "/dev/input/event2"
 

@@ -1,14 +1,6 @@
 DEVICE_SERIAL = "emulator-5554"
 GARDEN_REGION = (100, 380, 880, 1100)
-NUM_ROWS = 2
-ROW_HEIGHT = 300  # Khoảng cách giữa 2 hàng
-ROW_START_POINTS = [
-    (400, 1660),  # Hàng 1 - Vị trí 1.1 (trái)
-    (400, 760),  # Hàng 2 - Vị trí 2.1 (trái)
-]
 
-# Kéo đến đâu?
-ROW_END_X = 900  # Cạnh phải của vườn (cùng cho cả 2 hàng)
 SWIPE_DURATION = 1000  # Tốc độ kéo (ms)
 PLANTS = [
     {
@@ -37,8 +29,7 @@ PLANTS = [
     }
     # Thêm cây mới chỉ cần copy 1 dòng
 ]
-
-
+# Map Kho
 WAREHOUSE_ITEM_KSK = [
     {
         "code": "KSK_KEM",
@@ -90,3 +81,209 @@ WAREHOUSE_ITEM_KSK = [
         "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
     }
 ]
+
+CONFIG_TEMP_TC = [
+    {
+        "id" : 1,  # thu tu chay
+        "row": 1,
+        "type": "TC",
+        "indexs": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
+                   "2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
+        "path_row": "assets/items/num/1.png",
+        "path_item": "assets/items/cay_tao.png"
+    },
+    {
+        "id" : 1,
+        "row": 4,
+        "type": "TC",
+        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"],
+        "path_row": "assets/items/num/4.png",
+        "path_item": "assets/items/cay_bong.png"
+    },
+    {
+        "id" : 1,
+        "row": 5,
+        "type": "TC",
+        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6",
+                   "4.1", "4.2", "4.3", "4.4"],
+        "path_row": "assets/items/num/5.png",
+        "path_item": "assets/items/cay_tuyet.png"
+    },
+    {
+        "id" : 1,
+        "row": 8,
+        "type": "TC",
+        "path_row": "assets/items/num/8.png",
+        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
+        "path_item": "assets/items/cay_hong.png"
+    },
+
+    {
+        "id" : 1,  # thu tu chay
+        "row": 1,
+        "type": "TC",
+        "indexs": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
+                   "2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
+        "path_row": "assets/items/num/1.png",
+        "path_item": "assets/items/cay_tao.png"
+    },
+    {
+        "id" : 1,
+        "row": 4,
+        "type": "TC",
+        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"],
+        "path_row": "assets/items/num/4.png",
+        "path_item": "assets/items/cay_bong.png"
+    },
+    {
+        "id" : 1,
+        "row": 5,
+        "type": "TC",
+        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6",
+                   "4.1", "4.2", "4.3", "4.4"],
+        "path_row": "assets/items/num/5.png",
+        "path_item": "assets/items/cay_tuyet.png"
+    },
+    {
+        "id" : 1,
+        "row": 8,
+        "type": "TC",
+        "path_row": "assets/items/num/8.png",
+        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
+        "path_item": "assets/items/cay_hong.png"
+    }
+    # ,
+
+    # {
+    #     "id" : 2,
+    #     "row": 1,
+    #     "type": "MAY",
+    #     "path_row": "assets/items/num/1.png",
+    #     "data": [
+    #         {
+    #             "path_item": "assets/items/hong_say.png",
+    #             "total":  8
+    #         }
+    #     ]
+    # },
+    # {
+    #     "id" : 2,
+    #     "row": 2,
+    #     "type": "MAY",
+    #     "path_row": "assets/items/num/2.png",
+    #     "data": [
+    #         {
+    #             "path_item": "assets/items/nuoc_tao.png",
+    #             "total":  4
+    #         },
+    #         {
+    #             "path_item": "assets/items/nuoc_tuyet.png",
+    #             "total":  4
+    #         }
+    #     ]
+    # },
+    # {
+    #     "id" : 2,
+    #     "row": 2,
+    #     "type": "MAY",
+    #     "path_row": "assets/items/num/2.png",
+    #     "data": [
+    #         {
+    #             "path_item": "assets/items/nuoc_tao.png",
+    #             "total":  4
+    #         },
+    #         {
+    #             "path_item": "assets/items/nuoc_tuyet.png",
+    #             "total":  4
+    #         }
+    #     ]
+    # },
+    # {
+    #     "id" : 2,
+    #     "row": 3,
+    #     "type": "MAY",
+    #     "path_row": "assets/items/num/3.png",
+    #     "data": [
+    #         {
+    #             "path_item": "assets/items/vai_vang.png",
+    #             "total":  4
+    #         }
+    #     ]
+    # },
+    # {
+    #     "id" : 2,
+    #     "row": 5,
+    #     "type": "MAY",
+    #     "path_row": "assets/items/num/5.png",
+    #     "data": [
+    #         {
+    #             "path_item": "assets/items/tinh_dau_tao.png",
+    #             "total":  4
+    #         }
+    #     ]
+    # },
+    # {
+    #     "id" : 2,
+    #     "row": 6,
+    #     "type": "MAY",
+    #     "path_row": "assets/items/num/6.png",
+    #     "data": [
+    #         {
+    #             "path_item": "assets/items/nuoc_hoa_hong.png",
+    #             "total":  4
+    #         }
+    #     ]
+    # }
+
+]
+
+
+INDEX_HANG = {
+    # vi_tri : (x,y)
+    "1.1": (390,940),
+    "1.2": (485,940),
+    "1.3": (560,940),
+    "1.4": (635,940),
+    "1.5": (710,940),
+    "1.6": (785,940),
+
+    "2.1": (390,715),
+    "2.2": (485,715),
+    "2.3": (560,715),
+    "2.4": (635,715),
+    "2.5": (710,715),
+    "2.6": (785,715),
+
+    "3.1": (390,495),
+    "3.2": (485,495),
+    "3.3": (560,495),
+    "3.4": (635,495),
+    "3.5": (710,495),
+    "3.6": (785,495),
+
+    "4.1": (390,275),
+    "4.2": (485,275),
+    "4.3": (560,275),
+    "4.4": (635,275),
+    "4.5": (710,275),
+    "4.6": (785,275)
+}
+
+INDEX_MAY = {
+    "1": (210, 720),
+    "2": (210, 550),
+    "3": (210, 550),
+    "4": (210, 550),
+    "5": (210, 550),
+    "6": (210, 550),
+    "7": (210, 550),
+    "8": (210, 550),
+    "9": (210, 550),
+    "10": (210, 550)
+}
