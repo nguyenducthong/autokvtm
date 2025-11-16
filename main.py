@@ -2,8 +2,9 @@ from core.actions import main_loop
 from core.ban_do import tim_cua_hang, dat_vp, select_kho2, nhat_vang,keo_cua_hang_sang_phai,len_may, lua_chon_vp
 from core.thu_hoach import thuhoach
 from core.trong_cay import main_tc
-from config import WAREHOUSE_ITEM_KSK, CONFIG_TEMP_TC
+from config import WAREHOUSE_ITEM_KSK, CONFIG_TEMP_TC, DEVICE_SERIAL
 import time
+from core.adb import ADBController
 def hien_thi_menu_kho():
     print("\n" + "="*60)
     print("   CHỌN VẬT PHẨM ĐẶT VÀO KHO SỰ KIỆN (KSK)")
@@ -14,6 +15,7 @@ def hien_thi_menu_kho():
     print("-"*60)
 def chon_va_dat_vp():
     while True:
+        adb = ADBController(serial=DEVICE_SERIAL) 
         hien_thi_menu_kho()
         try:
             choice = input("Chọn vật phẩm (0 để quay lại): ").strip()
@@ -28,7 +30,9 @@ def chon_va_dat_vp():
                         item["path_warehouse_not_select"],
                         item["path_warehouse_select"],
                         item["path"],
-                        10  # số lần đặt (có thể thêm menu chọn số lần sau)
+                        10,  # số lần đặt (có thể thêm menu chọn số lần sau),
+                        False,
+                        adb
                     )
                     print(f"Đã đặt xong: {item['name']}")
                 except Exception as e:
@@ -88,9 +92,9 @@ if __name__ == "__main__":
     # tap = (330,930)
     # thuhoach(points, tap)
 
-    main_tc(CONFIG_TEMP_TC)
+    # main_tc(CONFIG_TEMP_TC)
 
-    # main()
+    main()
     # try:
     #     dat_vp("assets/items/kho_thanh_pham_0.png","assets/items/kho_thanh_pham.png", "assets/items/kho_tinh_dau_tao.png", 1)
     #     # lua_chon_vp("assets/items/kho_tinh_dau_tao.png")
