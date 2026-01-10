@@ -63,14 +63,33 @@ class ADBController:
         :param save_path: Đường dẫn lưu ảnh
         :return: np.ndarray (BGR)
         """
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        self.device.shell("screencap -p /sdcard/full.png")
-        self.device.pull("/sdcard/full.png", save_path)
-        img = cv2.imread(save_path)
-        if img is None:
-            raise ValueError(f"Không đọc được ảnh: {save_path}")
-        logger.debug(f"[SCREEN] Chụp toàn màn: {save_path}")
-        return img
+        try:
+            # Tạo thư mục nếu chưa có
+            save_dir = os.path.dirname(save_path)
+            if save_dir and save_dir != '':
+                os.makedirs(save_dir, exist_ok=True)
+
+            # Chụp màn hình trên thiết bị
+            logger.info(f"[SCREEN] Đang chụp màn hình...")
+            self.device.shell("screencap -p /sdcard/screenshot.png")
+
+            # Pull về máy
+            logger.info(f"[SCREEN] Đang tải ảnh về...")
+            self.device.pull("/sdcard/screenshot.png", save_path)
+
+            # Đọc ảnh
+            logger.info(f"[SCREEN] Đang đọc ảnh...")
+            img = cv2.imread(save_path)
+
+            if img is None:
+                raise ValueError(f"Không đọc được ảnh từ: {save_path}")
+
+            logger.info(f"[SCREEN] Chụp thành công: {img.shape[1]}x{img.shape[0]}")
+            return img
+
+        except Exception as e:
+            logger.error(f"[SCREEN] Lỗi chụp màn hình: {e}")
+            raise Exception(f"Không thể chụp màn hình: {str(e)}")
 
     def screenshot_region(self, region: Tuple[int, int, int, int], save_path: str = "cache/region.png") -> np.ndarray:
         """

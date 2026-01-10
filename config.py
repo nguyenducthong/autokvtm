@@ -1,4 +1,6 @@
-DEVICE_SERIAL = "emulator-5554"
+# DEVICE_SERIAL sẽ được chọn từ GUI mỗi khi chạy
+# Không có giá trị mặc định - người dùng phải chọn thiết bị
+DEVICE_SERIAL = None  # Sẽ được set khi chọn thiết bị trong GUI
 GARDEN_REGION = (100, 380, 880, 1100)
 
 SWIPE_DURATION = 1000  # Tốc độ kéo (ms)

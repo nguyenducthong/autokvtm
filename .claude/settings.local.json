@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(where:*)",
+      "Bash(dir \"C:\\\\LDPlayer\" /AD)",
+      "Bash(dir:*)",
+      "Bash(\"D:\\\\LDPlayer\\\\LDPlayer9\\\\adb.exe\" devices)",
+      "Bash(\"D:\\\\LDPlayer\\\\dnplayer.exe\" list2)",
+      "Bash(/d/LDPlayer/LDPlayer9/dnplayer.exe list2:*)",
+      "Bash(/d/LDPlayer/LDPlayer9/ldconsole.exe:*)",
+      "Bash(/d/LDPlayer/LDPlayer9/adb.exe devices:*)"
+    ]
+  }
+}
