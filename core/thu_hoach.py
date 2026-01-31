@@ -1,33 +1,51 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from .adb import ADBController 
-from .image import ImageProcessor 
+from .adb import ADBController
+from .image import ImageProcessor
 from config import DEVICE_SERIAL
 import time
 import logging
 
 logger = logging.getLogger(__name__)
-adb = ADBController(serial=DEVICE_SERIAL)        
-img = ImageProcessor()      
+
+# Không khởi tạo ADB ngay, sẽ khởi tạo khi cần
+adb = None
+img = ImageProcessor()
 MAX_ATTEMPTS = 3
 THRESHOLD = 0.75                  # Độ chính xác tìm kiếm
 CLICK_DELAY = 1.5
 
+def init_adb(serial=None):
+    """Khởi tạo ADB controller"""
+    global adb
+    if serial is None:
+        serial = DEVICE_SERIAL
+    adb = ADBController(serial=serial)
+    return adb
 
-def thuhoach(points: list, tap):
-    x,y = tap 
-    adb.tap(x,y)
+
+def thuhoach(points: list, tap, duration_ms: int = 1500):
+    """
+    Thu hoạch bằng cách kéo giỏ qua các vị trí
+
+    Args:
+        points: Danh sách các vị trí cần thu hoạch
+        tap: Vị trí đầu tiên để tap
+        duration_ms: Tổng thời gian kéo (ms), mặc định 1500ms
+    """
+    x, y = tap
+    # adb.tap(x, y, 1)
     pos = tim_gio_thu_hoach()
-    if (pos):
-        points.insert(0,pos)
-        print(f"pos {pos}, points {points}")
-        harvest_sendevent_android9(points)
-    else:
-        adb.tap(x,y)
+    if pos:
+        points.insert(0, pos)
+        logger.info(f"Tìm thấy giỏ tại {pos}, kéo qua {len(points)} điểm")
 
-def harvest_sendevent_android9(points):
-    adb.send_touch_sendevent(points)
+        # Sử dụng drag_smooth thay vì send_touch_sendevent
+        adb.drag_smooth(points, total_duration_ms=duration_ms)
+    else:
+        logger.warning("Không tìm thấy giỏ, tap lại vị trí đầu")
+        adb.tap(x, y)
 
 
 def tim_gio_thu_hoach():

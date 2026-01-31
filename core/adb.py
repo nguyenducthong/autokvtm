@@ -18,7 +18,7 @@ import logging
 import subprocess
 # from lxml import html
 from typing import Tuple, Optional, List
-
+from config import SIZE
 # Cấu hình log
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,32 +57,30 @@ class ADBController:
     # =============================================================
     # 1. CHỤP MÀN HÌNH
     # =============================================================
-    def screenshot_full(self, save_path: str = "cache/full.png") -> np.ndarray:
+    def screenshot_full(self, save_path: str = None) -> np.ndarray:
         """
-        Chụp toàn màn hình → lưu + trả về ảnh OpenCV
-        :param save_path: Đường dẫn lưu ảnh
+        Chụp toàn màn hình → trả về ảnh OpenCV (không lưu file nếu không cần)
+        :param save_path: Đường dẫn lưu ảnh (None = chỉ trả về memory)
         :return: np.ndarray (BGR)
         """
         try:
-            # Tạo thư mục nếu chưa có
-            save_dir = os.path.dirname(save_path)
-            if save_dir and save_dir != '':
-                os.makedirs(save_dir, exist_ok=True)
-
-            # Chụp màn hình trên thiết bị
+            # Chụp màn hình trực tiếp vào memory (không qua file)
             logger.info(f"[SCREEN] Đang chụp màn hình...")
-            self.device.shell("screencap -p /sdcard/screenshot.png")
+            png_bytes = self.device.screencap()
 
-            # Pull về máy
-            logger.info(f"[SCREEN] Đang tải ảnh về...")
-            self.device.pull("/sdcard/screenshot.png", save_path)
-
-            # Đọc ảnh
-            logger.info(f"[SCREEN] Đang đọc ảnh...")
-            img = cv2.imread(save_path)
+            # Decode từ bytes sang numpy array
+            img_array = np.frombuffer(png_bytes, dtype=np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
 
             if img is None:
-                raise ValueError(f"Không đọc được ảnh từ: {save_path}")
+                raise ValueError("Không decode được ảnh từ screencap")
+
+            # Chỉ lưu file nếu có yêu cầu
+            if save_path:
+                save_dir = os.path.dirname(save_path)
+                if save_dir and save_dir != '':
+                    os.makedirs(save_dir, exist_ok=True)
+                cv2.imwrite(save_path, img)
 
             logger.info(f"[SCREEN] Chụp thành công: {img.shape[1]}x{img.shape[0]}")
             return img
@@ -131,6 +129,19 @@ class ADBController:
         """Tap nhiều vào tọa độ tuyệt đối"""
         for i in range(count):
             self.tap(x, y, delay)
+
+    def tap_fast(self, x: int, y: int, count: int = 1):
+        """
+        Tap nhanh liên tục - gộp nhiều tap thành 1 lệnh shell
+        Nhanh hơn taps() vì chỉ gửi 1 lệnh duy nhất
+        """
+        if count <= 0:
+            return
+        # Gộp nhiều lệnh tap thành 1 chuỗi
+        cmd = " && ".join([f"input tap {x} {y}" for _ in range(count)])
+        self.device.shell(cmd)
+        logger.info(f"[TAP_FAST] ({x}, {y}) x{count}")
+        
     def tap_relative(self, x: int, y: int, offset: Tuple[int, int] = (0, 0), delay: float = 0.5):
         """Tap tọa độ tương đối + offset (dùng với vùng chụp)"""
         abs_x, abs_y = x + offset[0], y + offset[1]
@@ -275,19 +286,22 @@ class ADBController:
             self.swipe(sx, sy, ex, ey, duration_per_segment)
             time.sleep(0.1)  
     def drag_smooth(self, points: list, total_duration_ms: int = 1200):
+        """
+        Kéo mượt qua nhiều điểm - sử dụng send_touch_sendevent để giữ touch liên tục
+
+        Args:
+            points: Danh sách các điểm (x, y)
+            total_duration_ms: Tổng thời gian kéo (không dùng)
+        """
         if len(points) < 2:
-            logger.warning("Cần ít nhất 2 điểm để kéo!")
+            logger.warning("[DRAG] Cần ít nhất 2 điểm để kéo!")
             return
 
-        seg_count = len(points) - 1
-        seg_ms = max(30, total_duration_ms // seg_count)  # tối thiểu 30ms
+        logger.info(f"[DRAG_SMOOTH] Kéo qua {len(points)} điểm bằng sendevent")
+        logger.info(f"[DRAG_SMOOTH] Điểm đầu: {points[0]}, Điểm cuối: {points[-1]}")
 
-        logger.info(f"[DRAG] {seg_count} đoạn, mỗi đoạn {seg_ms}ms")
-
-        for i in range(seg_count):
-            x1, y1 = points[i]
-            x2, y2 = points[i + 1]
-            self.device.shell(f"input swipe {x1} {y1} {x2} {y2} {31}")
+        # Sử dụng send_touch_sendevent - giữ touch liên tục thực sự
+        self.send_touch_sendevent(points)
 
     def wait_for_tap(self, timeout: int = 30):
         """
@@ -334,63 +348,65 @@ class ADBController:
 
 
     def send_touch_sendevent(self, points):
-        points = self.interpolate_points(points=points, steps_per_segment= 2)
-        """Gửi touch bằng sendevent"""
+        """Gửi touch bằng sendevent - Hàm gốc có chuyển đổi tọa độ"""
+        # Chuyển đổi và nội suy điểm
+        points = self.interpolate_points(points=points, steps_per_segment=2)
+
         event = "/dev/input/event2"
+
+        logger.info(f"[SENDEVENT] Kéo qua {len(points)} điểm (đã nội suy)")
 
         # 1. BTN_TOUCH DOWN
         self.device.shell(f"sendevent {event} 1 330 1")
-        
+
         # 2. TOUCH DOWN + tọa độ đầu
-        # x1,y1 = self.px_to_system(points[0][0], points[0][1])
-        # print(f"Tọa down độ kéo  x:y : {points[0][0]}: {points[0][1]}")
         self.device.shell(f"sendevent {event} 3 57 0")
         self.device.shell(f"sendevent {event} 3 53 {points[0][0]}")
         self.device.shell(f"sendevent {event} 3 54 {points[0][1]}")
         self.device.shell(f"sendevent {event} 0 0 0")
-        # time.sleep(0.08)
 
-        # 3. MOVE
+        # 3. MOVE qua các điểm
         for x, y in points[1:]:
-            # print(f"Tọa độ kéo  x:y : {x}: {y}")
             self.device.shell(f"sendevent {event} 3 53 {x}")
             self.device.shell(f"sendevent {event} 3 54 {y}")
             self.device.shell(f"sendevent {event} 0 0 0")
-            # time.sleep(0.01)
 
         # 4. BTN_TOUCH UP
         self.device.shell(f"sendevent {event} 1 330 0")
         self.device.shell(f"sendevent {event} 3 57 -1")
         self.device.shell(f"sendevent {event} 0 0 0")
 
+        logger.info(f"[SENDEVENT] Hoàn thành")
 
     def px_to_system(self, x_px, y_px):
         """Chuyển tọa độ bạn thấy (px) → hệ thống nhận"""
-        return int(1000 - y_px), int(x_px)
-    
+        return int(SIZE - y_px), int(x_px)
+
     def interpolate_points(self, points, steps_per_segment=6):
         """
         Sinh điểm giữa 2 điểm – làm kéo mượt
         steps_per_segment = 5 → 5 điểm giữa mỗi đoạn
         """
+        # Chuyển đổi tọa độ trước
         interpolateds = []
         for i in range(len(points)):
             interpolateds.append(self.px_to_system(points[i][0], points[i][1]))
         points = interpolateds
+
         interpolated = [points[0]]  # Giữ điểm đầu
-        
+
         for i in range(1, len(points) - 1):
             x1, y1 = points[i]
             x2, y2 = points[i+1]
-            
+
             # Sinh steps_per_segment điểm giữa
             for step in range(1, steps_per_segment + 1):
                 t = step / (steps_per_segment + 1)  # 0.2, 0.4, 0.6, 0.8
-                
+
                 interp_x = int(x1 + (x2 - x1) * t)
                 interp_y = int(y1 + (y2 - y1) * t)
-                
+
                 interpolated.append((interp_x, interp_y))
-        
+
         interpolated.append(points[-1])  # Giữ điểm cuối
         return interpolated

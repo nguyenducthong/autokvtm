@@ -268,7 +268,7 @@ class ScreenshotTool:
 
         self.folder_entry = tk.Entry(folder_frame, font=("Arial", 9))
         self.folder_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.folder_entry.insert(0, "assets/screenshots")
+        self.folder_entry.insert(0, "assets/items")
 
         tk.Button(
             folder_frame,
@@ -604,11 +604,11 @@ class ScreenshotTool:
             return
 
         os.makedirs(folder, exist_ok=True)
-        filepath = os.path.join(folder, f"{filename}_crop.png")
+        filepath = os.path.join(folder, f"{filename}.png")
 
         cv2.imwrite(filepath, cropped)
         messagebox.showinfo("Thành công", f"Đã lưu crop:\n{filepath}")
-        self.status_label.config(text=f"✓ Đã lưu crop: {filename}_crop.png", bg="#27ae60")
+        self.status_label.config(text=f"✓ Đã lưu crop: {filename}.png", bg="#27ae60")
 
         # Auto increment filename
         self.filename_entry.delete(0, tk.END)

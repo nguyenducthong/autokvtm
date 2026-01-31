@@ -116,8 +116,23 @@ class ImageProcessor:
         logger.info(f"[MATCH] Tìm thấy {len(points)} vị trí → Xem: {debug_path}")
         return points
     
-    def find_template(self, screen_path: str, template_path: str, threshold: float=0.8):
-        screen = cv2.imread(screen_path)
+    def find_template(self, template_path: str, threshold: float=0.8, screen_path: str=None, screen_img: np.ndarray=None):
+        """
+        Tìm template trong screen
+        :param template_path: Đường dẫn ảnh mẫu
+        :param threshold: Ngưỡng match
+        :param screen_path: Đường dẫn ảnh screen (dùng 1 trong 2)
+        :param screen_img: Numpy array của screen (ưu tiên nếu có)
+        """
+        # Ưu tiên dùng screen_img nếu có, không thì đọc từ file
+        if screen_img is not None:
+            screen = screen_img
+        elif screen_path:
+            screen = cv2.imread(screen_path)
+        else:
+            print("Cần truyền screen_path hoặc screen_img")
+            return None
+
         template = cv2.imread(template_path)
         if template is None:
             print(f"Không tải được ảnh mẫu: {template_path}")

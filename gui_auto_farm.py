@@ -26,6 +26,7 @@ class AutoFarmGUI:
         self.adb = None
         self.farm_bot = None
         self.is_running = False
+        self.stop_flag = False  # Cờ để dừng auto
 
         # Positions
         self.seed_icon_pos = None
@@ -157,6 +158,7 @@ class AutoFarmGUI:
             ("🧺💨 Kéo giỏ nhanh (cả hàng)", self.start_drag_harvest, "#e67e22"),
             ("🌱 Kéo hạt trồng cây", self.start_plant, "#27ae60"),
             ("🔄 Thu hoạch + Trồng lại", self.start_harvest_and_plant, "#3498db"),
+            ("🧪 TEST Config Auto (TC)", self.test_config_auto, "#e91e63"),
         ]
 
         for text, command, color in buttons:
@@ -173,6 +175,23 @@ class AutoFarmGUI:
                 cursor="hand2",
                 width=25
             ).pack(pady=3)
+
+        # Nút STOP - nổi bật
+        self.stop_button = tk.Button(
+            action_frame,
+            text="⛔ DỪNG AUTO",
+            command=self.stop_auto,
+            font=("Arial", 11, "bold"),
+            bg="#c0392b",
+            fg="white",
+            relief=tk.RAISED,
+            padx=15,
+            pady=12,
+            cursor="hand2",
+            width=25,
+            state=tk.DISABLED  # Disable khi chưa chạy
+        )
+        self.stop_button.pack(pady=8)
 
         # Settings
         settings_frame = tk.LabelFrame(
@@ -835,6 +854,85 @@ class AutoFarmGUI:
         except Exception as e:
             self.log(f"✗ Lỗi chụp lại: {e}")
             messagebox.showerror("Lỗi", f"Không thể chụp lại:\n{e}")
+
+    def test_config_auto(self):
+        """Test auto farm theo CONFIG_TEMP_TC"""
+        if not self.check_ready():
+            return
+
+        from config import CONFIG_TEMP_TC, INDEX_HANG
+        from core.trong_cay import main_tc
+
+        self.log(f"\n▶ BẮT ĐẦU TEST CONFIG AUTO")
+        self.log(f"📋 Tổng số config: {len(CONFIG_TEMP_TC)}")
+        self.status_label.config(text="⏳ Đang chạy test config...", bg="#e91e63")
+        self.set_running(True)  # Enable nút Stop
+
+        def run():
+            try:
+                # Lọc config theo type TC
+                tc_configs = CONFIG_TEMP_TC
+
+                self.log(f"🌾 Tìm thấy {len(tc_configs)} config trồng cây (TC)")
+
+                # Hiển thị thông tin config
+                for idx, cfg in enumerate(tc_configs, 1):
+                    if self.check_stop():  # Kiểm tra stop
+                        return
+
+                    self.log(f"\n--- Config {idx}/{len(tc_configs)} ---")
+                    self.log(f"  Hàng: {cfg.get('row')}")
+                    self.log(f"  Loại cây: {cfg.get('path_item')}")
+                    self.log(f"  Số vị trí: {len(cfg.get('indexs', []))}")
+
+                if self.check_stop():  # Kiểm tra stop trước khi chạy
+                    return
+
+                # Gọi hàm main_tc với ADB instance và callback check stop
+                self.log(f"\n🚀 Bắt đầu chạy auto farm...")
+                main_tc(tc_configs, adb_instance=self.adb, stop_callback=self.check_stop)
+
+                if not self.stop_flag:  # Chỉ hiển thị success nếu không bị dừng
+                    self.log("\n✓ Hoàn thành test config auto!")
+                    self.status_label.config(text="✓ Hoàn thành", bg="#27ae60")
+                    messagebox.showinfo("Thành công", "Đã chạy xong test config!")
+
+            except Exception as e:
+                import traceback
+                error_detail = traceback.format_exc()
+                self.log(f"✗ Lỗi: {e}")
+                self.log(f"Chi tiết:\n{error_detail}")
+                self.status_label.config(text="✗ Lỗi", bg="#e74c3c")
+                messagebox.showerror("Lỗi", f"Có lỗi xảy ra:\n{e}")
+            finally:
+                self.set_running(False)  # Disable nút Stop
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def stop_auto(self):
+        """Dừng auto đang chạy"""
+        self.stop_flag = True
+        self.log("\n⛔ Đã nhấn DỪNG - Đang dừng auto...")
+        self.status_label.config(text="⛔ Đang dừng...", bg="#c0392b")
+        self.stop_button.config(state=tk.DISABLED)
+
+    def set_running(self, running: bool):
+        """Cập nhật trạng thái chạy và enable/disable nút Stop"""
+        self.is_running = running
+        if running:
+            self.stop_flag = False
+            self.stop_button.config(state=tk.NORMAL, bg="#e74c3c")
+        else:
+            self.stop_button.config(state=tk.DISABLED, bg="#c0392b")
+
+    def check_stop(self):
+        """Kiểm tra xem có yêu cầu dừng không"""
+        if self.stop_flag:
+            self.log("⛔ Auto đã bị dừng bởi người dùng")
+            self.status_label.config(text="⛔ Đã dừng", bg="#c0392b")
+            self.set_running(False)
+            return True
+        return False
 
     def check_ready(self):
         """Kiểm tra sẵn sàng"""

@@ -2,7 +2,7 @@
 # Không có giá trị mặc định - người dùng phải chọn thiết bị
 DEVICE_SERIAL = None  # Sẽ được set khi chọn thiết bị trong GUI
 GARDEN_REGION = (100, 380, 880, 1100)
-
+SIZE = 800
 SWIPE_DURATION = 1000  # Tốc độ kéo (ms)
 PLANTS = [
     {
@@ -87,13 +87,13 @@ WAREHOUSE_ITEM_KSK = [
 CONFIG_TEMP_TC = [
     {
         "id" : 1,  # thu tu chay
-        "row": 1,
+        "row": 1, # hàng thứ mấy
         "type": "TC",
         "indexs": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
                    "2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
-                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
-        "path_row": "assets/items/num/1.png",
-        "path_item": "assets/items/cay_tao.png"
+                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],  # các giá trị ô sẽ đặt cây
+        "path_row": "assets/items/num/1.png", # Hình ảnh để tìm đến mây
+        "path_item": "assets/items/cay_tao.png" # Hình ảnh để trồng cây
     },
     {
         "id" : 1,
@@ -159,122 +159,106 @@ CONFIG_TEMP_TC = [
         "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
                    "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
         "path_item": "assets/items/cay_hong.png"
-    }
-    # ,
+    },
 
-    # {
-    #     "id" : 2,
-    #     "row": 1,
-    #     "type": "MAY",
-    #     "path_row": "assets/items/num/1.png",
-    #     "data": [
-    #         {
-    #             "path_item": "assets/items/hong_say.png",
-    #             "total":  8
-    #         }
-    #     ]
-    # },
-    # {
-    #     "id" : 2,
-    #     "row": 2,
-    #     "type": "MAY",
-    #     "path_row": "assets/items/num/2.png",
-    #     "data": [
-    #         {
-    #             "path_item": "assets/items/nuoc_tao.png",
-    #             "total":  4
-    #         },
-    #         {
-    #             "path_item": "assets/items/nuoc_tuyet.png",
-    #             "total":  4
-    #         }
-    #     ]
-    # },
-    # {
-    #     "id" : 2,
-    #     "row": 2,
-    #     "type": "MAY",
-    #     "path_row": "assets/items/num/2.png",
-    #     "data": [
-    #         {
-    #             "path_item": "assets/items/nuoc_tao.png",
-    #             "total":  4
-    #         },
-    #         {
-    #             "path_item": "assets/items/nuoc_tuyet.png",
-    #             "total":  4
-    #         }
-    #     ]
-    # },
-    # {
-    #     "id" : 2,
-    #     "row": 3,
-    #     "type": "MAY",
-    #     "path_row": "assets/items/num/3.png",
-    #     "data": [
-    #         {
-    #             "path_item": "assets/items/vai_vang.png",
-    #             "total":  4
-    #         }
-    #     ]
-    # },
-    # {
-    #     "id" : 2,
-    #     "row": 5,
-    #     "type": "MAY",
-    #     "path_row": "assets/items/num/5.png",
-    #     "data": [
-    #         {
-    #             "path_item": "assets/items/tinh_dau_tao.png",
-    #             "total":  4
-    #         }
-    #     ]
-    # },
-    # {
-    #     "id" : 2,
-    #     "row": 6,
-    #     "type": "MAY",
-    #     "path_row": "assets/items/num/6.png",
-    #     "data": [
-    #         {
-    #             "path_item": "assets/items/nuoc_hoa_hong.png",
-    #             "total":  4
-    #         }
-    #     ]
-    # }
+    {
+        "id" : 2,
+        "row": 1,
+        "type": "MAY",
+        "path_row": "assets/items/num/1.png",
+        "data": [
+            {
+                "path_item": "assets/items/hong_say.png",
+                "total":  8
+            }
+        ]
+    },
+    {
+        "id" : 2,
+        "row": 2,
+        "type": "MAY",
+        "path_row": "assets/items/num/2.png",
+        "data": [
+            {
+                "path_item": "assets/items/nuoc_tao.png",
+                "total":  4
+            },
+            {
+                "path_item": "assets/items/nuoc_tuyet.png",
+                "total":  4
+            }
+        ]
+    },
+    {
+        "id" : 2,
+        "row": 3,
+        "type": "MAY",
+        "path_row": "assets/items/num/3.png",
+        "data": [
+            {
+                "path_item": "assets/items/vai_vang.png",
+                "total":  4
+            }
+        ]
+    },
+    {
+        "id" : 2,
+        "row": 5,
+        "type": "MAY",
+        "path_row": "assets/items/num/5.png",
+        "data": [
+            {
+                "path_item": "assets/items/tinh_dau_tao.png",
+                "total":  4
+            }
+        ]
+    }
+    ,
+    {
+        "id" : 2,
+        "row": 6,
+        "type": "MAY",
+        "path_row": "assets/items/num/6.png",
+        "data": [
+            {
+                "path_item": "assets/items/tra_hoa_hong.png",
+                "total":  4
+            }
+        ]
+    }
 
 ]
 
 
 INDEX_HANG = {
     # vi_tri : (x,y)
-    "1.1": (390,940),
-    "1.2": (485,940),
-    "1.3": (560,940),
-    "1.4": (635,940),
-    "1.5": (710,940),
-    "1.6": (785,940),
+    "1.1": (311,749),
+    "1.2": (371,749),
+    "1.3": (431,749),
+    "1.4": (490,749),
+    "1.5": (550,749),
+    "1.6": (650,749),
 
-    "2.1": (390,715),
-    "2.2": (485,715),
-    "2.3": (560,715),
-    "2.4": (635,715),
-    "2.5": (710,715),
-    "2.6": (785,715),
+    "2.1": (311,571),
+    "2.2": (371,571),
+    "2.3": (431,571),
+    "2.4": (490,571),
+    "2.5": (550,571),
+    "2.6": (650,571),
 
-    "3.1": (390,495),
-    "3.2": (485,495),
-    "3.3": (560,495),
-    "3.4": (635,495),
-    "3.5": (710,495),
-    "3.6": (785,495),
+    "3.1": (311,391),
+    "3.2": (371,391),
+    "3.3": (431,391),
+    "3.4": (490,391),
+    "3.5": (550,391),
+    "3.6": (650,391),
 
-    "4.1": (390,275),
-    "4.2": (485,275),
-    "4.3": (560,275),
-    "4.4": (635,275),
-    "4.5": (710,275),
-    "4.6": (785,275)
+    "4.1": (311,220),
+    "4.2": (371,220),
+    "4.3": (431,220),
+    "4.4": (490,220),
+    "4.5": (550,220),
+    "4.6": (650,220)
 }
 
 INDEX_MAY = {
@@ -289,3 +273,8 @@ INDEX_MAY = {
     "9": (210, 550),
     "10": (210, 550)
 }
+
+INDEX_XUONG_NHA_MAC_DINH = (402, 784)
+INDEX_SAN_XUAT_MAC_DINH = (319, 576)
+INDEX_THOAT_SAN_XUAT_MAC_DINH = (735, 420)
+INDEX_NEXT_SAN_XUAT_MAC_DINH = (514, 511)
