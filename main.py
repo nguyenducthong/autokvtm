@@ -1,6 +1,7 @@
 # Import chỉ những gì cần thiết cho GUI mode
 # Các module khác sẽ được import khi cần dùng (lazy import)
 from config import WAREHOUSE_ITEM_KSK, CONFIG_TEMP_TC
+import utils.logger  # Ensure logging is configured early (file + console)
 import time
 from core.adb import ADBController
 from gui_select_device import DeviceSelector, get_selected_device

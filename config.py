@@ -85,81 +85,81 @@ WAREHOUSE_ITEM_KSK = [
 ]
 
 CONFIG_TEMP_TC = [
-    {
-        "id" : 1,  # thu tu chay
-        "row": 1, # hàng thứ mấy
-        "type": "TC",
-        "indexs": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
-                   "2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
-                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],  # các giá trị ô sẽ đặt cây
-        "path_row": "assets/items/num/1.png", # Hình ảnh để tìm đến mây
-        "path_item": "assets/items/cay_tao.png" # Hình ảnh để trồng cây
-    },
-    {
-        "id" : 1,
-        "row": 4,
-        "type": "TC",
-        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"],
-        "path_row": "assets/items/num/4.png",
-        "path_item": "assets/items/cay_bong.png"
-    },
-    {
-        "id" : 1,
-        "row": 5,
-        "type": "TC",
-        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
-                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6",
-                   "4.1", "4.2", "4.3", "4.4"],
-        "path_row": "assets/items/num/5.png",
-        "path_item": "assets/items/cay_tuyet.png"
-    },
-    {
-        "id" : 1,
-        "row": 8,
-        "type": "TC",
-        "path_row": "assets/items/num/8.png",
-        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
-                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
-        "path_item": "assets/items/cay_hong.png"
-    },
+    # {
+    #     "id" : 1,  # thu tu chay
+    #     "row": 1, # hàng thứ mấy
+    #     "type": "TC",
+    #     "indexs": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
+    #                "2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+    #                "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],  # các giá trị ô sẽ đặt cây
+    #     "path_row": "assets/items/num/1.png", # Hình ảnh để tìm đến mây
+    #     "path_item": "assets/items/cay_tao.png" # Hình ảnh để trồng cây
+    # },
+    # {
+    #     "id" : 1,
+    #     "row": 4,
+    #     "type": "TC",
+    #     "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"],
+    #     "path_row": "assets/items/num/4.png",
+    #     "path_item": "assets/items/cay_bong.png"
+    # },
+    # {
+    #     "id" : 1,
+    #     "row": 5,
+    #     "type": "TC",
+    #     "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+    #                "3.1", "3.2", "3.3", "3.4", "3.5", "3.6",
+    #                "4.1", "4.2", "4.3", "4.4"],
+    #     "path_row": "assets/items/num/5.png",
+    #     "path_item": "assets/items/cay_tuyet.png"
+    # },
+    # {
+    #     "id" : 1,
+    #     "row": 8,
+    #     "type": "TC",
+    #     "path_row": "assets/items/num/8.png",
+    #     "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+    #                "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
+    #     "path_item": "assets/items/cay_hong.png"
+    # },
 
-    {
-        "id" : 1,  # thu tu chay
-        "row": 1,
-        "type": "TC",
-        "indexs": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
-                   "2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
-                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
-        "path_row": "assets/items/num/1.png",
-        "path_item": "assets/items/cay_tao.png"
-    },
-    {
-        "id" : 1,
-        "row": 4,
-        "type": "TC",
-        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"],
-        "path_row": "assets/items/num/4.png",
-        "path_item": "assets/items/cay_bong.png"
-    },
-    {
-        "id" : 1,
-        "row": 5,
-        "type": "TC",
-        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
-                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6",
-                   "4.1", "4.2", "4.3", "4.4"],
-        "path_row": "assets/items/num/5.png",
-        "path_item": "assets/items/cay_tuyet.png"
-    },
-    {
-        "id" : 1,
-        "row": 8,
-        "type": "TC",
-        "path_row": "assets/items/num/8.png",
-        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
-                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
-        "path_item": "assets/items/cay_hong.png"
-    },
+    # {
+    #     "id" : 1,  # thu tu chay
+    #     "row": 1,
+    #     "type": "TC",
+    #     "indexs": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
+    #                "2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+    #                "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
+    #     "path_row": "assets/items/num/1.png",
+    #     "path_item": "assets/items/cay_tao.png"
+    # },
+    # {
+    #     "id" : 1,
+    #     "row": 4,
+    #     "type": "TC",
+    #     "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"],
+    #     "path_row": "assets/items/num/4.png",
+    #     "path_item": "assets/items/cay_bong.png"
+    # },
+    # {
+    #     "id" : 1,
+    #     "row": 5,
+    #     "type": "TC",
+    #     "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+    #                "3.1", "3.2", "3.3", "3.4", "3.5", "3.6",
+    #                "4.1", "4.2", "4.3", "4.4"],
+    #     "path_row": "assets/items/num/5.png",
+    #     "path_item": "assets/items/cay_tuyet.png"
+    # },
+    # {
+    #     "id" : 1,
+    #     "row": 8,
+    #     "type": "TC",
+    #     "path_row": "assets/items/num/8.png",
+    #     "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+    #                "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
+    #     "path_item": "assets/items/cay_hong.png"
+    # },
 
     {
         "id" : 2,
@@ -229,6 +229,34 @@ CONFIG_TEMP_TC = [
 
 ]
 
+CONFIG_LOAI_KHO = [
+    {
+        "code": "KSK",
+        "name": "Kho Sự Kiện",
+        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+    },
+    {
+        "code": "KNS",
+        "name": "Kho Nông Sản",
+        "path_warehouse_not_select": "assets/items/kho_nong_san_0.png", 
+        "path_warehouse_select": "assets/items/kho_nong_san.png"
+    },
+    {
+        "code": "KTP",
+        "name": "Kho Thành Phẩm",
+        "path_warehouse_not_select": "assets/items/kho_thanh_pham_0.png",
+        "path_warehouse_select": "assets/items/kho_thanh_pham.png"
+    }
+]
+
+CONFIG_BAN_DO = {
+    "loai_kho": "KTP", # loại kho: KSK, KNS, KTP
+    "so_lan_dat_vp": 4 # số lần đặt vật phẩm vào kho mỗi lần chạy
+    "data": "assets/items/kho_tra_hoa_hong.png, assets/items/kho_tinh_dau_tao.png, assets/items/kho_vai_vang.png"
+    "xoa_kc": True # có xóa kho không
+    "dat_quang_cao": True # có đặt quảng cáo không
+}
 
 INDEX_HANG = {
     # vi_tri : (x,y)
@@ -278,3 +306,4 @@ INDEX_XUONG_NHA_MAC_DINH = (402, 784)
 INDEX_SAN_XUAT_MAC_DINH = (319, 576)
 INDEX_THOAT_SAN_XUAT_MAC_DINH = (735, 420)
 INDEX_NEXT_SAN_XUAT_MAC_DINH = (514, 511)
+INDEX_CUA_HANG_MAC_DINH = (513, 690)

@@ -51,7 +51,7 @@ def main_tc(config: list, adb_instance=None, stop_callback=None):
         if stop_callback and stop_callback():
             logger.info("⛔ Dừng auto farm theo yêu cầu")
             break
-
+        config_row = item.get('row')
         path_may = item.get('path_row')
         type_item = item['type']
         logger.info(f"--- Xử lý config {idx}/{len(config)}: Loại {type_item} ---")
@@ -62,7 +62,8 @@ def main_tc(config: list, adb_instance=None, stop_callback=None):
         logger.info(f"🌾 Xử lý config {idx}/{len(config)}: Hàng {item.get('row')}")
 
         # Tìm máy/hàng
-        check = tim_may(path_may)
+        check = tim_may(path_may, config_row)
+        logger.info(f"Kết quả tìm máy/hàng: {check}, hàng cấu hình: {config_row}")
         if check == False:
             logger.info("LỖI: Tìm mây bỏ qua cấu hình")
             continue
@@ -201,7 +202,7 @@ def xu_ly_may(config_may: dict, stop_callback=None):
     logger.info(f"🏭 Xử lý máy hàng {row} tại ({x_may}, {y_may})")
 
     # Tap vào máy cho đến khi thấy next_sanxuat (máy rảnh)
-    max_tap = 2  # Giới hạn số lần tap
+    max_tap = 3  # Giới hạn số lần tap
     found_next_sanxuat = False
 
     for i in range(max_tap):
@@ -227,14 +228,7 @@ def xu_ly_may(config_may: dict, stop_callback=None):
                 break
             else:
                 logger.info(f"Không tìm thấy next_sanxuat, tiếp tục tap...")
-
-    # if not found_next_sanxuat:
-    #     logger.warning("Không tìm thấy next_sanxuat sau nhiều lần tap")
-    #     return False
-    # Tìm vị trí slot sản xuất (sanxuat_vp.png)
-    # pos_slot = find_image("assets/items/sanxuat_vp.png", False)
-    if pos_slot is None:
-        logger.warning("Không tìm thấy slot sản xuất, lấy default")
+    if INDEX_SAN_XUAT_MAC_DINH:
         pos_slot = INDEX_SAN_XUAT_MAC_DINH
     # Kéo vật phẩm vào sản xuất
     for item in data:
@@ -257,7 +251,7 @@ def xu_ly_may(config_may: dict, stop_callback=None):
             # Tìm vật phẩm
             # Kéo vật phẩm vào slot
             x_slot, y_slot = pos_slot
-            adb.swipe(x_item, y_item, x_slot, y_slot, 50)
+            adb.swipe(x_item, y_item, x_slot, y_slot, 70)
             logger.info(f"Kéo {path_item} vào slot")
             # time.sleep(0.3)
         # KIỂM TRA LẠI XEM MÁY CÓ HẾT NGUYÊN LIỆU KHÔNG

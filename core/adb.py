@@ -348,35 +348,94 @@ class ADBController:
 
 
     def send_touch_sendevent(self, points):
-        """Gửi touch bằng sendevent - Hàm gốc có chuyển đổi tọa độ"""
-        # Chuyển đổi và nội suy điểm
+        """Gửi touch bằng sendevent
+
+        Để giảm độ trễ trên các máy chậm, gom tất cả lệnh `sendevent` thành
+        một lần gọi shell (giảm round-trip). Nếu thiết bị không thực thi
+        chuỗi lệnh, fallback vẫn thực hiện từng lệnh như trước.
+
+        Tham số points: danh sách điểm (x,y) ở hệ tọa độ màn hình.
+        Optional: Có thể thay đổi số bước nội suy trong lời gọi interpolate_points.
+        """
+        # Chuyển đổi và nội suy điểm (mặc định 2 bước nội suy như trước)
         points = self.interpolate_points(points=points, steps_per_segment=2)
 
         event = "/dev/input/event2"
+        logger.info(f"[SENDEVENT] Kéo qua {len(points)} điểm (đã nội suy) — gom lệnh để chạy 1 lần")
 
-        logger.info(f"[SENDEVENT] Kéo qua {len(points)} điểm (đã nội suy)")
-
+        # Build a single shell command joining all sendevent calls to reduce RTT
+        cmds = []
         # 1. BTN_TOUCH DOWN
-        self.device.shell(f"sendevent {event} 1 330 1")
+        cmds.append(f"sendevent {event} 1 330 1")
 
         # 2. TOUCH DOWN + tọa độ đầu
-        self.device.shell(f"sendevent {event} 3 57 0")
-        self.device.shell(f"sendevent {event} 3 53 {points[0][0]}")
-        self.device.shell(f"sendevent {event} 3 54 {points[0][1]}")
-        self.device.shell(f"sendevent {event} 0 0 0")
+        cmds.append(f"sendevent {event} 3 57 0")
+        cmds.append(f"sendevent {event} 3 53 {points[0][0]}")
+        cmds.append(f"sendevent {event} 3 54 {points[0][1]}")
+        cmds.append(f"sendevent {event} 0 0 0")
 
         # 3. MOVE qua các điểm
         for x, y in points[1:]:
-            self.device.shell(f"sendevent {event} 3 53 {x}")
-            self.device.shell(f"sendevent {event} 3 54 {y}")
-            self.device.shell(f"sendevent {event} 0 0 0")
+            cmds.append(f"sendevent {event} 3 53 {x}")
+            cmds.append(f"sendevent {event} 3 54 {y}")
+            cmds.append(f"sendevent {event} 0 0 0")
 
         # 4. BTN_TOUCH UP
-        self.device.shell(f"sendevent {event} 1 330 0")
-        self.device.shell(f"sendevent {event} 3 57 -1")
-        self.device.shell(f"sendevent {event} 0 0 0")
+        cmds.append(f"sendevent {event} 1 330 0")
+        cmds.append(f"sendevent {event} 3 57 -1")
+        cmds.append(f"sendevent {event} 0 0 0")
 
-        logger.info(f"[SENDEVENT] Hoàn thành")
+        full_cmd = ";".join(cmds)
+
+        try:
+            # Thực thi 1 lần trên thiết bị để hạn chế overhead từ nhiều lệnh shell
+            self.device.shell(full_cmd)
+            logger.info(f"[SENDEVENT] Hoàn thành (batch)")
+        except Exception as e:
+            logger.warning(f"[SENDEVENT] Batch thất bại, fallback từng lệnh: {e}")
+            # Fallback: thực hiện từng lệnh như cũ (chậm hơn nhưng tin cậy)
+            try:
+                self.device.shell(f"sendevent {event} 1 330 1")
+                self.device.shell(f"sendevent {event} 3 57 0")
+                self.device.shell(f"sendevent {event} 3 53 {points[0][0]}")
+                self.device.shell(f"sendevent {event} 3 54 {points[0][1]}")
+                self.device.shell(f"sendevent {event} 0 0 0")
+                for x, y in points[1:]:
+                    self.device.shell(f"sendevent {event} 3 53 {x}")
+                    self.device.shell(f"sendevent {event} 3 54 {y}")
+                    self.device.shell(f"sendevent {event} 0 0 0")
+                self.device.shell(f"sendevent {event} 1 330 0")
+                self.device.shell(f"sendevent {event} 3 57 -1")
+                self.device.shell(f"sendevent {event} 0 0 0")
+                logger.info(f"[SENDEVENT] Hoàn thành (fallback)")
+            except Exception as e2:
+                logger.error(f"[SENDEVENT] Lỗi khi fallback sendevent: {e2}")
+
+    def send_touch_sendevent_raw(self, points):
+        """Gửi touch bằng sendevent từng lệnh (không gom batch).
+
+        Giữ nguyên hành vi truyền thống: mỗi `sendevent` được gửi
+        bằng một lệnh shell riêng. Dùng khi cần độ chính xác cao
+        hoặc khi batch không hoạt động trên thiết bị cụ thể.
+        """
+        points = self.interpolate_points(points=points, steps_per_segment=2)
+        event = "/dev/input/event2"
+        try:
+            self.device.shell(f"sendevent {event} 1 330 1")
+            self.device.shell(f"sendevent {event} 3 57 0")
+            self.device.shell(f"sendevent {event} 3 53 {points[0][0]}")
+            self.device.shell(f"sendevent {event} 3 54 {points[0][1]}")
+            self.device.shell(f"sendevent {event} 0 0 0")
+            for x, y in points[1:]:
+                self.device.shell(f"sendevent {event} 3 53 {x}")
+                self.device.shell(f"sendevent {event} 3 54 {y}")
+                self.device.shell(f"sendevent {event} 0 0 0")
+            self.device.shell(f"sendevent {event} 1 330 0")
+            self.device.shell(f"sendevent {event} 3 57 -1")
+            self.device.shell(f"sendevent {event} 0 0 0")
+            logger.info("[SENDEVENT_RAW] Hoàn thành")
+        except Exception as e:
+            logger.error(f"[SENDEVENT_RAW] Lỗi khi gửi sendevent raw: {e}")
 
     def px_to_system(self, x_px, y_px):
         """Chuyển tọa độ bạn thấy (px) → hệ thống nhận"""

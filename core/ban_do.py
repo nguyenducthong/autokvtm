@@ -3,10 +3,12 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from .adb import ADBController 
 from .image import ImageProcessor 
-from config import GARDEN_REGION, PLANTS, DEVICE_SERIAL
+from config import INDEX_CUA_HANG_MAC_DINH
+from utils.utils import len_may, xuong_may, find_image
 import time
 import logging
 from utils.logger import log_time
+from utils.utils import init_adb
 logger = logging.getLogger(__name__)       
 img = ImageProcessor()      
 MAX_ATTEMPTS = 3
@@ -19,6 +21,66 @@ def tim_cua_hang(adb):
 
     adb.tap(674, 831)
     return True
+
+"""
+main đăt vập phẩm cửa hàng lấy config 
+{
+    "loai_kho": "KTP", # loại kho: KSK, KNS, KTP
+    "so_lan_dat_vp": 4 # số lần đặt vật phẩm vào kho mỗi lần chạy
+    "data": "assets/items/kho_tra_hoa_hong.png, assets/items/kho_tinh_dau_tao.png, assets/items/kho_vai_vang.png"
+    "xoa_kc": True # có xóa kho không
+    "dat_quang_cao": True # có đặt quảng cáo không
+}
+1. Tìm cửa hàng
+2. Tìm ô trống hoặc ô vàng => có thể kéo cửa hàng sang phải hoặc trái để tìm
+3. Chọn kho theo config loai_kho => CONFIG_LOAI_KHO => Lấy path_warehouse_not_select, path_warehouse_select
+4. Chọn vật phẩm theo config data (danh sách path vật phẩm cách bởi dấu ,) 
+=> 
+5. Đặt bán vập phẩm theo số lần cấu hình so_lan_dat_vp, các 
+vật phẩm trong data random trong mỗi lần đặt hoặc tìm kiếm cái nào có số lượng lớn nhất để đặt
+"""    
+def main_dat_vp(adb:ADBController, config: dict):
+    so_lan_dat_vp = config.get("so_lan_dat_vp", 4)
+    loai_kho = config.get("loai_kho", "KTP")
+    data_vp = config.get("data", "")
+    xoa_kc = config.get("xoa_kc", True)
+    dat_quang_cao = config.get("dat_quang_cao", True)
+
+    # Lấy thông tin kho từ cấu hình
+    from config import CONFIG_LOAI_KHO
+    kho_info = next((kho for kho in CONFIG_LOAI_KHO if kho["code"] == loai_kho), None)
+    if not kho_info:
+        logger.error(f"Loại kho không hợp lệ: {loai_kho}")
+        return
+
+    template_path_kho_not_select = kho_info["path_warehouse_not_select"]
+    template_path_kho = kho_info["path_warehouse_select"]
+
+    # Tách danh sách vật phẩm từ cấu hình, bỏ khoăng trắng ở đầu cuối
+    danh_sach_vp = [vp.strip() for vp in data_vp.split(",") if vp.strip()]
+    if not danh_sach_vp:
+        logger.error("Danh sách vật phẩm trống!")
+        return
+
+    logger.info(f"Bắt đầu đặt vật phẩm vào kho '{loai_kho}' với {so_lan_dat_vp} lần, vật phẩm: {danh_sach_vp}, xóa kho: {xoa_kc}, đặt quảng cáo: {dat_quang_cao}")
+
+    # Thực hiện đặt vật phẩm
+    for i in range(so_lan_dat_vp):
+        logger.info(f"=== Lần đặt vật phẩm thứ {i + 1} ===")
+        # Tìm ô để đăt vật phẩm (Tìm ô có vàng hoặc ô trống)
+        pos = 
+
+        for vp_path in danh_sach_vp:
+            logger.info(f"Đang đặt vật phẩm: {vp_path}")
+            dat_vp(
+                template_path_kho_not_select,
+                template_path_kho,
+                vp_path,
+                repeat=1,
+                select_quang_cao=dat_quang_cao,
+                adb=adb
+            )
+            time.sleep(1)  # Thời gian nghỉ giữa các lần đặt
 
 def nhat_vang(adb):
     # adb = ADBController(serial=serial) 
@@ -112,21 +174,6 @@ def keo_cua_hang_sang_trai(adb:ADBController):
         x, y = pos
         logger.info(f"[FOUND] Bảng tại: ({x}, {y}) → Tap được!")     
         adb.scroll_left(300, 500,540, 600)
-
-def len_may(count: int=1, duration: int=50,sleep: float=0.7, adb: ADBController=ADBController):
-    for _ in range(count):
-        adb.scroll_up(450, 500, 70, duration)
-        time.sleep(sleep)
-
-def xuong_may(count: int=1, duration: int=50,sleep: float=0.7, adb: ADBController=ADBController):
-    for _ in range(count):
-        adb.scroll_down(500, 450, 70, duration)
-        time.sleep(sleep)
-
-def xuong_nha(duration: int=50,sleep: float=0.7, adb: ADBController=ADBController):
-    adb.scroll_up(450, 500, 70, duration)
-    time.sleep(sleep)
-    adb.scroll_up(450, 500, 70, duration)
     
 @log_time
 def dat_vp(template_path_kho_not_select: str, template_path_kho: str, template_path_vp: str, repeat: int=1, select_quang_cao: bool=False, adb: ADBController=ADBController):
