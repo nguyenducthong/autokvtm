@@ -265,8 +265,103 @@ class ImageProcessor:
             # Trả về tọa độ tâm template
             logger.info(f"[MATCH_SUCCESS] {template_name} at ({cx},{cy}) score={best_score:.3f} method={match_method}")
             return (cx, cy)
-        
-        return None
-    
 
-    
+        return None
+
+    def find_exact(self, template_path: str, threshold: float = 0.8, screen_path: str = None, screen_img: np.ndarray = None) -> Optional[Tuple[int, int]]:
+        """
+        Tìm ảnh mẫu trong screenshot - PHÂN BIỆT MÀU CHÍNH XÁC
+        Bước 1: Grayscale matching → tìm tất cả vị trí có hình dạng giống
+        Bước 2: So sánh mean color BGR → chọn vị trí đúng màu
+
+        :param template_path: Đường dẫn ảnh mẫu
+        :param threshold: Ngưỡng matching hình dạng (0-1)
+        :param screen_path: Đường dẫn screenshot
+        :param screen_img: Hoặc numpy array screenshot
+        :return: (cx, cy) tọa độ tâm, hoặc None
+        """
+        if screen_img is not None:
+            screen = screen_img
+        elif screen_path:
+            screen = cv2.imread(screen_path)
+        else:
+            logger.warning("Cần truyền screen_path hoặc screen_img")
+            return None
+
+        template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
+        if template is None:
+            logger.warning(f"Không tải được ảnh mẫu: {template_path}")
+            return None
+
+        # Bỏ alpha nếu có
+        if template.ndim == 3 and template.shape[2] == 4:
+            template = template[:, :, :3]
+
+        th, tw = template.shape[:2]
+        template_name = os.path.basename(template_path).replace('.png', '')
+
+        if th > screen.shape[0] or tw > screen.shape[1]:
+            return None
+
+        # ===== BƯỚC 1: Grayscale matching → tìm TẤT CẢ vị trí candidate =====
+        gray_screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+        gray_template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+
+        result = cv2.matchTemplate(gray_screen, gray_template, cv2.TM_CCOEFF_NORMED)
+
+        # Lấy tất cả vị trí vượt ngưỡng shape
+        locations = np.where(result >= threshold)
+        candidates = []
+        used = []
+
+        for pt in zip(*locations[::-1]):  # (x, y)
+            # Loại trùng lặp (vị trí quá gần nhau)
+            is_dup = False
+            for u in used:
+                if abs(pt[0] - u[0]) < tw // 2 and abs(pt[1] - u[1]) < th // 2:
+                    is_dup = True
+                    break
+            if not is_dup:
+                score = float(result[pt[1], pt[0]])
+                candidates.append((pt[0], pt[1], score))
+                used.append(pt)
+
+        if not candidates:
+            logger.debug(f"[FIND_EXACT] {template_name} NOT found (no shape match)")
+            return None
+
+        # ===== BƯỚC 2: So sánh mean color BGR → chọn đúng màu =====
+        tpl_mean = np.mean(template.astype(np.float32), axis=(0, 1))  # [B, G, R]
+
+        best_match = None
+        best_color_dist = 999
+
+        for (x, y, score) in candidates:
+            region = screen[y:y+th, x:x+tw]
+            if region.shape[0] != th or region.shape[1] != tw:
+                continue
+
+            reg_mean = np.mean(region.astype(np.float32), axis=(0, 1))
+            color_dist = float(np.sqrt(np.sum((tpl_mean - reg_mean) ** 2)))
+
+            logger.debug(f"[FIND_EXACT] candidate ({x},{y}) score={score:.3f} color_dist={color_dist:.1f}")
+
+            if color_dist < best_color_dist:
+                best_color_dist = color_dist
+                best_match = (x, y, score)
+
+        if best_match is None:
+            return None
+
+        x, y, score = best_match
+        cx = x + tw // 2
+        cy = y + th // 2
+
+        # Ngưỡng màu: color_dist < 80 mới chấp nhận
+        if best_color_dist > 80:
+            logger.info(f"[FIND_EXACT] {template_name} REJECT all candidates (best_color_dist={best_color_dist:.1f})")
+            return None
+
+        logger.info(f"[FIND_EXACT] {template_name}: ({cx},{cy}) score={score:.3f} color_dist={best_color_dist:.1f}")
+        return (cx, cy)
+

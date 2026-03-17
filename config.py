@@ -252,9 +252,9 @@ CONFIG_LOAI_KHO = [
 
 CONFIG_BAN_DO = {
     "loai_kho": "KTP", # loại kho: KSK, KNS, KTP
-    "so_lan_dat_vp": 4 # số lần đặt vật phẩm vào kho mỗi lần chạy
-    "data": "assets/items/kho_tra_hoa_hong.png, assets/items/kho_tinh_dau_tao.png, assets/items/kho_vai_vang.png"
-    "xoa_kc": True # có xóa kho không
+    "so_lan_dat_vp": 4, # số lần đặt vật phẩm vào kho mỗi lần chạy
+    "data": "assets/items/kho_tra_hoa_hong.png, assets/items/kho_tinh_dau_tao.png, assets/items/kho_vai_vang.png",
+    "xoa_kc": True, # có xóa kho không
     "dat_quang_cao": True # có đặt quảng cáo không
 }
 

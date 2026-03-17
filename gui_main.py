@@ -47,6 +47,7 @@ class MainGUI:
         function_menu.add_command(label="Trồng cây", command=self.trong_cay)
         function_menu.add_separator()
         function_menu.add_command(label="📸 Screenshot Tool", command=self.open_screenshot_tool)
+        function_menu.add_command(label="🔍 Template Compare", command=self.open_template_compare)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -114,6 +115,7 @@ class MainGUI:
             ("🌾 Thu hoạch", self.thu_hoach, "#f39c12"),
             ("🌱 Trồng cây", self.trong_cay, "#e74c3c"),
             ("📸 Screenshot Tool - Chụp & Cắt ảnh", self.open_screenshot_tool, "#9b59b6"),
+            ("🔍 Template Compare - Tim vi tri anh mau", self.open_template_compare, "#2980b9"),
             ("⚙️ Cài đặt", self.open_settings, "#95a5a6"),
         ]
 
@@ -421,6 +423,17 @@ class MainGUI:
         except Exception as e:
             self.log(f"Lỗi khi mở Screenshot Tool: {e}", "ERROR")
             messagebox.showerror("Lỗi", f"Không thể mở Screenshot Tool:\n{e}")
+
+    def open_template_compare(self):
+        """Open template compare GUI"""
+        self.log("Dang mo Template Compare...", "INFO")
+        try:
+            from gui_template_match import TemplateMatchGUI
+            tool = TemplateMatchGUI(self.root)
+            tool.run()
+        except Exception as e:
+            self.log(f"Loi khi mo Template Compare: {e}", "ERROR")
+            messagebox.showerror("Loi", f"Khong the mo Template Compare:\n{e}")
 
     def open_settings(self):
         """Mở cài đặt"""

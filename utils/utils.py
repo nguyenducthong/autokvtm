@@ -17,7 +17,6 @@ local_cache = threading.local()  # Cache per thread để tránh lẫn khi chạ
 
 def init_adb(serial=None, adb: ADBController=None):
     """Khởi tạo ADB controller"""
-    global adb
     if adb is not None:
         return adb
     if serial is None:
@@ -32,7 +31,7 @@ def tim_may(template_path, config_row, count=1):
     current_row = None
     for i in range(1, 11):
         may_i = f"assets/items/num/{i}.png"
-        pos = find_image(may_i, False)
+        pos = find_image_v2(may_i, False)
         if pos:
             current_row = i
             logger.info(f"Đã xác định hàng hiện tại là {current_row}")
@@ -85,7 +84,7 @@ def xuong_nha(duration: int=50,sleep: float=0.7):
     adb.scroll_up(450, 500, 70, duration)
     adb.scroll_down(500, 450, 70, duration)
     time.sleep(sleep)
-    pos = find_image("assets/items/check_xuong_1.png", True)
+    pos = find_image_v2("assets/items/check_xuong_1.png", True)
     if (pos):
         logger.info("Tìm được xuống nhà")
         (x,y) = pos
@@ -126,6 +125,36 @@ def find_image(template_path, screen, screen_img=None):
         logger.warning("Không có ảnh màn hình để tìm template: %s", template_path)
         return None
     return img.find_template(template_path=template_path, threshold=THRESHOLD, screen_img=use_screen)
+
+def find_image_v2(template_path, screen, screen_img=None, threshold=THRESHOLD):
+    """ test dùng cho ảnh màu ko scale
+    Tìm template trong screen
+    :param template_path: Đường dẫn ảnh mẫu
+    :param screen: True = chụp mới, False = dùng screen đã cache
+    :param screen_img: Numpy array của screen (tùy chọn, dùng lại ảnh đã chụp)
+    """
+    logger.info(f"Tìm hình ảnh: {template_path}, chụp mới: {screen}")
+    if not hasattr(local_cache, '_last_screen'):
+        local_cache._last_screen = None
+
+    if screen:
+        # Chụp mới vào memory, không lưu file
+        if adb is None:
+            init_adb()
+        local_cache._last_screen = adb.screenshot_full()
+    else:
+        # Nếu dùng cache nhưng cache trống, chụp một ảnh mới tự động
+        if local_cache._last_screen is None:
+            if adb is None:
+                init_adb()
+            local_cache._last_screen = adb.screenshot_full()
+
+    # Dùng screen_img nếu có, không thì dùng cache
+    use_screen = screen_img if screen_img is not None else local_cache._last_screen
+    if use_screen is None:
+        logger.warning("Không có ảnh màn hình để tìm template: %s", template_path)
+        return None
+    return img.find_exact(template_path=template_path, threshold=threshold, screen_img=use_screen)
 
 def clear_screen_cache():
     """Xóa cache screenshot để giải phóng memory (gọi sau khi hoàn thành task)"""

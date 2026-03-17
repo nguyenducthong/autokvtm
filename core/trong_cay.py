@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from .adb import ADBController
 from .image import ImageProcessor
-from utils.utils import lay_toa_do_tu_indexs, tim_may, find_image
+from utils.utils import lay_toa_do_tu_indexs, tim_may, find_image_v2
 from config import DEVICE_SERIAL, INDEX_HANG, CONFIG_TEMP_TC, INDEX_MAY, INDEX_SAN_XUAT_MAC_DINH, INDEX_NEXT_SAN_XUAT_MAC_DINH, INDEX_THOAT_SAN_XUAT_MAC_DINH
 import time
 import logging
@@ -118,7 +118,7 @@ def main_tc(config: list, adb_instance=None, stop_callback=None):
 
 ##
 def tim_cay_trong(template_path, count=1, sleep: float=0.7):
-    pos = find_image(template_path, True)
+    pos = find_image_v2(template_path, True)
     if (pos):
         logger.info(f"tim duoc {template_path} {pos}")
         return pos
@@ -126,7 +126,7 @@ def tim_cay_trong(template_path, count=1, sleep: float=0.7):
         count= +1
         logger.info(f"khong tim duoc {template_path}") 
         next_gieo = "assets/items/next_gieo.png"
-        pos = find_image(next_gieo, False)
+        pos = find_image_v2(next_gieo, False)
         if (pos):
             x,y = pos
             adb.tap(x,y)
@@ -164,11 +164,11 @@ def trong_cay(template_path, points: list, tap, duration_ms: int = 1500):
 
 # Kiểm tra lại xem có giỏ hàng hay next_gieo 
 def check_trong_cay():
-    pos_TH = find_image("assets/items/thu_hoach.png", True)
+    pos_TH = find_image_v2("assets/items/thu_hoach.png", True)
     if (pos_TH):
         logger.info("Tìm được giỏ hàng")
         return "gio_hang"
-    pos = find_image("assets/items/next_gieo.png", True)
+    pos = find_image_v2("assets/items/next_gieo.png", True)
     if (pos):
         logger.info("Tìm được nút next gieo")
         return "next_gieo"
@@ -214,14 +214,14 @@ def xu_ly_may(config_may: dict, stop_callback=None):
         time.sleep(0.5)
 
         # Kiểm tra xem máy đã rảnh chưa (hiện next_sanxuat)
-        pos_slot = find_image("assets/items/sanxuat_vp.png", False)
+        pos_slot = find_image_v2("assets/items/sanxuat_vp.png", False)
         if pos_slot:
             logger.info(f"✓ Máy rảnh sau {i+1} lần tap")
             found_next_sanxuat = True
             break
         else:
             logger.info(f"Máy chưa rảnh không tìm thấy sanxuat_vp, tap lần {i+1}")
-            pos_next_sx = find_image("assets/items/next_sanxuat.png", False)
+            pos_next_sx = find_image_v2("assets/items/next_sanxuat.png", False)
             if pos_next_sx:
                 logger.info(f"✓ Tìm thấy next_sanxuat sau {i+1} lần tap")
                 found_next_sanxuat = True
@@ -255,7 +255,7 @@ def xu_ly_may(config_may: dict, stop_callback=None):
             logger.info(f"Kéo {path_item} vào slot")
             # time.sleep(0.3)
         # KIỂM TRA LẠI XEM MÁY CÓ HẾT NGUYÊN LIỆU KHÔNG
-        pos_nut_x = find_image("assets/items/nut_x.png", True)
+        pos_nut_x = find_image_v2("assets/items/nut_x.png", True)
         if (pos_nut_x):
             logger.info("Máy hết nguyên liệu, đóng máy")
             x_x, y_x = pos_nut_x
@@ -266,7 +266,7 @@ def xu_ly_may(config_may: dict, stop_callback=None):
     logger.info(f"✓ Hoàn thành xử lý máy hàng {row}")
     return True
 def tim_vp(template_path, count=1, sleep: float=0.7):
-    pos = find_image(template_path, True)
+    pos = find_image_v2(template_path, True)
     if (pos):
         logger.info(f"tim duoc {template_path} {pos}")
         return pos
@@ -276,7 +276,7 @@ def tim_vp(template_path, count=1, sleep: float=0.7):
             return None
         logger.info(f"khong tim duoc {template_path}") 
         next_sanxuat = "assets/items/next_sanxuat.png"
-        pos = find_image(next_sanxuat, False)
+        pos = find_image_v2(next_sanxuat, False)
         if (pos):
             x,y = pos
             adb.tap(x,y)
@@ -290,12 +290,12 @@ def tim_vp(template_path, count=1, sleep: float=0.7):
             return tim_vp(template_path, count)
 
 def sua_may():
-    pos_sua = find_image("assets/items/sua_may.png", True)
+    pos_sua = find_image_v2("assets/items/sua_may.png", True)
     if (pos_sua):
         x_sua, y_sua = pos_sua
         adb.tap(x_sua, y_sua)
         time.sleep(0.5)
-        pos_vang = find_image("assets/items/sua_may_vang.png", True)
+        pos_vang = find_image_v2("assets/items/sua_may_vang.png", True)
         if (pos_vang):
             x_vang, y_vang = pos_vang
             adb.tap(x_vang, y_vang)

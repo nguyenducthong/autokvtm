@@ -68,7 +68,7 @@ def main_dat_vp(adb:ADBController, config: dict):
     for i in range(so_lan_dat_vp):
         logger.info(f"=== Lần đặt vật phẩm thứ {i + 1} ===")
         # Tìm ô để đăt vật phẩm (Tìm ô có vàng hoặc ô trống)
-        pos = 
+        # pos = 
 
         for vp_path in danh_sach_vp:
             logger.info(f"Đang đặt vật phẩm: {vp_path}")
