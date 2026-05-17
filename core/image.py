@@ -268,6 +268,133 @@ class ImageProcessor:
 
         return None
 
+    def find_template_color(
+        self,
+        template_path: str,
+        threshold: float = 0.75,
+        color_threshold: float = 0.6,
+        screen_path: str = None,
+        screen_img: np.ndarray = None
+    ) -> Optional[Tuple[int, int]]:
+        """
+        Tìm ảnh mẫu PHÂN BIỆT MÀU CHÍNH XÁC bằng color histogram correlation.
+
+        Giải quyết vấn đề: 2 icon/nút giống hình dạng nhưng khác màu (VD: nút xanh vs nút đỏ).
+
+        Thuật toán:
+        1. Match BGR trực tiếp (không chuyển grayscale) → giữ thông tin màu
+        2. Lấy tất cả candidates vượt ngưỡng
+        3. So sánh color histogram HSV (H: 30 bins, S: 32 bins) bằng correlation
+        4. Kết hợp shape_score * color_score → chọn candidate tốt nhất
+
+        :param template_path: Đường dẫn ảnh mẫu
+        :param threshold: Ngưỡng shape matching (0-1)
+        :param color_threshold: Ngưỡng color histogram correlation (0-1), mặc định 0.6
+        :param screen_path: Đường dẫn screenshot
+        :param screen_img: Hoặc numpy array screenshot
+        :return: (cx, cy) tọa độ tâm, hoặc None
+        """
+        if screen_img is not None:
+            screen = screen_img
+        elif screen_path:
+            screen = cv2.imread(screen_path)
+        else:
+            logger.warning("Cần truyền screen_path hoặc screen_img")
+            return None
+
+        template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
+        if template is None:
+            logger.warning(f"Không tải được ảnh mẫu: {template_path}")
+            return None
+
+        # Tách alpha mask nếu có
+        alpha_mask = None
+        if template.ndim == 3 and template.shape[2] == 4:
+            alpha_mask = template[:, :, 3]
+            alpha_mask = (alpha_mask > 10).astype(np.uint8) * 255
+            template_bgr = template[:, :, :3]
+        else:
+            template_bgr = template
+
+        th, tw = template_bgr.shape[:2]
+        template_name = os.path.basename(template_path).replace('.png', '')
+
+        if th > screen.shape[0] or tw > screen.shape[1]:
+            return None
+
+        # ===== BƯỚC 1: Color-aware matching (BGR) =====
+        result = cv2.matchTemplate(screen, template_bgr, cv2.TM_CCOEFF_NORMED)
+
+        # Lấy tất cả candidates vượt ngưỡng
+        locations = np.where(result >= threshold)
+        candidates = []
+        used = []
+
+        for pt in zip(*locations[::-1]):
+            is_dup = False
+            for u in used:
+                if abs(pt[0] - u[0]) < tw // 2 and abs(pt[1] - u[1]) < th // 2:
+                    is_dup = True
+                    break
+            if not is_dup:
+                score = float(result[pt[1], pt[0]])
+                candidates.append((pt[0], pt[1], score))
+                used.append(pt)
+
+        if not candidates:
+            logger.debug(f"[FIND_COLOR] {template_name} NOT found (no BGR match >= {threshold})")
+            return None
+
+        # ===== BƯỚC 2: Color histogram comparison =====
+        # Tính histogram HSV của template (H: 30 bins, S: 32 bins)
+        tpl_hsv = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2HSV)
+        h_bins, s_bins = 30, 32
+        hist_ranges = [0, 180, 0, 256]
+        tpl_hist = cv2.calcHist([tpl_hsv], [0, 1], alpha_mask, [h_bins, s_bins], hist_ranges)
+        cv2.normalize(tpl_hist, tpl_hist, 0, 1, cv2.NORM_MINMAX)
+
+        best_match = None
+        best_combined_score = -1
+
+        for (x, y, shape_score) in candidates:
+            region = screen[y:y+th, x:x+tw]
+            if region.shape[0] != th or region.shape[1] != tw:
+                continue
+
+            # Histogram HSV của vùng screen
+            reg_hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+            reg_hist = cv2.calcHist([reg_hsv], [0, 1], alpha_mask, [h_bins, s_bins], hist_ranges)
+            cv2.normalize(reg_hist, reg_hist, 0, 1, cv2.NORM_MINMAX)
+
+            # So sánh bằng correlation (1.0 = giống hoàn toàn)
+            color_score = cv2.compareHist(tpl_hist, reg_hist, cv2.HISTCMP_CORREL)
+
+            # Kết hợp: 40% shape + 60% color (ưu tiên màu vì hình dạng đã giống)
+            combined = 0.4 * shape_score + 0.6 * color_score
+
+            logger.debug(
+                f"[FIND_COLOR] {template_name} candidate ({x},{y}): "
+                f"shape={shape_score:.3f} color={color_score:.3f} combined={combined:.3f}"
+            )
+
+            if color_score >= color_threshold and combined > best_combined_score:
+                best_combined_score = combined
+                best_match = (x, y, shape_score, color_score)
+
+        if best_match is None:
+            logger.info(f"[FIND_COLOR] {template_name} REJECT (no candidate passed color_threshold={color_threshold})")
+            return None
+
+        x, y, shape_score, color_score = best_match
+        cx = x + tw // 2
+        cy = y + th // 2
+
+        logger.info(
+            f"[FIND_COLOR] {template_name}: ({cx},{cy}) "
+            f"shape={shape_score:.3f} color={color_score:.3f} combined={best_combined_score:.3f}"
+        )
+        return (cx, cy)
+
     def find_exact(self, template_path: str, threshold: float = 0.8, screen_path: str = None, screen_img: np.ndarray = None) -> Optional[Tuple[int, int]]:
         """
         Tìm ảnh mẫu trong screenshot - PHÂN BIỆT MÀU CHÍNH XÁC
