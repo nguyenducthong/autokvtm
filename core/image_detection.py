@@ -17,7 +17,7 @@ class ImageDetector:
         """
         self.threshold = threshold
 
-    def find_template(self, screenshot: np.ndarray, template_path: str, threshold: float = None) -> Optional[Tuple[int, int]]:
+    def _match_one(self, screenshot: np.ndarray, template_path: str, threshold: float = None) -> Optional[Tuple[int, int]]:
         """
         Tìm template trong screenshot
 
@@ -67,7 +67,7 @@ class ImageDetector:
         Returns:
             Tọa độ (x, y) của giỏ, hoặc None nếu không tìm thấy
         """
-        return self.find_template(screenshot, basket_template_path)
+        return self._match_one(screenshot, basket_template_path)
 
     def detect_plant_menu(self, screenshot: np.ndarray, plant_templates: List[str]) -> Optional[Tuple[str, int, int]]:
         """
@@ -81,7 +81,7 @@ class ImageDetector:
             Tuple (tên_cây, x, y) hoặc None nếu không tìm thấy
         """
         for template_path in plant_templates:
-            position = self.find_template(screenshot, template_path)
+            position = self._match_one(screenshot, template_path)
             if position:
                 # Lấy tên cây từ đường dẫn (vd: assets/items/cay_hong.png -> hong)
                 import os

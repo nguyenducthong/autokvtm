@@ -1,0 +1,92 @@
+{
+  "settings": {
+    "loop_tong_mode": "forever",
+    "loop_tong": 1,
+    "loop": 1,
+    "bat_trong_cay": true,
+    "bat_may": false,
+    "bat_ban_vp": false,
+    "bat_thu_hoach": true,
+    "bat_mo_ruong": false,
+    "bat_giao_cu": false
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "row": 2,
+      "type": "TC",
+      "indexs": [
+        "1.1",
+        "1.2",
+        "1.3",
+        "1.4",
+        "1.5",
+        "1.6",
+        "2.1",
+        "2.2",
+        "2.3",
+        "2.4",
+        "2.5",
+        "2.6",
+        "3.1",
+        "3.2",
+        "3.3",
+        "3.4",
+        "3.5",
+        "3.6",
+        "4.1",
+        "4.2",
+        "4.3",
+        "4.4",
+        "4.5",
+        "4.6"
+      ],
+      "path_row": "assets/items/num/2.png",
+      "path_item": "assets/items/cay_ong_sao.png",
+      "path_item_default": "assets/items/0.png",
+      "threshold": 0.8
+    },
+    {
+      "id": 1,
+      "row": 6,
+      "type": "TC",
+      "indexs": [
+        "1.1",
+        "1.2",
+        "1.3",
+        "1.4",
+        "1.5",
+        "1.6",
+        "2.1",
+        "2.2",
+        "2.3",
+        "2.4",
+        "2.5",
+        "2.6",
+        "3.1",
+        "3.2",
+        "3.3",
+        "3.4",
+        "3.5",
+        "3.6",
+        "4.1",
+        "4.2",
+        "4.3",
+        "4.4",
+        "4.5",
+        "4.6"
+      ],
+      "path_row": "assets/items/num/6.png",
+      "path_item": "assets/items/cay_ong_sao.png",
+      "path_item_default": "assets/items/0.png",
+      "threshold": 0.8
+    }
+  ],
+  "ban_do": {
+    "loai_kho": "KNS",
+    "so_lan_dat_vp": 4,
+    "data": [],
+    "xoa_kc": true,
+    "dat_quang_cao": true
+  }
+}

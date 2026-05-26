@@ -167,7 +167,7 @@ class DeviceSelector:
                 raise FileNotFoundError("Không tìm thấy ADB")
 
             # Chạy lệnh adb devices bằng ADB Helper
-            result = self.adb_helper.run_adb(["devices"])
+            result = self.adb_helper.run_adb(["devices"], timeout=15)
 
             lines = result.stdout.strip().split('\n')[1:]  # Bỏ dòng header
 

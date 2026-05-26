@@ -17,20 +17,7 @@ class ImageProcessor:
     def __init__(self, cache_dir: str = "cache/images"):
         self.cache_dir = cache_dir
         os.makedirs(cache_dir, exist_ok=True)
-
-    # =============================================================
-    # 1. TÌM ẢNH MẪU (TEMPLATE MATCHING)
-    # =============================================================
-
-
-    # =============================================================
-    # 2. TÌM NHIỀU ẢNH MẪU (MULTI-TEMPLATE)
-    # =============================================================
- 
-
-    # =============================================================
-    # 3. DEBUG: VẼ KHUNG TÌM ĐƯỢC
-    # =============================================================
+        
     def draw_matches(
         self,
         screen: np.ndarray,
@@ -268,6 +255,302 @@ class ImageProcessor:
 
         return None
 
+    def _match_one(
+        self,
+        template_path: str,
+        threshold: float = 0.8,
+        screen_path: str = None,
+        screen_img: np.ndarray = None
+    ) -> Optional[Tuple[int, int]]:
+        """
+        So khop 1 template tren screen (grayscale + color verification).
+        Tra ve (x, y) neu tim thay, nguoc lai None.
+        """
+        if screen_img is not None:
+            screen = screen_img
+        elif screen_path:
+            screen = cv2.imread(screen_path)
+        else:
+            logger.warning("Can truyen screen_path hoac screen_img")
+            return None
+
+        template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
+        if template is None:
+            logger.warning(f"Khong tai duoc anh mau: {template_path}")
+            return None
+
+        if template.ndim == 3 and template.shape[2] == 4:
+            tpl_bgr = template[:, :, :3]
+            tpl_alpha = template[:, :, 3]
+            tpl_mask = (tpl_alpha > 10).astype("uint8")
+        else:
+            tpl_bgr = template
+            tpl_mask = None
+
+        h, w = tpl_bgr.shape[:2]
+        if h > screen.shape[0] or w > screen.shape[1]:
+            return None
+
+        gray_screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+        gray_tpl = cv2.cvtColor(tpl_bgr, cv2.COLOR_BGR2GRAY)
+        result = cv2.matchTemplate(gray_screen, gray_tpl, cv2.TM_CCOEFF_NORMED)
+        locations = np.where(result >= threshold)
+        if locations[0].size == 0:
+            return None
+
+        candidates = []
+        for pt in zip(*locations[::-1]):
+            score = float(result[pt[1], pt[0]])
+            candidates.append((score, pt[0], pt[1]))
+        candidates.sort(reverse=True, key=lambda x: x[0])
+        candidates = candidates[:120]
+
+        for score, x, y in candidates:
+            region = screen[y:y + h, x:x + w]
+            if region.shape[0] != h or region.shape[1] != w:
+                continue
+            if self._color_pass(tpl_bgr, region, tpl_mask):
+                return (x, y)
+
+        return None
+
+    def _color_pass(self, tpl_bgr: np.ndarray, region_bgr: np.ndarray, tpl_mask: Optional[np.ndarray] = None) -> bool:
+        # HSV dominant hue + saturation check to reject wrong colors
+        tpl_hsv = cv2.cvtColor(tpl_bgr, cv2.COLOR_BGR2HSV)
+        hist = cv2.calcHist([tpl_hsv], [0], tpl_mask, [18], [0, 180])
+        dominant_idx = int(np.argmax(hist))
+        tpl_hue = (dominant_idx + 0.5) * (180.0 / 18.0)
+
+        tpl_sat = tpl_hsv[:, :, 1]
+        if tpl_mask is not None:
+            sat_vals = tpl_sat[tpl_mask.astype(bool)]
+        else:
+            sat_vals = tpl_sat.flatten()
+        tpl_sat_med = float(np.median(sat_vals)) if sat_vals.size > 0 else 0.0
+
+        reg_hsv = cv2.cvtColor(region_bgr, cv2.COLOR_BGR2HSV)
+        reg_hist = cv2.calcHist([reg_hsv], [0], None, [18], [0, 180])
+        reg_idx = int(np.argmax(reg_hist))
+        reg_hue = (reg_idx + 0.5) * (180.0 / 18.0)
+        reg_sat_med = float(np.median(reg_hsv[:, :, 1].flatten()))
+
+        hue_diff = abs(tpl_hue - reg_hue)
+        hue_diff = min(hue_diff, 180 - hue_diff)
+        sat_ratio = (reg_sat_med + 1.0) / (tpl_sat_med + 1.0)
+
+        if tpl_sat_med > 20:
+            if hue_diff > 12:
+                return False
+            if not (0.85 <= sat_ratio <= 1.35):
+                return False
+            return True
+
+        # Low saturation: fallback to mean color distance
+        tpl_mean = np.mean(tpl_bgr.astype(np.float32), axis=(0, 1))
+        reg_mean = np.mean(region_bgr.astype(np.float32), axis=(0, 1))
+        color_dist = float(np.sqrt(np.sum((tpl_mean - reg_mean) ** 2)))
+        return color_dist <= 80
+
+    
+    def find_template_color(
+        self,
+        template_path: str,
+        threshold: float = 0.75,
+        color_threshold: float = 0.6,
+        screen_path: str = None,
+        screen_img: np.ndarray = None
+    ) -> Optional[Tuple[int, int]]:
+        """
+        Tìm ảnh mẫu PHÂN BIỆT MÀU CHÍNH XÁC bằng color histogram correlation.
+
+        Giải quyết vấn đề: 2 icon/nút giống hình dạng nhưng khác màu (VD: nút xanh vs nút đỏ).
+
+        Thuật toán:
+        1. Match BGR trực tiếp (không chuyển grayscale) → giữ thông tin màu
+        2. Lấy tất cả candidates vượt ngưỡng
+        3. So sánh color histogram HSV (H: 30 bins, S: 32 bins) bằng correlation
+        4. Kết hợp shape_score * color_score → chọn candidate tốt nhất
+
+        :param template_path: Đường dẫn ảnh mẫu
+        :param threshold: Ngưỡng shape matching (0-1)
+        :param color_threshold: Ngưỡng color histogram correlation (0-1), mặc định 0.6
+        :param screen_path: Đường dẫn screenshot
+        :param screen_img: Hoặc numpy array screenshot
+        :return: (cx, cy) tọa độ tâm, hoặc None
+        """
+        if screen_img is not None:
+            screen = screen_img
+        elif screen_path:
+            screen = cv2.imread(screen_path)
+        else:
+            logger.warning("Cần truyền screen_path hoặc screen_img")
+            return None
+
+        template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
+        if template is None:
+            logger.warning(f"Không tải được ảnh mẫu: {template_path}")
+            return None
+
+        # Tách alpha mask nếu có
+        alpha_mask = None
+        if template.ndim == 3 and template.shape[2] == 4:
+            alpha_mask = template[:, :, 3]
+            alpha_mask = (alpha_mask > 10).astype(np.uint8) * 255
+            template_bgr = template[:, :, :3]
+        else:
+            template_bgr = template
+
+        th, tw = template_bgr.shape[:2]
+        template_name = os.path.basename(template_path).replace('.png', '')
+
+        if th > screen.shape[0] or tw > screen.shape[1]:
+            return None
+
+        # ===== BƯỚC 1: Color-aware matching (BGR) =====
+        result = cv2.matchTemplate(screen, template_bgr, cv2.TM_CCOEFF_NORMED)
+
+        # Lấy tất cả candidates vượt ngưỡng
+        locations = np.where(result >= threshold)
+        candidates = []
+        used = []
+
+        for pt in zip(*locations[::-1]):
+            is_dup = False
+            for u in used:
+                if abs(pt[0] - u[0]) < tw // 2 and abs(pt[1] - u[1]) < th // 2:
+                    is_dup = True
+                    break
+            if not is_dup:
+                score = float(result[pt[1], pt[0]])
+                candidates.append((pt[0], pt[1], score))
+                used.append(pt)
+
+        if not candidates:
+            logger.debug(f"[FIND_COLOR] {template_name} NOT found (no BGR match >= {threshold})")
+            return None
+
+        # ===== BƯỚC 2: Color histogram comparison =====
+        # Tính histogram HSV của template (H: 30 bins, S: 32 bins)
+        tpl_hsv = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2HSV)
+        h_bins, s_bins = 30, 32
+        hist_ranges = [0, 180, 0, 256]
+        tpl_hist = cv2.calcHist([tpl_hsv], [0, 1], alpha_mask, [h_bins, s_bins], hist_ranges)
+        cv2.normalize(tpl_hist, tpl_hist, 0, 1, cv2.NORM_MINMAX)
+
+        best_match = None
+        best_combined_score = -1
+
+        for (x, y, shape_score) in candidates:
+            region = screen[y:y+th, x:x+tw]
+            if region.shape[0] != th or region.shape[1] != tw:
+                continue
+
+            # Histogram HSV của vùng screen
+            reg_hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+            reg_hist = cv2.calcHist([reg_hsv], [0, 1], alpha_mask, [h_bins, s_bins], hist_ranges)
+            cv2.normalize(reg_hist, reg_hist, 0, 1, cv2.NORM_MINMAX)
+
+            # So sánh bằng correlation (1.0 = giống hoàn toàn)
+            color_score = cv2.compareHist(tpl_hist, reg_hist, cv2.HISTCMP_CORREL)
+
+            # Kết hợp: 40% shape + 60% color (ưu tiên màu vì hình dạng đã giống)
+            combined = 0.4 * shape_score + 0.6 * color_score
+
+            logger.debug(
+                f"[FIND_COLOR] {template_name} candidate ({x},{y}): "
+                f"shape={shape_score:.3f} color={color_score:.3f} combined={combined:.3f}"
+            )
+
+            if color_score >= color_threshold and combined > best_combined_score:
+                best_combined_score = combined
+                best_match = (x, y, shape_score, color_score)
+
+        if best_match is None:
+            logger.info(f"[FIND_COLOR] {template_name} REJECT (no candidate passed color_threshold={color_threshold})")
+            return None
+
+        x, y, shape_score, color_score = best_match
+        cx = x + tw // 2
+        cy = y + th // 2
+
+        logger.info(
+            f"[FIND_COLOR] {template_name}: ({cx},{cy}) "
+            f"shape={shape_score:.3f} color={color_score:.3f} combined={best_combined_score:.3f}"
+        )
+        return (cx, cy)
+
+    def count_template_color(
+        self,
+        template_path: str,
+        threshold: float = 0.75,
+        color_threshold: float = 0.6,
+        screen_img: np.ndarray = None
+    ) -> int:
+        """
+        Đếm số lượng template xuất hiện trên screen (dùng color matching).
+        Cùng thuật toán find_template_color nhưng trả về count thay vì vị trí.
+        """
+        if screen_img is None:
+            return 0
+
+        template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
+        if template is None:
+            return 0
+
+        alpha_mask = None
+        if template.ndim == 3 and template.shape[2] == 4:
+            alpha_mask = template[:, :, 3]
+            alpha_mask = (alpha_mask > 10).astype(np.uint8) * 255
+            template_bgr = template[:, :, :3]
+        else:
+            template_bgr = template
+
+        th, tw = template_bgr.shape[:2]
+        if th > screen_img.shape[0] or tw > screen_img.shape[1]:
+            return 0
+
+        result = cv2.matchTemplate(screen_img, template_bgr, cv2.TM_CCOEFF_NORMED)
+        locations = np.where(result >= threshold)
+        # Loại duplicate (cùng vùng)
+        used = []
+        candidates = []
+        for pt in zip(*locations[::-1]):
+            is_dup = False
+            for u in used:
+                if abs(pt[0] - u[0]) < tw // 2 and abs(pt[1] - u[1]) < th // 2:
+                    is_dup = True
+                    break
+            if not is_dup:
+                score = float(result[pt[1], pt[0]])
+                candidates.append((pt[0], pt[1], score))
+                used.append(pt)
+
+        if not candidates:
+            return 0
+
+        # Lọc qua color histogram
+        tpl_hsv = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2HSV)
+        h_bins, s_bins = 30, 32
+        hist_ranges = [0, 180, 0, 256]
+        tpl_hist = cv2.calcHist([tpl_hsv], [0, 1], alpha_mask, [h_bins, s_bins], hist_ranges)
+        cv2.normalize(tpl_hist, tpl_hist, 0, 1, cv2.NORM_MINMAX)
+
+        count = 0
+        for (x, y, shape_score) in candidates:
+            region = screen_img[y:y+th, x:x+tw]
+            if region.shape[0] != th or region.shape[1] != tw:
+                continue
+            reg_hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+            reg_hist = cv2.calcHist([reg_hsv], [0, 1], alpha_mask, [h_bins, s_bins], hist_ranges)
+            cv2.normalize(reg_hist, reg_hist, 0, 1, cv2.NORM_MINMAX)
+            color_score = cv2.compareHist(tpl_hist, reg_hist, cv2.HISTCMP_CORREL)
+            if color_score >= color_threshold:
+                count += 1
+
+        template_name = os.path.basename(template_path).replace('.png', '')
+        logger.debug(f"[COUNT_COLOR] {template_name}: {count} matches")
+        return count
+
     def find_exact(self, template_path: str, threshold: float = 0.8, screen_path: str = None, screen_img: np.ndarray = None) -> Optional[Tuple[int, int]]:
         """
         Tìm ảnh mẫu trong screenshot - PHÂN BIỆT MÀU CHÍNH XÁC
@@ -364,4 +647,3 @@ class ImageProcessor:
 
         logger.info(f"[FIND_EXACT] {template_name}: ({cx},{cy}) score={score:.3f} color_dist={best_color_dist:.1f}")
         return (cx, cy)
-

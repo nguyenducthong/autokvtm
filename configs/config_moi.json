@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "row": 1,
+    "type": "TC",
+    "indexs": [
+      "1.1",
+      "1.2",
+      "1.3",
+      "1.4",
+      "1.5",
+      "1.6",
+      "2.1",
+      "2.2",
+      "2.3",
+      "2.4",
+      "2.5",
+      "2.6",
+      "3.1",
+      "3.2",
+      "3.3",
+      "3.4",
+      "3.5",
+      "3.6"
+    ],
+    "path_row": "assets/items/num/0.png",
+    "path_item": "assets/items/cay_bi.png",
+    "path_item_default": "assets/items/cay_hong.png"
+  },
+  {
+    "id": 2,
+    "row": 1,
+    "type": "MAY",
+    "path_row": "assets/items/num/1.png",
+    "data": [
+      {
+        "path_item": "assets/items/hong_say.png",
+        "total": 8
+      }
+    ]
+  }
+]

@@ -65,7 +65,7 @@ class ADBController:
         """
         try:
             # Chụp màn hình trực tiếp vào memory (không qua file)
-            logger.info(f"[SCREEN] Đang chụp màn hình...")
+            logger.debug(f"[SCREEN] Đang chụp màn hình...")
             png_bytes = self.device.screencap()
 
             # Decode từ bytes sang numpy array
@@ -82,7 +82,7 @@ class ADBController:
                     os.makedirs(save_dir, exist_ok=True)
                 cv2.imwrite(save_path, img)
 
-            logger.info(f"[SCREEN] Chụp thành công: {img.shape[1]}x{img.shape[0]}")
+            logger.debug(f"[SCREEN] Chụp thành công: {img.shape[1]}x{img.shape[0]}")
             return img
 
         except Exception as e:
@@ -123,7 +123,7 @@ class ADBController:
     def tap(self, x: int, y: int, delay: float = 0.1):
         """Tap vào tọa độ tuyệt đối"""
         self.device.shell(f"input tap {x} {y}")
-        logger.info(f"[TAP] ({x}, {y})")
+        logger.debug(f"[TAP] ({x}, {y})")
         time.sleep(delay)
     def taps(self, x: int, y: int, count: int= 1, delay: float = 0.01):
         """Tap nhiều vào tọa độ tuyệt đối"""
@@ -140,7 +140,7 @@ class ADBController:
         # Gộp nhiều lệnh tap thành 1 chuỗi
         cmd = " && ".join([f"input tap {x} {y}" for _ in range(count)])
         self.device.shell(cmd)
-        logger.info(f"[TAP_FAST] ({x}, {y}) x{count}")
+        logger.debug(f"[TAP_FAST] ({x}, {y}) x{count}")
         
     def tap_relative(self, x: int, y: int, offset: Tuple[int, int] = (0, 0), delay: float = 0.5):
         """Tap tọa độ tương đối + offset (dùng với vùng chụp)"""
@@ -156,7 +156,7 @@ class ADBController:
         :param duration: Thời gian kéo (ms), 300–1000
         """
         self.device.shell(f"input swipe {start_x} {start_y} {end_x} {end_y} {duration}")
-        logger.info(f"[SWIPE] ({start_x},{start_y}) → ({end_x},{end_y}) [{duration}ms]")
+        logger.debug(f"[SWIPE] ({start_x},{start_y}) → ({end_x},{end_y}) [{duration}ms]")
         time.sleep(max(0.5, duration / 1000 + 0.3))
 
     # =============================================================

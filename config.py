@@ -85,81 +85,89 @@ WAREHOUSE_ITEM_KSK = [
 ]
 
 CONFIG_TEMP_TC = [
-    # {
-    #     "id" : 1,  # thu tu chay
-    #     "row": 1, # hàng thứ mấy
-    #     "type": "TC",
-    #     "indexs": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
-    #                "2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
-    #                "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],  # các giá trị ô sẽ đặt cây
-    #     "path_row": "assets/items/num/1.png", # Hình ảnh để tìm đến mây
-    #     "path_item": "assets/items/cay_tao.png" # Hình ảnh để trồng cây
-    # },
-    # {
-    #     "id" : 1,
-    #     "row": 4,
-    #     "type": "TC",
-    #     "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"],
-    #     "path_row": "assets/items/num/4.png",
-    #     "path_item": "assets/items/cay_bong.png"
-    # },
-    # {
-    #     "id" : 1,
-    #     "row": 5,
-    #     "type": "TC",
-    #     "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
-    #                "3.1", "3.2", "3.3", "3.4", "3.5", "3.6",
-    #                "4.1", "4.2", "4.3", "4.4"],
-    #     "path_row": "assets/items/num/5.png",
-    #     "path_item": "assets/items/cay_tuyet.png"
-    # },
-    # {
-    #     "id" : 1,
-    #     "row": 8,
-    #     "type": "TC",
-    #     "path_row": "assets/items/num/8.png",
-    #     "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
-    #                "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
-    #     "path_item": "assets/items/cay_hong.png"
-    # },
+    {
+        "id" : 1,  # thu tu chay
+        "row": 1, # hàng thứ mấy
+        "type": "TC",
+        "indexs": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
+                   "2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],  # các giá trị ô sẽ đặt cây
+        "path_row": "assets/items/num/1.png", # Hình ảnh để tìm đến mây
+        "path_item": "assets/items/cay_tao.png", # Hình ảnh để trồng cây
+        "path_item_default": "assets/items/cay_hong.png" # Hình ảnh mặc định để trồng cây nếu không tìm thấy path_item
+    },
+    {
+        "id" : 1,
+        "row": 4,
+        "type": "TC",
+        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"],
+        "path_row": "assets/items/num/4.png",
+        "path_item": "assets/items/cay_bong.png",
+        "path_item_default": "assets/items/cay_hong.png"
+    },
+    {
+        "id" : 1,
+        "row": 5,
+        "type": "TC",
+        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6",
+                   "4.1", "4.2", "4.3", "4.4"],
+        "path_row": "assets/items/num/5.png",
+        "path_item": "assets/items/cay_tuyet.png",
+        "path_item_default": "assets/items/cay_hong.png"
+    },
+    {
+        "id" : 1,
+        "row": 8,
+        "type": "TC",
+        "path_row": "assets/items/num/8.png",
+        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
+        "path_item": "assets/items/cay_hong.png",
+        "path_item_default": "assets/items/cay_hong.png"
+    },
 
-    # {
-    #     "id" : 1,  # thu tu chay
-    #     "row": 1,
-    #     "type": "TC",
-    #     "indexs": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
-    #                "2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
-    #                "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
-    #     "path_row": "assets/items/num/1.png",
-    #     "path_item": "assets/items/cay_tao.png"
-    # },
-    # {
-    #     "id" : 1,
-    #     "row": 4,
-    #     "type": "TC",
-    #     "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"],
-    #     "path_row": "assets/items/num/4.png",
-    #     "path_item": "assets/items/cay_bong.png"
-    # },
-    # {
-    #     "id" : 1,
-    #     "row": 5,
-    #     "type": "TC",
-    #     "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
-    #                "3.1", "3.2", "3.3", "3.4", "3.5", "3.6",
-    #                "4.1", "4.2", "4.3", "4.4"],
-    #     "path_row": "assets/items/num/5.png",
-    #     "path_item": "assets/items/cay_tuyet.png"
-    # },
-    # {
-    #     "id" : 1,
-    #     "row": 8,
-    #     "type": "TC",
-    #     "path_row": "assets/items/num/8.png",
-    #     "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
-    #                "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
-    #     "path_item": "assets/items/cay_hong.png"
-    # },
+    {
+        "id" : 1,  # thu tu chay
+        "row": 1,
+        "type": "TC",
+        "indexs": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
+                   "2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
+        "path_row": "assets/items/num/1.png",
+        "path_item": "assets/items/cay_tao.png",
+        "path_item_default": "assets/items/cay_hong.png"
+    },
+    {
+        "id" : 1,
+        "row": 4,
+        "type": "TC",
+        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"],
+        "path_row": "assets/items/num/4.png",
+        "path_item": "assets/items/cay_bong.png",
+        "path_item_default": "assets/items/cay_hong.png"
+    },
+    {
+        "id" : 1,
+        "row": 5,
+        "type": "TC",
+        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6",
+                   "4.1", "4.2", "4.3", "4.4"],
+        "path_row": "assets/items/num/5.png",
+        "path_item": "assets/items/cay_tuyet.png",
+        "path_item_default": "assets/items/cay_hong.png"
+    },
+    {
+        "id" : 1,
+        "row": 8,
+        "type": "TC",
+        "path_row": "assets/items/num/8.png",
+        "indexs": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6",
+                   "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"],
+        "path_item": "assets/items/cay_hong.png",
+        "path_item_default": "assets/items/cay_hong.png"
+    },
 
     {
         "id" : 2,

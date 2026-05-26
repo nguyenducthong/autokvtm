@@ -9,7 +9,11 @@
       "Bash(\"D:\\\\LDPlayer\\\\dnplayer.exe\" list2)",
       "Bash(/d/LDPlayer/LDPlayer9/dnplayer.exe list2:*)",
       "Bash(/d/LDPlayer/LDPlayer9/ldconsole.exe:*)",
-      "Bash(/d/LDPlayer/LDPlayer9/adb.exe devices:*)"
+      "Bash(/d/LDPlayer/LDPlayer9/adb.exe devices:*)",
+      "PowerShell($paths = @\\(\"D:\\\\LDPlayer\\\\LDPlayer9\\\\ldconsole.exe\",\"D:\\\\LDPlayer\\\\LDPlayer4\\\\ldconsole.exe\",\"C:\\\\LDPlayer\\\\LDPlayer9\\\\ldconsole.exe\",\"C:\\\\LDPlayer\\\\LDPlayer4\\\\ldconsole.exe\",\"C:\\\\Program Files\\\\LDPlayer\\\\LDPlayer9\\\\ldconsole.exe\"\\); foreach \\($p in $paths\\) { if \\(Test-Path $p\\) { Write-Host \"Found: $p\"; & $p list2; Write-Host \"---\"; & $p runninglist; break } })",
+      "PowerShell([byte[]]$bytes = [System.IO.File]::ReadAllBytes\\(\"D:\\\\Project\\\\autokvtm\\\\temp_list2.txt\"\\); $len = $bytes.Length; Write-Host \"Total bytes: $len\"; $tail = $bytes[\\($len-30\\)..\\($len-1\\)]; \\($tail | ForEach-Object { '{0:X2}' -f $_ }\\) -join ' ')",
+      "PowerShell([byte[]]$bytes = [System.IO.File]::ReadAllBytes\\(\"D:\\\\LDPlayer\\\\LDPlayer9\\\\leidians.config\"\\); Write-Host \"Size: $\\($bytes.Length\\)\"; [System.Text.Encoding]::UTF8.GetString\\($bytes\\) | Select-Object -First 5)",
+      "PowerShell([byte[]]$bytes = [System.IO.File]::ReadAllBytes\\(\"D:\\\\LDPlayer\\\\LDPlayer9\\\\data.ini\"\\); $content = [System.Text.Encoding]::UTF8.GetString\\($bytes\\); $content.Substring\\(0, [Math]::Min\\(2000, $content.Length\\)\\))"
     ]
   }
 }
