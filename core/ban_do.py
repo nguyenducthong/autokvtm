@@ -267,7 +267,7 @@ def check_cua_hang(adb):
 # ================================================================
 # Quầy hàng: 20 ô tổng cộng, 8 ô hiển thị / màn hình
 # Cần kéo (swipe) trong khung quầy để xem thêm ô
-SWIPE_LEFT_MAX = 2   # 8 ô/màn → 3 màn = 24 ô > 20, nên 2 lần kéo đủ
+SWIPE_LEFT_MAX = 3   # 8 ô/màn → 3 màn = 24 ô > 20, nên 3 lần kéo đủ
 QUAY_HANG_Y = 430    # Tọa độ y vùng quầy hàng (giữa các ô)
 SWIPE_START_X = 400# Kéo từ bên phải
 SWIPE_END_X = 200    # Kéo sang trái (~550px ≈ ~5-6 ô)
@@ -306,7 +306,7 @@ def tim_o_ban(adb, max_swipe=SWIPE_LEFT_MAX):
     """Tìm ô trống hoặc ô vàng trên quầy hàng.
     Ưu tiên: nhặt vàng → tìm ô trống.
     Nếu không tìm thấy → kéo (swipe) trong khung quầy sang trái,
-    tối đa max_swipe lần (20 ô / 8 ô mỗi màn = ~2 lần kéo).
+    tối đa max_swipe lần (20 ô / 8 ô mỗi màn = ~3 lần kéo).
     Return (x,y) hoặc None."""
     set_state(PlayerState.TIM_O_BAN)
     if _should_stop():
@@ -641,11 +641,105 @@ def _thu_dat_ban_voi_fallback(adb, vp_list, path_kho_selected, path_kho_not_sele
         _dong_popup(adb)
 
     logger.warning(f"Đã thử {len(tried)} SP đều fail: {tried}")
-    # Đóng popup kho về cửa hàng
-    _dong_popup(adb)
+    # Đóng popup kho nếu còn mở, về nhà reset trạng thái
+    _xu_ly_sau_dat_ban(adb)
     return False
 
+# ================================================================
+# (Nếu cần) STEP 6: Xử lý sau khi đặt bán (đóng popup cần thiết, đóng cửa hàng nếu cửa hàng đang mở)
+# ================================================================
+def _xu_ly_sau_dat_ban(adb):
+    """Sau khi đặt bán, đảm bảo đóng popup về cửa hàng nếu còn mở.
+    Nếu đang ở cửa hàng → về nhà luôn để reset trạng thái."""
+    if _should_stop():
+        return
 
+    # Đóng popup về cửa hàng nếu còn mở
+    _dong_popup(adb)
+
+    # Kiểm tra nếu vẫn đang ở cửa hàng → về nhà luôn
+    pos, _ = _find(adb, "assets/items/quay_hang_on.png", step_name="post_ban_check_cua_hang")
+    if pos:
+        logger.info("Vẫn đang ở cửa hàng sau khi đặt bán, về nhà để reset trạng thái...")
+        # Tap vào vị trí cửa hàng mặc định
+        x, y = INDEX_CUA_HANG_MAC_DINH
+        adb.tap(x, y)
+    else:
+        logger.info("Đã thoát cửa hàng sau khi đặt bán, OK")                                               
+
+def _xu_ly_dat_qc(adb, data_vps, threshold, color_threshold):
+    """Nếu config có bật QC nhưng chưa đặt được QC nào, thử tìm 1 VP bất kỳ để bật QC.
+    Tìm trên screen kho, nếu thấy VP đã đặt bán rồi (có thể dựa vào màu sắc) → click vào để bật QC."""
+    if _should_stop():
+        return False
+    _sleep(0.5)
+    screen = adb.screenshot_full()
+    if screen is None:
+        return False
+
+    # Tìm VP đã đặt bán (có thể dựa vào màu sắc khác so với VP chưa đặt)
+    for vp_info in data_vps:
+        vp_path = vp_info["path"]
+        vp_threshold = vp_info.get("threshold", threshold)
+        vp_color = vp_info.get("color_threshold", color_threshold)
+        name = os.path.basename(vp_path).replace('.png', '')
+        pos = _find_on_screen(screen, vp_path, threshold=vp_threshold,
+                              color_threshold=vp_color,
+                              step_name=f"tim_vp_dat_qc_{name}")
+        if pos:
+            x, y = pos
+            logger.info(f"Tìm thấy VP '{name}' đã đặt bán tại {pos}, click để bật QC")
+            adb.tap(x, y, 0.1)
+            _sleep(0.3)
+            return True
+
+    logger.warning("Không tìm thấy VP nào đã đặt bán để bật QC!")
+    return False
+
+def _xu_ly_xe_kc(adb , data_vps, threshold, color_threshold):
+    """Nếu config có bật xé kim cương nhưng chưa xé được, thử tìm 1 VP bất kỳ để click vào nút xé KC.
+    Tìm trên screen kho, nếu thấy VP đã đặt bán rồi (có thể dựa vào màu sắc) 
+    Tìm bút xé KC → click vào để xé KC -> xác nhận -> return True."""
+
+    if _should_stop():
+        return False
+    _sleep(0.5)
+    screen = adb.screenshot_full()
+    if screen is None:
+        return False
+
+    # Tìm VP đã đặt bán (có thể dựa vào màu sắc khác so với VP chưa đặt)
+    for vp_info in data_vps:
+        vp_path = vp_info["path"]
+        vp_threshold = vp_info.get("threshold", threshold)
+        vp_color = vp_info.get("color_threshold", color_threshold)
+        name = os.path.basename(vp_path).replace('.png', '')
+        pos = _find_on_screen(screen, vp_path, threshold=vp_threshold,
+                              color_threshold=vp_color,
+                              step_name=f"tim_vp_xe_kc_{name}")
+        if pos:
+            x, y = pos
+            logger.info(f"Tìm thấy VP '{name}' đã đặt bán tại {pos}, click để bật xé KC")
+            adb.tap(x, y, 0.1)
+
+            pos_kc = _find_on_screen(screen, "assets/items/xoa_vp_kc.png", threshold=0.85,
+                            step_name="xe_kc_after_click_vp")
+            if pos_kc:
+                x_kc, y_kc = pos_kc
+                logger.info(f"Tìm thấy nút xé KC tại ({x_kc}, {y_kc}), click để xé")
+                adb.tap(x_kc, y_kc, 0.1)
+
+                pos_dong_y = _find_on_screen(screen, "assets/items/dong_y.png", threshold=0.85,
+                            step_name="xe_kc_xac_nhan")
+                if pos_dong_y:
+                    x_dy, y_dy = pos_dong_y
+                    logger.info(f"Tìm thấy nút Đồng ý tại ({x_dy}, {y_dy}), click để xác nhận xé KC")
+                    adb.tap(x_dy, y_dy, 0.1)
+                    _sleep(0.3)
+                    return True
+
+    logger.warning("Không tìm thấy VP nào đã đặt bán để bật xé KC!")
+    return False
 # ================================================================
 # MAIN: Hàm chính chạy theo config
 # ================================================================
@@ -687,7 +781,8 @@ def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
     bat_qc = config.get("dat_quang_cao", True)
     cfg_threshold = config.get("threshold") or THRESHOLD
     cfg_color_threshold = config.get("color_threshold", 0.6)
-
+    # is_dat_qc check đã đặt pc chưa (trong trường hợp có qc = true) 
+    is_dat_qc = False  
     # Parse data nếu là string (legacy)
     if isinstance(data_vp, str):
         data_vp = [vp.strip() for vp in data_vp.split(",") if vp.strip()]
@@ -720,6 +815,9 @@ def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
             logger.error("Không vào được cửa hàng, bỏ qua lần này")
             continue
 
+        if xoa_kc:
+            _xu_ly_xe_kc(adb, data_vp, cfg_threshold, cfg_color_threshold)
+
         # Step 2: Tìm ô trống (có kéo trái nếu cần)
         pos = tim_o_ban(adb)
         if not pos:
@@ -743,7 +841,12 @@ def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
         )
         if not da_ban:
             logger.warning("Không đặt được SP nào cho ô này")
-
+        else:
+            is_dat_qc = True # Đã đặt được SP, coi như đã đăt qc
         _sleep(0.3)
-
+    if is_dat_qc == False and bat_qc:
+        # chon 1 vp bất kỳ để bật qc, tìm danh sách vp để tìm vp đã đặt qc rồi bật qc
+        _xu_ly_dat_qc(adb, data_vp, cfg_threshold, cfg_color_threshold)
+            
+    _xu_ly_sau_dat_ban(adb)
     logger.info("=== Hoàn thành bán hàng ===")
