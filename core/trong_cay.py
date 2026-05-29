@@ -25,7 +25,7 @@ img = ImageProcessor()
 
 
 def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None,
-            global_threshold=None):
+            global_threshold=None, is_sua_may: bool = False):
     """
     Chạy auto farm theo config.
     Mỗi thread gọi hàm này với adb_instance + stop_event riêng.
@@ -71,7 +71,7 @@ def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None
         if type_item == "MAY":
             logger.info(f"Xử lý máy sản xuất hàng {item.get('row')}...")
             set_state(PlayerState.MO_MAY)
-            xu_ly_may(item, threshold=global_threshold or THRESHOLD)
+            xu_ly_may(item, threshold=global_threshold or THRESHOLD, is_sua_may=is_sua_may)
 
         elif type_item == "TC":
             path_cay = item.get('path_item')
@@ -212,7 +212,7 @@ def check_trong_cay(threshold=None):
     return "chua_chin"
 
 
-def xu_ly_may(config_may: dict, threshold: float = THRESHOLD):
+def xu_ly_may(config_may: dict, threshold: float = THRESHOLD, is_sua_may: bool = False):
     adb = _get_adb()
     row = str(config_may['row'])
     data = config_may.get('data', [])
@@ -287,8 +287,8 @@ def xu_ly_may(config_may: dict, threshold: float = THRESHOLD):
             adb.tap(x_x, y_x)
             _sleep(TIME_SLEEP_SHORT)
             break
-
-    sua_may(threshold=threshold)
+    if is_sua_may:
+        sua_may(threshold=threshold)
     logger.info(f"Hoàn thành xử lý máy hàng {row}")
     _sleep(TIME_SLEEP_SHORT)
     return True
@@ -315,16 +315,17 @@ def tim_vp(template_path, count=1, threshold: float=THRESHOLD):
 
     logger.info(f"Không tìm được {template_path} lần {count}")
     # Tìm nút next trên cùng screenshot
-    next_sanxuat = "assets/items/next_sanxuat.png"
-    pos_next = img.find_template_color(next_sanxuat, threshold=threshold, screen_img=screen)
-    if pos_next:
-        x, y = pos_next
-        adb.tap(x, y)
-    else:
-        logger.info(f"Không tìm thấy {next_sanxuat}, dùng vị trí mặc định")
-        (x, y) = INDEX_NEXT_SAN_XUAT_MAC_DINH
-        adb.tap(x, y)
-
+    # next_sanxuat = "assets/items/next_sanxuat.png"
+    # pos_next = img.find_template_color(next_sanxuat, threshold=threshold, screen_img=screen)
+    # if pos_next:
+    #     x, y = pos_next
+    #     adb.tap(x, y)
+    # else:
+    #     logger.info(f"Không tìm thấy {next_sanxuat}, dùng vị trí mặc định")
+    #     (x, y) = INDEX_NEXT_SAN_XUAT_MAC_DINH
+    #     adb.tap(x, y)
+    (x, y) = INDEX_NEXT_SAN_XUAT_MAC_DINH
+    adb.tap(x, y)
     _sleep(TIME_SLEEP_SHORT)
     return tim_vp(template_path, count + 1, threshold=threshold)
 

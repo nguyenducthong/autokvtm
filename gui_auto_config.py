@@ -1014,7 +1014,7 @@ class AutoConfigGUI:
         except Exception as e:
             self.preview_text.config(state=tk.NORMAL)
             self.preview_text.delete("1.0", tk.END)
-            self.preview_text.insert("1.0", f"Loi doc file: {e}")
+            self.preview_text.insert("1.0", f"Lỗi đọc file: {e}")
             self.preview_text.config(state=tk.DISABLED)
 
     def _log(self, msg, level="info"):
@@ -1073,7 +1073,7 @@ class AutoConfigGUI:
         card["stop_event"] = stop_ev
         card["btn_start"].config(state=tk.DISABLED)
         card["btn_stop"].config(state=tk.NORMAL)
-        self._set_card_status(serial, f"Dang chay: {config_name}", "#f39c12")
+        self._set_card_status(serial, f"Đang chạy: {config_name}", "#f39c12")
         card["status_dot"].config(fg="#27ae60")
 
         loop_tc_may = settings.get("loop", 1)
@@ -1125,7 +1125,7 @@ class AutoConfigGUI:
                                 break
                             self._log(f"{dev_label} [{config_name}] TC+MAY {loop_i+1}/{loop_tc_may}")
                             main_tc(tc_tasks, adb_instance=adb_inst, stop_event=stop_ev,
-                                    global_threshold=settings.get("threshold"))
+                                    global_threshold=settings.get("threshold"), loop_i == loop_tc_may-1)
                             end_time_item = time.time()
                             elapsed = end_time_item - start_time_item
                             self._log(f"{dev_label} [{config_name}] TC+MAY {loop_i+1}/{loop_tc_may} hoàn thành trong {elapsed:.1f}s")
