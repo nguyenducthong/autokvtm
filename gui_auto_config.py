@@ -1117,13 +1117,22 @@ class AutoConfigGUI:
                     self._set_card_status(serial, f"{config_name} | Loop {lbl}", "#f39c12")
 
                     if tc_tasks:
+                        start_time = time.time()
                         for loop_i in range(loop_tc_may):
+                            # tính thời gian chạy mỗi vòng để ước lượng thời gian hoàn thành
+                            start_time_item = time.time()
                             if stop_ev.is_set():
                                 break
                             self._log(f"{dev_label} [{config_name}] TC+MAY {loop_i+1}/{loop_tc_may}")
                             main_tc(tc_tasks, adb_instance=adb_inst, stop_event=stop_ev,
                                     global_threshold=settings.get("threshold"))
-
+                            end_time_item = time.time()
+                            elapsed = end_time_item - start_time_item
+                            self._log(f"{dev_label} [{config_name}] TC+MAY {loop_i+1}/{loop_tc_may} hoàn thành trong {elapsed:.1f}s")
+                        end_time = time.time()
+                        elapsed = end_time - start_time
+                        self._log(f"{dev_label} [{config_name}] TC+MAY x{loop_tc_may} hoàn thành trong {elapsed:.1f}s")
+                        
                     if stop_ev.is_set():
                         break
 
@@ -1677,7 +1686,7 @@ class AutoConfigGUI:
             w = int(self.ss_crop_w.get())
             h = int(self.ss_crop_h.get())
         except ValueError:
-            messagebox.showerror("Loi", "Nhap so hop le!")
+            messagebox.showerror("Lỗi", "Nhập số hợp lệ!")
             return
         if self.ss_crop_rect:
             self.ss_canvas.delete(self.ss_crop_rect)
@@ -1728,7 +1737,7 @@ class AutoConfigGUI:
             initialfile=f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
         if path:
             cv2.imwrite(path, self.ss_screenshot)
-            messagebox.showinfo("OK", f"Da luu:\n{path}")
+            messagebox.showinfo("OK", f"Đã lưu:\n{path}")
 
     def _ss_save_cropped(self):
         cropped = self._ss_get_cropped()
@@ -1742,7 +1751,7 @@ class AutoConfigGUI:
             initialfile=f"cropped_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
         if path:
             cv2.imwrite(path, cropped)
-            messagebox.showinfo("OK", f"Da luu crop:\n{path}")
+            messagebox.showinfo("OK", f"Đã lưu crop:\n{path}")
 
     def _ss_quick_save_original(self):
         if self.ss_screenshot is None:
@@ -2051,7 +2060,7 @@ class AutoConfigGUI:
         popup.transient(self.root)
         popup.grab_set()
 
-        tk.Label(popup, text="Tich chon cac vi tri can trong/thu hoach:",
+        tk.Label(popup, text="Tích chọn các vị trí cần trồng/thu hoạch:",
                  font=("Arial", 10, "bold"), pady=8).pack()
 
         grid_frame = tk.Frame(popup, padx=20, pady=5)
@@ -2060,13 +2069,13 @@ class AutoConfigGUI:
         # Header cot
         tk.Label(grid_frame, text="", width=6).grid(row=0, column=0)
         for col in range(1, 7):
-            tk.Label(grid_frame, text=f"Cot {col}", font=("Arial", 9, "bold"),
+            tk.Label(grid_frame, text=f"Cột {col}", font=("Arial", 9, "bold"),
                      width=6, anchor=tk.CENTER).grid(row=0, column=col)
 
         # Checkboxes 4 hang x 6 cot
         cb_vars = {}
         for row in range(1, 5):
-            tk.Label(grid_frame, text=f"Hang {row}", font=("Arial", 9, "bold"),
+            tk.Label(grid_frame, text=f"Hàng {row}", font=("Arial", 9, "bold"),
                      anchor=tk.W).grid(row=row, column=0, sticky=tk.W)
             for col in range(1, 7):
                 key = f"{row}.{col}"
@@ -2135,7 +2144,7 @@ class AutoConfigGUI:
         if t == "TC":
             indexs = list(self.selected_indexs)
             if not indexs:
-                messagebox.showwarning("Loi", "Vui long chon vi tri indexs!")
+                messagebox.showwarning("Lỗi", "Vui lòng chọn vị trí indexs!")
                 return
 
             path_item_file = self.path_item_var.get()
@@ -2223,7 +2232,7 @@ class AutoConfigGUI:
 
     def _clear_list(self):
         if self.config_items:
-            if messagebox.askyesno("Xac nhan", "Xoa tat ca muc trong danh sach?"):
+            if messagebox.askyesno("Xác nhận", "Xóa tất cả mục trong danh sách?"):
                 self.config_items.clear()
                 self._refresh_tree()
 
@@ -2231,7 +2240,7 @@ class AutoConfigGUI:
         """Load mục đang chọn trong tree lên form để sửa."""
         sel = self.cfg_tree.selection()
         if not sel:
-            messagebox.showinfo("Thong bao", "Chon 1 muc trong danh sach de sua!")
+            messagebox.showinfo("Thông báo", "Chọn 1 mục trong danh sách để sửa!")
             return
         idx = self.cfg_tree.index(sel[0])
         item = self.config_items[idx]
@@ -2277,8 +2286,8 @@ class AutoConfigGUI:
     def _update_selected_item(self):
         """Cập nhật mục đang sửa (thay vì thêm mới)."""
         if self._editing_index is None:
-            messagebox.showinfo("Thong bao", "Chua chon muc de sua!\n"
-                                "Bam 'Sua' hoac double-click 1 muc truoc.")
+            messagebox.showinfo("Thông báo", "Chưa chọn mục để sửa!\n"
+                                "Bấm 'Sửa' hoặc double-click 1 mục trước.")
             return
 
         idx = self._editing_index
@@ -2294,7 +2303,7 @@ class AutoConfigGUI:
         if t == "TC":
             indexs = list(self.selected_indexs)
             if not indexs:
-                messagebox.showwarning("Loi", "Vui long chon vi tri indexs!")
+                messagebox.showwarning("Lỗi", "Vui lòng chọn vị trí indexs!")
                 return
 
             path_item_file = self.path_item_var.get()
@@ -2345,7 +2354,7 @@ class AutoConfigGUI:
     def _save_config(self):
         name = self.cfg_name_entry.get().strip()
         if not name:
-            messagebox.showwarning("Loi", "Vui long nhap ten cau hinh!")
+            messagebox.showwarning("Lỗi", "Vui lòng nhập tên cấu hình!")
             return
 
         safe_name = "".join(c for c in name if c.isalnum() or c in "_- ").strip()
@@ -2406,23 +2415,23 @@ class AutoConfigGUI:
             self._refresh_tree()
             self.cfg_name_entry.delete(0, tk.END)
             self.cfg_name_entry.insert(0, name)
-            messagebox.showinfo("Thanh cong", f"Da tai {len(self.config_items)} tasks tu '{name}.json'")
+            messagebox.showinfo("Thành công", f"Đã tải {len(self.config_items)} tasks từ '{name}.json'")
         except Exception as e:
-            messagebox.showerror("Loi", f"Khong doc duoc file: {e}")
+            messagebox.showerror("Lỗi", f"Không đọc được file: {e}")
 
     def _delete_config_file(self):
         name = self.cfg_load_var.get()
         if not name:
-            messagebox.showwarning("Loi", "Chon file can xoa!")
+            messagebox.showwarning("Lỗi", "Chọn file cần xóa!")
             return
         path = os.path.join(CONFIG_DIR, f"{name}.json")
         if not os.path.exists(path):
             return
-        if messagebox.askyesno("Xac nhan", f"Xoa file '{name}.json'?"):
+        if messagebox.askyesno("Xác nhận", f"Xóa file '{name}.json'?"):
             os.remove(path)
             self._refresh_configs()
             self._refresh_cfg_load_combo()
-            messagebox.showinfo("Xong", f"Da xoa '{name}.json'")
+            messagebox.showinfo("Xong", f"Đã xóa '{name}.json'")
 
     # ================================================================
     # RUN

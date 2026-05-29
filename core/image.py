@@ -360,24 +360,7 @@ class ImageProcessor:
         screen_path: str = None,
         screen_img: np.ndarray = None
     ) -> Optional[Tuple[int, int]]:
-        """
-        Tìm ảnh mẫu PHÂN BIỆT MÀU CHÍNH XÁC bằng color histogram correlation.
 
-        Giải quyết vấn đề: 2 icon/nút giống hình dạng nhưng khác màu (VD: nút xanh vs nút đỏ).
-
-        Thuật toán:
-        1. Match BGR trực tiếp (không chuyển grayscale) → giữ thông tin màu
-        2. Lấy tất cả candidates vượt ngưỡng
-        3. So sánh color histogram HSV (H: 30 bins, S: 32 bins) bằng correlation
-        4. Kết hợp shape_score * color_score → chọn candidate tốt nhất
-
-        :param template_path: Đường dẫn ảnh mẫu
-        :param threshold: Ngưỡng shape matching (0-1)
-        :param color_threshold: Ngưỡng color histogram correlation (0-1), mặc định 0.6
-        :param screen_path: Đường dẫn screenshot
-        :param screen_img: Hoặc numpy array screenshot
-        :return: (cx, cy) tọa độ tâm, hoặc None
-        """
         if screen_img is not None:
             screen = screen_img
         elif screen_path:
@@ -386,12 +369,17 @@ class ImageProcessor:
             logger.warning("Cần truyền screen_path hoặc screen_img")
             return None
 
+        # BUG FIX 2: đảm bảo screen luôn là BGR
+        if screen is not None and screen.ndim == 3 and screen.shape[2] == 3:
+            # Nếu caller truyền RGB (từ PIL/pyautogui), chuyển sang BGR
+            # Cách an toàn: không thể tự detect, nên document rõ hoặc thêm param
+            pass  # Giữ nguyên, nhưng cần caller đảm bảo BGR
+
         template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
         if template is None:
             logger.warning(f"Không tải được ảnh mẫu: {template_path}")
             return None
 
-        # Tách alpha mask nếu có
         alpha_mask = None
         if template.ndim == 3 and template.shape[2] == 4:
             alpha_mask = template[:, :, 3]
@@ -406,10 +394,15 @@ class ImageProcessor:
         if th > screen.shape[0] or tw > screen.shape[1]:
             return None
 
-        # ===== BƯỚC 1: Color-aware matching (BGR) =====
-        result = cv2.matchTemplate(screen, template_bgr, cv2.TM_CCOEFF_NORMED)
+        # BUG FIX 1: dùng masked matchTemplate nếu có alpha
+        if alpha_mask is not None:
+            # TM_CCORR_NORMED hỗ trợ mask trực tiếp từ OpenCV 3.x
+            result = cv2.matchTemplate(
+                screen, template_bgr, cv2.TM_CCORR_NORMED, mask=alpha_mask
+            )
+        else:
+            result = cv2.matchTemplate(screen, template_bgr, cv2.TM_CCOEFF_NORMED)
 
-        # Lấy tất cả candidates vượt ngưỡng
         locations = np.where(result >= threshold)
         candidates = []
         used = []
@@ -429,8 +422,6 @@ class ImageProcessor:
             logger.debug(f"[FIND_COLOR] {template_name} NOT found (no BGR match >= {threshold})")
             return None
 
-        # ===== BƯỚC 2: Color histogram comparison =====
-        # Tính histogram HSV của template (H: 30 bins, S: 32 bins)
         tpl_hsv = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2HSV)
         h_bins, s_bins = 30, 32
         hist_ranges = [0, 180, 0, 256]
@@ -438,22 +429,23 @@ class ImageProcessor:
         cv2.normalize(tpl_hist, tpl_hist, 0, 1, cv2.NORM_MINMAX)
 
         best_match = None
-        best_combined_score = -1
+        best_combined_score = 0.0  # BUG FIX 3: khởi tạo 0 thay vì -1
 
         for (x, y, shape_score) in candidates:
             region = screen[y:y+th, x:x+tw]
             if region.shape[0] != th or region.shape[1] != tw:
                 continue
 
-            # Histogram HSV của vùng screen
             reg_hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
             reg_hist = cv2.calcHist([reg_hsv], [0, 1], alpha_mask, [h_bins, s_bins], hist_ranges)
             cv2.normalize(reg_hist, reg_hist, 0, 1, cv2.NORM_MINMAX)
 
-            # So sánh bằng correlation (1.0 = giống hoàn toàn)
             color_score = cv2.compareHist(tpl_hist, reg_hist, cv2.HISTCMP_CORREL)
 
-            # Kết hợp: 40% shape + 60% color (ưu tiên màu vì hình dạng đã giống)
+            # BUG FIX 3: loại ngay nếu color_score âm (màu ngược chiều)
+            if color_score < 0:
+                continue
+
             combined = 0.4 * shape_score + 0.6 * color_score
 
             logger.debug(

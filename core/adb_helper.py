@@ -1,7 +1,3 @@
-"""
-ADB Helper - Tự động tìm ADB của LDPlayer
-"""
-
 import os
 import json
 import subprocess
@@ -12,8 +8,9 @@ class ADBHelper:
 
     def __init__(self):
         self.adb_path = None
-        self.adb_path = self.find_adb()
         self.ldplayer_dir = None
+        self.adb_path = self.find_adb()
+
     def find_adb(self) -> Optional[str]:
         """Tìm đường dẫn ADB bằng cách tìm thư mục LDPlayer."""
 
@@ -122,20 +119,6 @@ class ADBHelper:
         except:
             return False
 
-    # def _find_ldconsole(self):
-    #     """Tìm đường dẫn ldconsole.exe"""
-    #     ldconsole_paths = [
-    #         r"D:\LDPlayer\LDPlayer9\ldconsole.exe",
-    #         r"D:\LDPlayer\LDPlayer4\ldconsole.exe",
-    #         r"C:\LDPlayer\LDPlayer9\ldconsole.exe",
-    #         r"C:\LDPlayer\LDPlayer4\ldconsole.exe",
-    #         r"C:\Program Files\LDPlayer\LDPlayer9\ldconsole.exe",
-    #         r"C:\Program Files\LDPlayer\LDPlayer4\ldconsole.exe",
-    #     ]
-    #     for path in ldconsole_paths:
-    #         if os.path.exists(path):
-    #             return path
-    #     return None
 
     def _find_ldplayer_dir(self):
         
@@ -224,31 +207,6 @@ class ADBHelper:
             serial_ip = f"127.0.0.1:{port}"
             self._device_name_map[serial_emu] = name
             self._device_name_map[serial_ip] = name
-
-    # def get_ldplayer_names(self):
-    #     """Lấy danh sách tên LDPlayer đang chạy"""
-    #     ldconsole = self._find_ldconsole()
-    #     if not ldconsole:
-    #         return []
-    #     try:
-    #         result = subprocess.run(
-    #             [ldconsole, "list2"],
-    #             capture_output=True,
-    #             timeout=10,
-    #             encoding='utf-8',
-    #             errors='replace'
-    #         )
-    #         names = []
-    #         for line in result.stdout.strip().split('\n'):
-    #             line = line.strip()
-    #             if not line:
-    #                 continue
-    #             parts = line.split(',')
-    #             if len(parts) >= 5 and parts[4] == '1':
-    #                 names.append(parts[1])
-    #         return names
-    #     except Exception:
-    #         return []
 
     def get_device_name(self, serial: str) -> str:
         """Lấy tên LDPlayer từ serial ADB"""
