@@ -4,7 +4,7 @@ Tự động quét các thiết bị đang kết nối và cho phép chọn
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import subprocess
 import json
 import os
@@ -44,6 +44,7 @@ class DeviceSelector:
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="🔧 Công cụ", menu=tools_menu)
         tools_menu.add_command(label="Kiểm tra ADB", command=self.check_adb)
+        tools_menu.add_command(label="Chọn thư mục LDPlayer", command=self.choose_adb_path)
         tools_menu.add_command(label="Khởi động lại ADB Server", command=self.restart_adb_server)
         tools_menu.add_command(label="Xem thông tin thiết bị", command=self.show_device_info)
 
@@ -202,8 +203,16 @@ class DeviceSelector:
                     "3. Thử khởi động lại ADB Server (menu Công cụ)"
                 )
 
-        except FileNotFoundError:
+        except (FileNotFoundError, OSError) as e:
             self.status_label.config(text="✗ Lỗi: Không tìm thấy ADB")
+            if messagebox.askyesno(
+                "Lỗi ADB",
+                "Không tìm thấy ADB!\n\n"
+                "Bạn có muốn chọn thư mục LDPlayer thủ công không?"
+            ):
+                if self.choose_adb_path():
+                    self.scan_devices()
+                    return
             messagebox.showerror(
                 "Lỗi ADB",
                 f"Không tìm thấy ADB!\n\n"
@@ -216,6 +225,50 @@ class DeviceSelector:
         except Exception as e:
             self.status_label.config(text=f"✗ Lỗi: {str(e)}")
             messagebox.showerror("Lỗi", f"Có lỗi xảy ra: {str(e)}")
+
+    def choose_adb_path(self) -> bool:
+        """Cho phép người dùng chọn thư mục LDPlayer chứa adb.exe."""
+        adb_path = getattr(self.adb_helper, 'adb_path', None)
+        initial_dir = os.path.dirname(adb_path) if isinstance(adb_path, str) else None
+        if not initial_dir:
+            initial_dir = os.path.expanduser("~")
+        selected_dir = filedialog.askdirectory(
+            title="Chọn thư mục LDPlayer",
+            initialdir=initial_dir
+        )
+        if not selected_dir:
+            return False
+
+        adb_path = os.path.join(selected_dir, "adb.exe")
+        if not os.path.isfile(adb_path):
+            messagebox.showerror("Lỗi chọn LDPlayer", "Vui lòng chọn thư mục LDPlayer hợp lệ chứa adb.exe.")
+            return False
+
+        self.adb_helper.adb_path = adb_path
+        self.save_adb_path(selected_dir)
+        messagebox.showinfo("Đã chọn LDPlayer", f"Đã đặt thư mục LDPlayer:\n{selected_dir}")
+        return True
+
+    def save_adb_path(self, ldplayer_dir: str):
+        """Lưu thư mục LDPlayer vào file cấu hình."""
+        data = {}
+        if os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f) or {}
+            except Exception:
+                data = {}
+
+        adb_path = os.path.join(ldplayer_dir, "adb.exe")
+        data['ldplayer_dir'] = ldplayer_dir
+        if os.path.isfile(adb_path):
+            data['adb_path'] = adb_path
+
+        try:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Lỗi khi lưu đường dẫn ADB: {e}")
 
     def get_device_name(self, serial: str) -> str:
         """Lấy tên thiết bị từ serial"""
@@ -251,8 +304,14 @@ class DeviceSelector:
     def save_selection(self, device: Dict):
         """Lưu lựa chọn vào file"""
         try:
+            device_to_save = dict(device)
+            if self.adb_helper.adb_path:
+                device_to_save['adb_path'] = self.adb_helper.adb_path
+                adb_dir = os.path.dirname(self.adb_helper.adb_path)
+                if os.path.isfile(os.path.join(adb_dir, "adb.exe")):
+                    device_to_save['ldplayer_dir'] = adb_dir
             with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(device, f, ensure_ascii=False, indent=2)
+                json.dump(device_to_save, f, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"Lỗi khi lưu config: {e}")
 
@@ -264,6 +323,9 @@ class DeviceSelector:
         try:
             with open(self.config_file, 'r', encoding='utf-8') as f:
                 saved = json.load(f)
+
+            if not isinstance(saved, dict) or 'serial' not in saved:
+                return
 
             # Tìm thiết bị trong danh sách hiện tại
             for idx, device in enumerate(self.devices):
@@ -294,26 +356,15 @@ class DeviceSelector:
     def check_adb(self):
         """Kiểm tra ADB có hoạt động không"""
         try:
-            result = subprocess.run(
-                ["adb", "version"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            result = self.adb_helper.run_adb(["version"], timeout=5)
             version = result.stdout.strip().split('\n')[0]
             messagebox.showinfo(
                 "✓ ADB hoạt động tốt",
                 f"{version}\n\n"
                 f"ADB đang hoạt động bình thường."
             )
-        except FileNotFoundError:
-            messagebox.showerror(
-                "✗ Không tìm thấy ADB",
-                "ADB chưa được cài đặt hoặc chưa thêm vào PATH!\n\n"
-                "Hãy cài đặt Android SDK Platform Tools."
-            )
         except Exception as e:
-            messagebox.showerror("Lỗi", f"Lỗi khi kiểm tra ADB: {e}")
+            messagebox.showerror("✗ Không tìm thấy ADB", f"ADB không hoạt động:\n{e}")
 
     def restart_adb_server(self):
         """Khởi động lại ADB Server"""
@@ -321,10 +372,8 @@ class DeviceSelector:
         self.root.update()
 
         try:
-            # Kill server
-            subprocess.run(["adb", "kill-server"], timeout=5)
-            # Start server
-            subprocess.run(["adb", "start-server"], timeout=10)
+            self.adb_helper.run_adb(["kill-server"], timeout=5)
+            self.adb_helper.run_adb(["start-server"], timeout=10)
 
             messagebox.showinfo(
                 "✓ Thành công",
@@ -349,25 +398,10 @@ class DeviceSelector:
 
         try:
             # Lấy thông tin thiết bị
-            model = subprocess.run(
-                ["adb", "-s", device['serial'], "shell", "getprop", "ro.product.model"],
-                capture_output=True, text=True, timeout=3
-            ).stdout.strip()
-
-            manufacturer = subprocess.run(
-                ["adb", "-s", device['serial'], "shell", "getprop", "ro.product.manufacturer"],
-                capture_output=True, text=True, timeout=3
-            ).stdout.strip()
-
-            android_version = subprocess.run(
-                ["adb", "-s", device['serial'], "shell", "getprop", "ro.build.version.release"],
-                capture_output=True, text=True, timeout=3
-            ).stdout.strip()
-
-            sdk_version = subprocess.run(
-                ["adb", "-s", device['serial'], "shell", "getprop", "ro.build.version.sdk"],
-                capture_output=True, text=True, timeout=3
-            ).stdout.strip()
+            model = self.adb_helper.run_adb(["-s", device['serial'], "shell", "getprop", "ro.product.model"], timeout=3).stdout.strip()
+            manufacturer = self.adb_helper.run_adb(["-s", device['serial'], "shell", "getprop", "ro.product.manufacturer"], timeout=3).stdout.strip()
+            android_version = self.adb_helper.run_adb(["-s", device['serial'], "shell", "getprop", "ro.build.version.release"], timeout=3).stdout.strip()
+            sdk_version = self.adb_helper.run_adb(["-s", device['serial'], "shell", "getprop", "ro.build.version.sdk"], timeout=3).stdout.strip()
 
             info = (
                 f"📱 Thông tin thiết bị\n"
@@ -469,7 +503,8 @@ def get_selected_device(force_select=False) -> str:
         try:
             with open(config_file, 'r', encoding='utf-8') as f:
                 device = json.load(f)
-                return device['serial']
+                if isinstance(device, dict) and 'serial' in device:
+                    return device['serial']
         except:
             pass
 

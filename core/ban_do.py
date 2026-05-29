@@ -29,6 +29,16 @@ CLICK_DELAY = 1.0
 DEBUG_MODE = False
 DEBUG_DIR = "debug/ban_do"
 
+
+def _normalize_template_path(template_path):
+    if not template_path:
+        return template_path
+    if os.path.isabs(template_path):
+        return template_path
+    if template_path.startswith("assets/"):
+        return template_path
+    return os.path.join("assets/items", template_path)
+
 # Per-thread state cho ban_do
 import threading as _threading
 _bd_ctx = _threading.local()
@@ -673,26 +683,30 @@ def _xu_ly_dat_qc(adb, data_vps, threshold, color_threshold):
     if _should_stop():
         return False
     _sleep(0.5)
-    screen = adb.screenshot_full()
-    if screen is None:
-        return False
 
     # Tìm VP đã đặt bán (có thể dựa vào màu sắc khác so với VP chưa đặt)
     for vp_info in data_vps:
-        vp_path = vp_info["path"]
-        vp_threshold = vp_info.get("threshold", threshold)
-        vp_color = vp_info.get("color_threshold", color_threshold)
-        name = os.path.basename(vp_path).replace('.png', '')
-        pos = _find_on_screen(screen, vp_path, threshold=vp_threshold,
-                              color_threshold=vp_color,
+        name = os.path.basename(vp_info).replace('.png', '')
+        pos, _ = _find(adb, vp_info, threshold=threshold,
+                              color_threshold=color_threshold,
                               step_name=f"tim_vp_dat_qc_{name}")
         if pos:
             x, y = pos
             logger.info(f"Tìm thấy VP '{name}' đã đặt bán tại {pos}, click để bật QC")
             adb.tap(x, y, 0.1)
             _sleep(0.3)
-            return True
-
+            pos_qc, _ = _find(adb, "assets/items/dat_quang_cao.png", threshold=0.7,
+                            step_name=f"dat_qc_vp_{name}")
+            if pos_qc:
+                x_qc, y_qc = pos_qc
+                logger.info(f"Tìm thấy nút QC tại ({x_qc}, {y_qc}), click để bật QC")
+                adb.tap(x_qc, y_qc, 0.1)
+                return True
+            else:
+                logger.warning(f"Không tìm thấy nút QC sau khi click VP '{name}'!")
+                # Thoát popup nếu có thể
+                _dong_popup(adb)
+    _sleep(0.3)
     logger.warning("Không tìm thấy VP nào đã đặt bán để bật QC!")
     return False
 
@@ -700,36 +714,31 @@ def _xu_ly_xe_kc(adb , data_vps, threshold, color_threshold):
     """Nếu config có bật xé kim cương nhưng chưa xé được, thử tìm 1 VP bất kỳ để click vào nút xé KC.
     Tìm trên screen kho, nếu thấy VP đã đặt bán rồi (có thể dựa vào màu sắc) 
     Tìm bút xé KC → click vào để xé KC -> xác nhận -> return True."""
-
+    logger.info(f"[XÉ KC] Danh sach VP để tìm xé KC: {data_vps}")
     if _should_stop():
         return False
     _sleep(0.5)
-    screen = adb.screenshot_full()
-    if screen is None:
-        return False
-
+    
     # Tìm VP đã đặt bán (có thể dựa vào màu sắc khác so với VP chưa đặt)
     for vp_info in data_vps:
-        vp_path = vp_info["path"]
-        vp_threshold = vp_info.get("threshold", threshold)
-        vp_color = vp_info.get("color_threshold", color_threshold)
-        name = os.path.basename(vp_path).replace('.png', '')
-        pos = _find_on_screen(screen, vp_path, threshold=vp_threshold,
-                              color_threshold=vp_color,
+        
+        name = os.path.basename(vp_info).replace('.png', '')
+        pos, _ = _find(adb, vp_info, threshold=threshold,
+                              color_threshold=color_threshold,
                               step_name=f"tim_vp_xe_kc_{name}")
         if pos:
             x, y = pos
             logger.info(f"Tìm thấy VP '{name}' đã đặt bán tại {pos}, click để bật xé KC")
             adb.tap(x, y, 0.1)
-
-            pos_kc = _find_on_screen(screen, "assets/items/xoa_vp_kc.png", threshold=0.85,
+            _sleep(0.3)
+            pos_kc, _ = _find(adb, "assets/items/xoa_vp_kc.png", threshold=0.7,
                             step_name="xe_kc_after_click_vp")
             if pos_kc:
                 x_kc, y_kc = pos_kc
                 logger.info(f"Tìm thấy nút xé KC tại ({x_kc}, {y_kc}), click để xé")
                 adb.tap(x_kc, y_kc, 0.1)
-
-                pos_dong_y = _find_on_screen(screen, "assets/items/dong_y.png", threshold=0.85,
+                _sleep(0.3)
+                pos_dong_y, _ = _find(adb, "assets/items/dong_y.png", threshold=0.7,
                             step_name="xe_kc_xac_nhan")
                 if pos_dong_y:
                     x_dy, y_dy = pos_dong_y
@@ -737,7 +746,10 @@ def _xu_ly_xe_kc(adb , data_vps, threshold, color_threshold):
                     adb.tap(x_dy, y_dy, 0.1)
                     _sleep(0.3)
                     return True
-
+            else:
+                logger.warning(f"Không tìm thấy nút xé KC sau khi click VP '{name}'!")
+                # Thoát popup nếu có thể
+                _dong_popup(adb)
     logger.warning("Không tìm thấy VP nào đã đặt bán để bật xé KC!")
     return False
 # ================================================================
@@ -781,9 +793,14 @@ def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
     bat_qc = config.get("dat_quang_cao", True)
     cfg_threshold = config.get("threshold") or THRESHOLD
     cfg_color_threshold = config.get("color_threshold", 0.6)
-    # is_dat_qc check đã đặt pc chưa (trong trường hợp có qc = true) 
+    qc_templates_cfg = config.get("qc_templates", [])
+    xoa_kc_templates_cfg = config.get("xoa_kc_templates", [])
+    qc_templates = [_normalize_template_path(t) for t in qc_templates_cfg if t]
+    xoa_kc_templates = [_normalize_template_path(t) for t in xoa_kc_templates_cfg if t]
+    logger.info(f"Danh sách template QC từ config: {qc_templates_cfg} và sau khi chuẩn hóa: {qc_templates}")
+    logger.info(f"Danh sách template xé KC từ config: {xoa_kc_templates_cfg} và sau khi chuẩn hóa: {xoa_kc_templates}")
     is_dat_qc = False  
-    # Parse data nếu là string (legacy)
+
     if isinstance(data_vp, str):
         data_vp = [vp.strip() for vp in data_vp.split(",") if vp.strip()]
 
@@ -816,7 +833,9 @@ def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
             continue
 
         if xoa_kc:
-            _xu_ly_xe_kc(adb, data_vp, cfg_threshold, cfg_color_threshold)
+            xekc = _xu_ly_xe_kc(adb, xoa_kc_templates, cfg_threshold, cfg_color_threshold)
+            if xekc:
+                logger.info("Đã xé được kim cương cho lần này")
 
         # Step 2: Tìm ô trống (có kéo trái nếu cần)
         pos = tim_o_ban(adb)
@@ -846,7 +865,7 @@ def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
         _sleep(0.3)
     if is_dat_qc == False and bat_qc:
         # chon 1 vp bất kỳ để bật qc, tìm danh sách vp để tìm vp đã đặt qc rồi bật qc
-        _xu_ly_dat_qc(adb, data_vp, cfg_threshold, cfg_color_threshold)
+        _xu_ly_dat_qc(adb, qc_templates, cfg_threshold, cfg_color_threshold)
             
     _xu_ly_sau_dat_ban(adb)
     logger.info("=== Hoàn thành bán hàng ===")

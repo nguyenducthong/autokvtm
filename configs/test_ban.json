@@ -16,11 +16,27 @@
     "loai_kho": "KTP",
     "so_lan_dat_vp": 4,
     "data": [
-      "assets/items/kho_tinh_dau_tao.png",
-      "assets/items/kho_vai_vang.png",
-      "assets/items/kho_tra_hoa_hong.png"
+      {
+        "path": "assets/items/kho_tinh_dau_tao.png"
+      },
+      {
+        "path": "assets/items/kho_vai_vang.png"
+      },
+      {
+        "path": "assets/items/kho_tra_hoa_hong.png"
+      }
     ],
-    "xoa_kc": false,
-    "dat_quang_cao": true
+    "xoa_kc": true,
+    "dat_quang_cao": true,
+    "qc_templates": [
+      "assets/items/ch_tinh_dau_tao.png",
+      "assets/items/ch_vai_vang.png",
+      "assets/items/ch_tra_hoa_hong.png"
+    ],
+    "xoa_kc_templates": [
+      "assets/items/ch_tra_hoa_hong.png"
+    ],
+    "threshold": 0.85,
+    "color_threshold": 0.6
   }
 }

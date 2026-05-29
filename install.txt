@@ -1,0 +1,35 @@
+
+# =========================
+# PYTHON 3.12 SETUP
+# =========================
+
+# Kiểm tra version
+py --version
+
+# Nâng cấp pip
+py -m ensurepip --upgrade
+py -m pip install --upgrade pip
+
+# Cài OpenCV + xử lý ảnh
+py -m pip install opencv-python
+py -m pip install numpy
+py -m pip install pillow
+
+# OCR
+py -m pip install pytesseract
+
+# ADB Python
+py -m pip install pure-python-adb
+
+# ADB utils (tuỳ chọn)
+py -m pip install adbutils
+
+# Các package thường dùng automation
+py -m pip install requests
+py -m pip install pyautogui
+py -m pip install keyboard
+py -m pip install mouse
+
+# Kiểm tra package đã cài
+py -m pip list
+

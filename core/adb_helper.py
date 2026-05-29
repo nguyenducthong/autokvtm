@@ -3,6 +3,7 @@ ADB Helper - Tự động tìm ADB của LDPlayer
 """
 
 import os
+import json
 import subprocess
 from typing import Optional
 
@@ -10,26 +11,11 @@ class ADBHelper:
     """Tìm và quản lý ADB của LDPlayer"""
 
     def __init__(self):
+        self.adb_path = None
         self.adb_path = self.find_adb()
-
+        self.ldplayer_dir = None
     def find_adb(self) -> Optional[str]:
-        """Tìm đường dẫn ADB"""
-
-        # Thử các vị trí phổ biến của LDPlayer
-        possible_paths = [
-            r"D:\LDPlayer\LDPlayer9\adb.exe",
-            r"D:\LDPlayer\LDPlayer4\adb.exe",
-            r"C:\LDPlayer\LDPlayer9\adb.exe",
-            r"C:\LDPlayer\LDPlayer4\adb.exe",
-            r"C:\Program Files\LDPlayer\LDPlayer9\adb.exe",
-            r"C:\Program Files\LDPlayer\LDPlayer4\adb.exe",
-        ]
-
-        # Kiểm tra từng đường dẫn
-        for path in possible_paths:
-            if os.path.exists(path):
-                print(f"[OK] Tim thay ADB: {path}")
-                return path
+        """Tìm đường dẫn ADB bằng cách tìm thư mục LDPlayer."""
 
         # Thử tìm ADB trong PATH
         try:
@@ -45,14 +31,55 @@ class ADBHelper:
         except:
             pass
 
+        # Thử dùng đường dẫn ADB đã lưu trong cấu hình
+        saved_path = self._load_saved_adb_path()
+        if saved_path:
+            print(f"[OK] Sử dụng ADB từ cấu hình: {saved_path}")
+            return saved_path
+
+        # Thử tìm thư mục LDPlayer và dùng adb.exe trong đó
+        ldplayer_dir = self._find_ldplayer_dir()
+        if ldplayer_dir:
+            adb_path = os.path.join(ldplayer_dir, "adb.exe")
+            if os.path.isfile(adb_path):
+                print(f"[OK] Tim thay ADB trong LDPlayer: {adb_path}")
+                return adb_path
+
         # Không tìm thấy
         print("[ERROR] Khong tim thay ADB!")
+        return None
+
+    def _load_saved_adb_path(self) -> Optional[str]:
+        config_file = "selected_device.json"
+        if not os.path.isfile(config_file):
+            return None
+        try:
+            with open(config_file, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+
+            ldplayer_dir = saved.get("ldplayer_dir")
+            if ldplayer_dir and os.path.isdir(ldplayer_dir):
+                self.ldplayer_dir = ldplayer_dir  # Lưu lại để dùng sau
+                adb_path = os.path.join(ldplayer_dir, "adb.exe")
+                if os.path.isfile(adb_path):
+                    return adb_path
+
+            path = saved.get("adb_path")
+            if path:
+                if os.path.isdir(path):
+                    adb_path = os.path.join(path, "adb.exe")
+                    if os.path.isfile(adb_path):
+                        return adb_path
+                elif os.path.isfile(path) and os.path.basename(path).lower() == "adb.exe":
+                    return path
+        except Exception:
+            pass
         return None
 
     def run_adb(self, args: list, timeout: int = 5) -> subprocess.CompletedProcess:
         """Chạy lệnh ADB"""
         if not self.adb_path:
-            raise Exception("Không tìm thấy ADB! Vui lòng cài đặt LDPlayer.")
+            raise FileNotFoundError("Không tìm thấy ADB! Vui lòng cài đặt LDPlayer.")
 
         cmd = [self.adb_path] + args
 
@@ -95,32 +122,55 @@ class ADBHelper:
         except:
             return False
 
-    def _find_ldconsole(self):
-        """Tìm đường dẫn ldconsole.exe"""
-        ldconsole_paths = [
-            r"D:\LDPlayer\LDPlayer9\ldconsole.exe",
-            r"D:\LDPlayer\LDPlayer4\ldconsole.exe",
-            r"C:\LDPlayer\LDPlayer9\ldconsole.exe",
-            r"C:\LDPlayer\LDPlayer4\ldconsole.exe",
-            r"C:\Program Files\LDPlayer\LDPlayer9\ldconsole.exe",
-            r"C:\Program Files\LDPlayer\LDPlayer4\ldconsole.exe",
-        ]
-        for path in ldconsole_paths:
-            if os.path.exists(path):
-                return path
-        return None
+    # def _find_ldconsole(self):
+    #     """Tìm đường dẫn ldconsole.exe"""
+    #     ldconsole_paths = [
+    #         r"D:\LDPlayer\LDPlayer9\ldconsole.exe",
+    #         r"D:\LDPlayer\LDPlayer4\ldconsole.exe",
+    #         r"C:\LDPlayer\LDPlayer9\ldconsole.exe",
+    #         r"C:\LDPlayer\LDPlayer4\ldconsole.exe",
+    #         r"C:\Program Files\LDPlayer\LDPlayer9\ldconsole.exe",
+    #         r"C:\Program Files\LDPlayer\LDPlayer4\ldconsole.exe",
+    #     ]
+    #     for path in ldconsole_paths:
+    #         if os.path.exists(path):
+    #             return path
+    #     return None
 
     def _find_ldplayer_dir(self):
-        """Tìm thư mục cài đặt LDPlayer"""
-        dirs = [
+        
+        """Tìm thư mục cài đặt LDPlayer."""
+        if self.ldplayer_dir and os.path.isdir(self.ldplayer_dir):
+            return self.ldplayer_dir
+        candidates = []
+
+        # Các đường dẫn LDPlayer thường gặp
+        candidates.extend([
             r"D:\LDPlayer\LDPlayer9",
             r"D:\LDPlayer\LDPlayer4",
             r"C:\LDPlayer\LDPlayer9",
             r"C:\LDPlayer\LDPlayer4",
             r"C:\Program Files\LDPlayer\LDPlayer9",
             r"C:\Program Files\LDPlayer\LDPlayer4",
-        ]
-        for d in dirs:
+            r"C:\Program Files (x86)\LDPlayer\LDPlayer9",
+            r"C:\Program Files (x86)\LDPlayer\LDPlayer4",
+            r"C:\Program Files\LDPlayer",
+            r"C:\Program Files (x86)\LDPlayer",
+            r"D:\LDPlayer",
+            r"C:\LDPlayer",
+        ])
+
+        # Thử dựng từ adb_path nếu đã biết
+        adb_path_value = getattr(self, 'adb_path', None)
+        print(f"[DEBUG] adb_path_value: {adb_path_value}")
+        if isinstance(adb_path_value, str) and os.path.isabs(adb_path_value):
+            adb_parent = os.path.dirname(adb_path_value)
+            if os.path.isdir(adb_parent):
+                candidates.insert(0, adb_parent)
+        
+        print(f"[DEBUG] Candidates after adding from adb_path: {candidates}")
+        # Duyệt qua các ứng cử viên
+        for d in candidates:
             if os.path.isdir(d):
                 return d
         return None
@@ -134,8 +184,15 @@ class ADBHelper:
         """
         self._device_name_map = {}
         ld_dir = self._find_ldplayer_dir()
+        print(f"[DEBUG] LDPlayer directory for building name map: {ld_dir}")
         if not ld_dir:
-            return
+            # Nếu không tìm thấy thư mục LDPlayer, thử lấy từ adb_path
+            if self.adb_path and os.path.isabs(self.adb_path):
+                adb_dir = os.path.dirname(self.adb_path)
+                if os.path.isdir(adb_dir):
+                    ld_dir = adb_dir
+            if not ld_dir:
+                return
 
         config_dir = os.path.join(ld_dir, "vms", "config")
         if not os.path.isdir(config_dir):
@@ -168,30 +225,30 @@ class ADBHelper:
             self._device_name_map[serial_emu] = name
             self._device_name_map[serial_ip] = name
 
-    def get_ldplayer_names(self):
-        """Lấy danh sách tên LDPlayer đang chạy"""
-        ldconsole = self._find_ldconsole()
-        if not ldconsole:
-            return []
-        try:
-            result = subprocess.run(
-                [ldconsole, "list2"],
-                capture_output=True,
-                timeout=10,
-                encoding='utf-8',
-                errors='replace'
-            )
-            names = []
-            for line in result.stdout.strip().split('\n'):
-                line = line.strip()
-                if not line:
-                    continue
-                parts = line.split(',')
-                if len(parts) >= 5 and parts[4] == '1':
-                    names.append(parts[1])
-            return names
-        except Exception:
-            return []
+    # def get_ldplayer_names(self):
+    #     """Lấy danh sách tên LDPlayer đang chạy"""
+    #     ldconsole = self._find_ldconsole()
+    #     if not ldconsole:
+    #         return []
+    #     try:
+    #         result = subprocess.run(
+    #             [ldconsole, "list2"],
+    #             capture_output=True,
+    #             timeout=10,
+    #             encoding='utf-8',
+    #             errors='replace'
+    #         )
+    #         names = []
+    #         for line in result.stdout.strip().split('\n'):
+    #             line = line.strip()
+    #             if not line:
+    #                 continue
+    #             parts = line.split(',')
+    #             if len(parts) >= 5 and parts[4] == '1':
+    #                 names.append(parts[1])
+    #         return names
+    #     except Exception:
+    #         return []
 
     def get_device_name(self, serial: str) -> str:
         """Lấy tên LDPlayer từ serial ADB"""
