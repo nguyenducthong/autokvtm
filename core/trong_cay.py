@@ -87,7 +87,7 @@ def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None
             x, y = tap
             adb.tap(x, y)
             _sleep(TIME_SLEEP_SHORT)
-            check_trong = check_trong_cay(threshold=item_threshold)
+            check_trong = check_trong_cay(threshold=item_threshold, is_retry=True, tap=(x, y))
             if check_trong == "chua_chin":
                 logger.info("Cây chưa chín, bỏ qua thu hoạch")
                 continue
@@ -186,7 +186,7 @@ def trong_cay(template_path, template_path_default, points: list, tap,
         adb.tap(x, y)
 
 
-def check_trong_cay(threshold=None):
+def check_trong_cay(threshold=None, is_retry = False, tap = None):
     """Kiểm tra trạng thái cây: giỏ hàng / next_gieo / chưa chín.
     Tối ưu: chụp 1 screenshot, tìm tất cả template trên cùng ảnh đó."""
     th = threshold or THRESHOLD
@@ -208,7 +208,15 @@ def check_trong_cay(threshold=None):
     if pos:
         logger.info("Tìm được nút next gieo")
         return "next_gieo"
-    logger.info("Cây chưa chín")
+    pos_cay_chin = img.find_template_color("assets/items/cay_chua_chin.png", threshold=th, screen_img=screen)
+    if pos_cay_chin:
+        logger.info("Tìm được cây chưa chín")
+        return "chua_chin"
+    if is_retry:
+        logger.info("Chưa ấn vào cây, tiến hành ấn vào cây")
+        adb.tap(tap[0], tap[1])
+        _sleep(TIME_SLEEP_SHORT)
+        return check_trong_cay(threshold=th, is_retry=False, tap=tap)
     return "chua_chin"
 
 

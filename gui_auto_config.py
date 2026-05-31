@@ -1125,7 +1125,7 @@ class AutoConfigGUI:
                                 break
                             self._log(f"{dev_label} [{config_name}] TC+MAY {loop_i+1}/{loop_tc_may}")
                             main_tc(tc_tasks, adb_instance=adb_inst, stop_event=stop_ev,
-                                    global_threshold=settings.get("threshold"), loop_i == loop_tc_may-1)
+                                    global_threshold=settings.get("threshold"), is_sua_may= (loop_i == loop_tc_may-1))
                             end_time_item = time.time()
                             elapsed = end_time_item - start_time_item
                             self._log(f"{dev_label} [{config_name}] TC+MAY {loop_i+1}/{loop_tc_may} hoàn thành trong {elapsed:.1f}s")
