@@ -351,13 +351,13 @@ def xuong_nha(duration: int=50, sleep: float=0.7, threshold=None):
     set_state(PlayerState.TANG_0)
 
 
-def find_image(template_path, screen, screen_img=None):
+def find_image(template_path, screen, screen_img=None, region=None):
     """Tìm template trong screen (grayscale match)."""
     use_screen = _get_screen(screen, screen_img)
     if use_screen is None:
         logger.warning("Không có ảnh màn hình để tìm template: %s", template_path)
         return None
-    return img._match_one(template_path=template_path, threshold=THRESHOLD, screen_img=use_screen)
+    return img._match_one(template_path=template_path, threshold=THRESHOLD, screen_img=use_screen, region=region)
 
 
 # Debug mode cho utils (trong_cay, v.v.)
@@ -411,6 +411,9 @@ def _save_debug(screen, template_path, pos, step_name="find"):
 
 def _get_screen(screen_flag, screen_img=None):
     """Lấy screenshot: chụp mới hoặc dùng cache. Trả về numpy array."""
+    if screen_img is not None:
+        return screen_img
+
     adb = _get_adb()
     if not hasattr(_ctx, '_last_screen'):
         _ctx._last_screen = None
@@ -427,11 +430,11 @@ def _get_screen(screen_flag, screen_img=None):
                 adb = _get_adb()
             _ctx._last_screen = adb.screenshot_full()
 
-    return screen_img if screen_img is not None else _ctx._last_screen
+    return _ctx._last_screen
 
 
 def find_image_v2(template_path, screen, screen_img=None, threshold=THRESHOLD,
-                  retry=0, max_retry=1, step_name=None):
+                  retry=0, max_retry=1, step_name=None, region=None):
     """Tìm template trong screen (color match).
 
     Cải tiến:
@@ -448,7 +451,7 @@ def find_image_v2(template_path, screen, screen_img=None, threshold=THRESHOLD,
         return None
 
     pos = img.find_template_color(template_path=template_path, threshold=threshold,
-                                  screen_img=use_screen)
+                                  screen_img=use_screen, region=region)
 
     # Lưu debug
     _save_debug(use_screen, template_path, pos, _step)
@@ -462,7 +465,7 @@ def find_image_v2(template_path, screen, screen_img=None, threshold=THRESHOLD,
         _sleep(0.3)
         return find_image_v2(template_path, True, screen_img=None, threshold=threshold,
                              retry=retry + 1, max_retry=max_retry,
-                             step_name=f"{_step}_retry{retry+1}")
+                             step_name=f"{_step}_retry{retry+1}", region=region)
 
     return None
 

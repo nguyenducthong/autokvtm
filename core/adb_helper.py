@@ -151,7 +151,7 @@ class ADBHelper:
             if os.path.isdir(adb_parent):
                 candidates.insert(0, adb_parent)
         
-        print(f"[DEBUG] Candidates after adding from adb_path: {candidates}")
+        # print(f"[DEBUG] Candidates after adding from adb_path: {candidates}")
         # Duyệt qua các ứng cử viên
         for d in candidates:
             if os.path.isdir(d):

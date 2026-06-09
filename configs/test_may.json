@@ -1,0 +1,135 @@
+{
+  "settings": {
+    "loop_tong_mode": "count",
+    "loop_tong": 1,
+    "loop": 1,
+    "threshold": 0.85,
+    "bat_trong_cay": false,
+    "bat_may": true,
+    "bat_ban_vp": false,
+    "bat_thu_hoach": false,
+    "bat_mo_ruong": false,
+    "bat_giao_cu": false
+  },
+  "tasks": [
+    {
+      "id": 2,
+      "row": 1,
+      "type": "MAY",
+      "path_row": "assets/items/num/1.png",
+      "data": [
+        {
+          "path_item": "assets/items/hong_say.png",
+          "total": 9
+        }
+      ],
+      "region": [
+        110,
+        211,
+        510,
+        560
+      ]
+    },
+    {
+      "id": 2,
+      "row": 2,
+      "type": "MAY",
+      "path_row": "assets/items/num/2.png",
+      "data": [
+        {
+          "path_item": "assets/items/nuoc_tao.png",
+          "total": 4
+        }
+      ],
+      "region": [
+        110,
+        211,
+        510,
+        560
+      ]
+    },
+    {
+      "id": 2,
+      "row": 2,
+      "type": "MAY",
+      "path_row": "assets/items/num/2.png",
+      "data": [
+        {
+          "path_item": "assets/items/nuoc_tuyet.png",
+          "total": 4
+        }
+      ],
+      "region": [
+        110,
+        211,
+        510,
+        560
+      ]
+    },
+    {
+      "id": 2,
+      "row": 3,
+      "type": "MAY",
+      "path_row": "assets/items/num/3.png",
+      "data": [
+        {
+          "path_item": "assets/items/vai_vang.png",
+          "total": 5
+        }
+      ],
+      "region": [
+        110,
+        211,
+        510,
+        560
+      ]
+    },
+    {
+      "id": 2,
+      "row": 5,
+      "type": "MAY",
+      "path_row": "assets/items/num/5.png",
+      "data": [
+        {
+          "path_item": "assets/items/tinh_dau_tao.png",
+          "total": 5
+        }
+      ],
+      "region": [
+        110,
+        211,
+        510,
+        560
+      ]
+    },
+    {
+      "id": 2,
+      "row": 6,
+      "type": "MAY",
+      "path_row": "assets/items/num/6.png",
+      "data": [
+        {
+          "path_item": "assets/items/tra_hoa_hong.png",
+          "total": 5
+        }
+      ],
+      "region": [
+        110,
+        211,
+        510,
+        560
+      ]
+    }
+  ],
+  "ban_do": {
+    "loai_kho": "KTP",
+    "so_lan_dat_vp": 4,
+    "data": [],
+    "xoa_kc": true,
+    "dat_quang_cao": true,
+    "qc_templates": [],
+    "xoa_kc_templates": [],
+    "threshold": 0.85,
+    "color_threshold": 0.6
+  }
+}

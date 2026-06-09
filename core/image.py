@@ -79,13 +79,23 @@ class ImageProcessor:
         return new_path
     
 
-    def find_ui_element(self, screen_path: str, template_path: str, threshold: float = 0.7):
+    def find_ui_element(self, screen_path: str, template_path: str, threshold: float = 0.7, region: Optional[Tuple[int, int, int, int]] = None):
         """Tìm giao diện (bảng, nút, giỏ) trong ảnh"""
         screen = cv2.imread(screen_path)
         template = cv2.imread(template_path, cv2.IMREAD_UNCHANGED)
         
         if template.shape[2] == 4:  # Có alpha
             template = template[:, :, :3]
+
+        rx, ry = 0, 0
+        if region is not None:
+            rx, ry, rw, rh = region
+            h_max, w_max = screen.shape[:2]
+            rx = max(0, min(rx, w_max - 1))
+            ry = max(0, min(ry, h_max - 1))
+            rw = max(1, min(rw, w_max - rx))
+            rh = max(1, min(rh, h_max - ry))
+            screen = screen[ry:ry+rh, rx:rx+rw]
 
         result = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
         locations = np.where(result >= threshold)
@@ -101,15 +111,19 @@ class ImageProcessor:
         cv2.imwrite(debug_path, debug_img)
 
         logger.info(f"[MATCH] Tìm thấy {len(points)} vị trí → Xem: {debug_path}")
+        
+        if region is not None:
+            points = [(pt[0] + rx, pt[1] + ry) for pt in points]
         return points
     
-    def find_template(self, template_path: str, threshold: float=0.8, screen_path: str=None, screen_img: np.ndarray=None):
+    def find_template(self, template_path: str, threshold: float=0.8, screen_path: str=None, screen_img: np.ndarray=None, region: Optional[Tuple[int, int, int, int]] = None):
         """
         Tìm template trong screen với color verification
         :param template_path: Đường dẫn ảnh mẫu
         :param threshold: Ngưỡng match
         :param screen_path: Đường dẫn ảnh screen (dùng 1 trong 2)
         :param screen_img: Numpy array của screen (ưu tiên nếu có)
+        :param region: Vùng tìm kiếm (x, y, w, h)
         :return: Tuple (cx, cy) tọa độ tâm template, hoặc None nếu không tìm thấy
         """
         # Ưu tiên dùng screen_img nếu có, không thì đọc từ file
@@ -132,6 +146,16 @@ class ImageProcessor:
             template_rgb = template[:, :, :3]
         else:
             template_rgb = template
+
+        rx, ry = 0, 0
+        if region is not None:
+            rx, ry, rw, rh = region
+            h_max, w_max = screen.shape[:2]
+            rx = max(0, min(rx, w_max - 1))
+            ry = max(0, min(ry, h_max - 1))
+            rw = max(1, min(rw, w_max - rx))
+            rh = max(1, min(rh, h_max - ry))
+            screen = screen[ry:ry+rh, rx:rx+rw]
 
         th, tw = template_rgb.shape[:2]
 
@@ -213,12 +237,12 @@ class ImageProcessor:
                     y0 = int(max(chosen_loc[1], 0))
                     x1 = int(min(chosen_loc[0] + tw, screen.shape[1]))
                     y1 = int(min(chosen_loc[1] + th, screen.shape[0]))
-                    region = screen[y0:y1, x0:x1]
+                    matched_region = screen[y0:y1, x0:x1]
                     
-                    if region.size == 0 or region.shape[0] == 0 or region.shape[1] == 0:
+                    if matched_region.size == 0 or matched_region.shape[0] == 0 or matched_region.shape[1] == 0:
                         return None
                     
-                    reg_hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+                    reg_hsv = cv2.cvtColor(matched_region, cv2.COLOR_BGR2HSV)
 
                     # Compute dominant hue for region
                     reg_hist = cv2.calcHist([reg_hsv], [0], None, [18], [0, 180])
@@ -236,10 +260,10 @@ class ImageProcessor:
 
                     # Stricter thresholds: hue_diff <= 10 deg, sat_ratio within [0.90, 1.25]
                     if hue_diff > 10 or not (0.90 <= sat_ratio <= 1.25):
-                        logger.info(f"[COLOR_CHECK_REJECT] {template_name} at ({cx},{cy}): hue_diff={hue_diff:.1f}°, sat_ratio={sat_ratio:.2f} (tpl_h={dominant_hue:.1f}°, reg_h={reg_hue:.1f}°)")
+                        logger.info(f"[COLOR_CHECK_REJECT] {template_name} at ({cx + rx},{cy + ry}): hue_diff={hue_diff:.1f}°, sat_ratio={sat_ratio:.2f} (tpl_h={dominant_hue:.1f}°, reg_h={reg_hue:.1f}°)")
                         os.makedirs('debug/color_check', exist_ok=True)
-                        dbg_path = f"debug/color_check/{template_name}__{cx}_{cy}.png"
-                        cv2.imwrite(dbg_path, region)
+                        dbg_path = f"debug/color_check/{template_name}__{cx + rx}_{cy + ry}.png"
+                        cv2.imwrite(dbg_path, matched_region)
                         return None
                     else:
                         logger.info(f"[COLOR_CHECK_PASS] {template_name}: hue_diff={hue_diff:.1f}°, sat_ratio={sat_ratio:.2f}")
@@ -250,8 +274,8 @@ class ImageProcessor:
                 pass
 
             # Trả về tọa độ tâm template
-            logger.info(f"[MATCH_SUCCESS] {template_name} at ({cx},{cy}) score={best_score:.3f} method={match_method}")
-            return (cx, cy)
+            logger.info(f"[MATCH_SUCCESS] {template_name} at ({cx + rx},{cy + ry}) score={best_score:.3f} method={match_method}")
+            return (cx + rx, cy + ry)
 
         return None
 
@@ -260,7 +284,8 @@ class ImageProcessor:
         template_path: str,
         threshold: float = 0.8,
         screen_path: str = None,
-        screen_img: np.ndarray = None
+        screen_img: np.ndarray = None,
+        region: Optional[Tuple[int, int, int, int]] = None
     ) -> Optional[Tuple[int, int]]:
         """
         So khop 1 template tren screen (grayscale + color verification).
@@ -287,6 +312,16 @@ class ImageProcessor:
             tpl_bgr = template
             tpl_mask = None
 
+        rx, ry = 0, 0
+        if region is not None:
+            rx, ry, rw, rh = region
+            h_max, w_max = screen.shape[:2]
+            rx = max(0, min(rx, w_max - 1))
+            ry = max(0, min(ry, h_max - 1))
+            rw = max(1, min(rw, w_max - rx))
+            rh = max(1, min(rh, h_max - ry))
+            screen = screen[ry:ry+rh, rx:rx+rw]
+
         h, w = tpl_bgr.shape[:2]
         if h > screen.shape[0] or w > screen.shape[1]:
             return None
@@ -306,11 +341,11 @@ class ImageProcessor:
         candidates = candidates[:120]
 
         for score, x, y in candidates:
-            region = screen[y:y + h, x:x + w]
-            if region.shape[0] != h or region.shape[1] != w:
+            matched_region = screen[y:y + h, x:x + w]
+            if matched_region.shape[0] != h or matched_region.shape[1] != w:
                 continue
-            if self._color_pass(tpl_bgr, region, tpl_mask):
-                return (x, y)
+            if self._color_pass(tpl_bgr, matched_region, tpl_mask):
+                return (x + rx, y + ry)
 
         return None
 
@@ -351,14 +386,14 @@ class ImageProcessor:
         color_dist = float(np.sqrt(np.sum((tpl_mean - reg_mean) ** 2)))
         return color_dist <= 80
 
-    
     def find_template_color(
         self,
         template_path: str,
         threshold: float = 0.75,
         color_threshold: float = 0.6,
         screen_path: str = None,
-        screen_img: np.ndarray = None
+        screen_img: np.ndarray = None,
+        region: Optional[Tuple[int, int, int, int]] = None
     ) -> Optional[Tuple[int, int]]:
 
         if screen_img is not None:
@@ -379,6 +414,16 @@ class ImageProcessor:
         if template is None:
             logger.warning(f"Không tải được ảnh mẫu: {template_path}")
             return None
+
+        rx, ry = 0, 0
+        if region is not None:
+            rx, ry, rw, rh = region
+            h_max, w_max = screen.shape[:2]
+            rx = max(0, min(rx, w_max - 1))
+            ry = max(0, min(ry, h_max - 1))
+            rw = max(1, min(rw, w_max - rx))
+            rh = max(1, min(rh, h_max - ry))
+            screen = screen[ry:ry+rh, rx:rx+rw]
 
         alpha_mask = None
         if template.ndim == 3 and template.shape[2] == 4:
@@ -432,11 +477,11 @@ class ImageProcessor:
         best_combined_score = 0.0  # BUG FIX 3: khởi tạo 0 thay vì -1
 
         for (x, y, shape_score) in candidates:
-            region = screen[y:y+th, x:x+tw]
-            if region.shape[0] != th or region.shape[1] != tw:
+            matched_region = screen[y:y+th, x:x+tw]
+            if matched_region.shape[0] != th or matched_region.shape[1] != tw:
                 continue
 
-            reg_hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+            reg_hsv = cv2.cvtColor(matched_region, cv2.COLOR_BGR2HSV)
             reg_hist = cv2.calcHist([reg_hsv], [0, 1], alpha_mask, [h_bins, s_bins], hist_ranges)
             cv2.normalize(reg_hist, reg_hist, 0, 1, cv2.NORM_MINMAX)
 
@@ -449,7 +494,7 @@ class ImageProcessor:
             combined = 0.4 * shape_score + 0.6 * color_score
 
             logger.debug(
-                f"[FIND_COLOR] {template_name} candidate ({x},{y}): "
+                f"[FIND_COLOR] {template_name} candidate ({x + rx},{y + ry}): "
                 f"shape={shape_score:.3f} color={color_score:.3f} combined={combined:.3f}"
             )
 
@@ -466,17 +511,18 @@ class ImageProcessor:
         cy = y + th // 2
 
         logger.info(
-            f"[FIND_COLOR] {template_name}: ({cx},{cy}) "
+            f"[FIND_COLOR] {template_name}: ({cx + rx},{cy + ry}) "
             f"shape={shape_score:.3f} color={color_score:.3f} combined={best_combined_score:.3f}"
         )
-        return (cx, cy)
+        return (cx + rx, cy + ry)
 
     def count_template_color(
         self,
         template_path: str,
         threshold: float = 0.75,
         color_threshold: float = 0.6,
-        screen_img: np.ndarray = None
+        screen_img: np.ndarray = None,
+        region: Optional[Tuple[int, int, int, int]] = None
     ) -> int:
         """
         Đếm số lượng template xuất hiện trên screen (dùng color matching).
@@ -484,6 +530,16 @@ class ImageProcessor:
         """
         if screen_img is None:
             return 0
+
+        screen = screen_img
+        if region is not None:
+            rx, ry, rw, rh = region
+            h_max, w_max = screen.shape[:2]
+            rx = max(0, min(rx, w_max - 1))
+            ry = max(0, min(ry, h_max - 1))
+            rw = max(1, min(rw, w_max - rx))
+            rh = max(1, min(rh, h_max - ry))
+            screen = screen[ry:ry+rh, rx:rx+rw]
 
         template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
         if template is None:
@@ -498,10 +554,10 @@ class ImageProcessor:
             template_bgr = template
 
         th, tw = template_bgr.shape[:2]
-        if th > screen_img.shape[0] or tw > screen_img.shape[1]:
+        if th > screen.shape[0] or tw > screen.shape[1]:
             return 0
 
-        result = cv2.matchTemplate(screen_img, template_bgr, cv2.TM_CCOEFF_NORMED)
+        result = cv2.matchTemplate(screen, template_bgr, cv2.TM_CCOEFF_NORMED)
         locations = np.where(result >= threshold)
         # Loại duplicate (cùng vùng)
         used = []
@@ -529,10 +585,10 @@ class ImageProcessor:
 
         count = 0
         for (x, y, shape_score) in candidates:
-            region = screen_img[y:y+th, x:x+tw]
-            if region.shape[0] != th or region.shape[1] != tw:
+            matched_region = screen[y:y+th, x:x+tw]
+            if matched_region.shape[0] != th or matched_region.shape[1] != tw:
                 continue
-            reg_hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+            reg_hsv = cv2.cvtColor(matched_region, cv2.COLOR_BGR2HSV)
             reg_hist = cv2.calcHist([reg_hsv], [0, 1], alpha_mask, [h_bins, s_bins], hist_ranges)
             cv2.normalize(reg_hist, reg_hist, 0, 1, cv2.NORM_MINMAX)
             color_score = cv2.compareHist(tpl_hist, reg_hist, cv2.HISTCMP_CORREL)
@@ -543,7 +599,7 @@ class ImageProcessor:
         logger.debug(f"[COUNT_COLOR] {template_name}: {count} matches")
         return count
 
-    def find_exact(self, template_path: str, threshold: float = 0.8, screen_path: str = None, screen_img: np.ndarray = None) -> Optional[Tuple[int, int]]:
+    def find_exact(self, template_path: str, threshold: float = 0.8, screen_path: str = None, screen_img: np.ndarray = None, region: Optional[Tuple[int, int, int, int]] = None) -> Optional[Tuple[int, int]]:
         """
         Tìm ảnh mẫu trong screenshot - PHÂN BIỆT MÀU CHÍNH XÁC
         Bước 1: Grayscale matching → tìm tất cả vị trí có hình dạng giống
@@ -553,6 +609,7 @@ class ImageProcessor:
         :param threshold: Ngưỡng matching hình dạng (0-1)
         :param screen_path: Đường dẫn screenshot
         :param screen_img: Hoặc numpy array screenshot
+        :param region: Vùng tìm kiếm (x, y, w, h)
         :return: (cx, cy) tọa độ tâm, hoặc None
         """
         if screen_img is not None:
@@ -567,6 +624,16 @@ class ImageProcessor:
         if template is None:
             logger.warning(f"Không tải được ảnh mẫu: {template_path}")
             return None
+
+        rx, ry = 0, 0
+        if region is not None:
+            rx, ry, rw, rh = region
+            h_max, w_max = screen.shape[:2]
+            rx = max(0, min(rx, w_max - 1))
+            ry = max(0, min(ry, h_max - 1))
+            rw = max(1, min(rw, w_max - rx))
+            rh = max(1, min(rh, h_max - ry))
+            screen = screen[ry:ry+rh, rx:rx+rw]
 
         # Bỏ alpha nếu có
         if template.ndim == 3 and template.shape[2] == 4:
@@ -612,14 +679,14 @@ class ImageProcessor:
         best_color_dist = 999
 
         for (x, y, score) in candidates:
-            region = screen[y:y+th, x:x+tw]
-            if region.shape[0] != th or region.shape[1] != tw:
+            matched_region = screen[y:y+th, x:x+tw]
+            if matched_region.shape[0] != th or matched_region.shape[1] != tw:
                 continue
 
-            reg_mean = np.mean(region.astype(np.float32), axis=(0, 1))
+            reg_mean = np.mean(matched_region.astype(np.float32), axis=(0, 1))
             color_dist = float(np.sqrt(np.sum((tpl_mean - reg_mean) ** 2)))
 
-            logger.debug(f"[FIND_EXACT] candidate ({x},{y}) score={score:.3f} color_dist={color_dist:.1f}")
+            logger.debug(f"[FIND_EXACT] candidate ({x + rx},{y + ry}) score={score:.3f} color_dist={color_dist:.1f}")
 
             if color_dist < best_color_dist:
                 best_color_dist = color_dist
@@ -637,5 +704,5 @@ class ImageProcessor:
             logger.info(f"[FIND_EXACT] {template_name} REJECT all candidates (best_color_dist={best_color_dist:.1f})")
             return None
 
-        logger.info(f"[FIND_EXACT] {template_name}: ({cx},{cy}) score={score:.3f} color_dist={best_color_dist:.1f}")
-        return (cx, cy)
+        logger.info(f"[FIND_EXACT] {template_name}: ({cx + rx},{cy + ry}) score={score:.3f} color_dist={best_color_dist:.1f}")
+        return (cx + rx, cy + ry)

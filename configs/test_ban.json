@@ -26,7 +26,7 @@
         "path": "assets/items/kho_tra_hoa_hong.png"
       }
     ],
-    "xoa_kc": true,
+    "xoa_kc": false,
     "dat_quang_cao": true,
     "qc_templates": [
       "assets/items/ch_tinh_dau_tao.png",

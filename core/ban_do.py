@@ -116,24 +116,27 @@ def _save_debug_screenshot(screen, template_path, pos, step_name):
         logger.debug(f"[DEBUG] Lỗi lưu debug: {e}")
 
 
-def _find(adb, template_path, threshold=THRESHOLD, color_threshold=0.6, step_name="find"):
+def _find(adb, template_path, threshold=THRESHOLD, color_threshold=0.6, step_name="find",
+          region=None):
     """Chụp màn hình rồi tìm template, trả về (x,y) hoặc None."""
     screen = adb.screenshot_full()
     if screen is None:
         return None, None
     pos = img.find_template_color(template_path=template_path, threshold=threshold,
-                                  color_threshold=color_threshold, screen_img=screen)
+                                  color_threshold=color_threshold, screen_img=screen,
+                                  region=region)
     _save_debug_screenshot(screen, template_path, pos, step_name)
     return pos, screen
 
 
 def _find_on_screen(screen, template_path, threshold=THRESHOLD, color_threshold=0.6,
-                    step_name="find_cached"):
+                    step_name="find_cached", region=None):
     """Tìm template trên screen đã chụp sẵn."""
     if screen is None:
         return None
     pos = img.find_template_color(template_path=template_path, threshold=threshold,
-                                  color_threshold=color_threshold, screen_img=screen)
+                                  color_threshold=color_threshold, screen_img=screen,
+                                  region=region)
     _save_debug_screenshot(screen, template_path, pos, step_name)
     return pos
 
@@ -330,8 +333,12 @@ def tim_o_ban(adb, max_swipe=SWIPE_LEFT_MAX):
         if screen is None:
             return None
 
-        # Nhặt hết vàng trước
-        screen = _nhat_vang(adb, screen)
+        # Tim o vang truoc; co o vang thi tra toa do luon.
+        pos_vang = _find_on_screen(screen, "assets/items/vang3.png", threshold=0.9,
+                                   step_name=f"tim_o_vang_swipe{swipe_i}")
+        if pos_vang:
+            logger.info(f"Tim thay o vang tai {pos_vang} (sau {swipe_i} lan keo)")
+            return pos_vang
 
         # Tìm ô trống
         pos_trong = _find_on_screen(screen, "assets/items/o_trong.png", threshold=0.9,
@@ -353,12 +360,23 @@ def tim_o_ban(adb, max_swipe=SWIPE_LEFT_MAX):
 # ================================================================
 # STEP 3: Chọn kho (có retry + debug)
 # ================================================================
-def chon_kho(adb, path_kho_selected, path_kho_not_selected, max_retry=3):
+def chon_kho(adb, path_kho_selected, path_kho_not_selected, max_retry=3, position=None):
     """Tìm và chọn kho. Retry nếu chụp quá sớm chưa kịp load UI.
     Return True/False."""
     set_state(PlayerState.MO_KHO)
     if _should_stop():
         return False
+
+    if position:
+        try:
+            x, y = position
+            logger.info(f"Chon kho bang toa do co dinh: ({x}, {y})")
+            _sleep(CLICK_DELAY)
+            adb.tap(int(x), int(y), 0.1)
+            _sleep(0.5)
+            return True
+        except (TypeError, ValueError) as e:
+            logger.warning(f"Toa do kho khong hop le {position}: {e}. Fallback tim anh.")
 
     for attempt in range(max_retry):
         if _should_stop():
@@ -399,7 +417,8 @@ def chon_kho(adb, path_kho_selected, path_kho_not_selected, max_retry=3):
 # ================================================================
 # STEP 4: Tìm vật phẩm trong kho (fallback qua SP tiếp theo)
 # ================================================================
-def _normalize_vp_list(vp_list, default_threshold=THRESHOLD, default_color=0.6):
+def _normalize_vp_list(vp_list, default_threshold=THRESHOLD, default_color=0.6,
+                       default_region=None):
     """Chuẩn hóa vp_list thành list of dict.
     Input có thể là:
       - ["path1.png", "path2.png"]  (legacy, dùng default)
@@ -411,13 +430,15 @@ def _normalize_vp_list(vp_list, default_threshold=THRESHOLD, default_color=0.6):
             result.append({
                 "path": item,
                 "threshold": default_threshold,
-                "color_threshold": default_color
+                "color_threshold": default_color,
+                "region": default_region
             })
         elif isinstance(item, dict):
             result.append({
                 "path": item["path"],
                 "threshold": item.get("threshold", default_threshold),
-                "color_threshold": item.get("color_threshold", default_color)
+                "color_threshold": item.get("color_threshold", default_color),
+                "region": item.get("region", default_region)
             })
     return result
 
@@ -438,7 +459,8 @@ def tim_vat_pham(adb, path_vp, threshold=THRESHOLD, color_threshold=0.6):
     return None
 
 
-def tim_vat_pham_fallback(adb, vp_list, threshold=THRESHOLD, color_threshold=0.6):
+def tim_vat_pham_fallback(adb, vp_list, threshold=THRESHOLD, color_threshold=0.6,
+                          region=None):
     """Random thứ tự SP mỗi lần đặt. SP không thấy → thử SP kế tiếp.
     vp_list: list of str hoặc list of dict {"path", "threshold", "color_threshold"}
     Chụp 1 screenshot, tìm tất cả SP trên cùng ảnh đó.
@@ -451,7 +473,7 @@ def tim_vat_pham_fallback(adb, vp_list, threshold=THRESHOLD, color_threshold=0.6
         return None, None
 
     # Chuẩn hóa
-    normalized = _normalize_vp_list(vp_list, threshold, color_threshold)
+    normalized = _normalize_vp_list(vp_list, threshold, color_threshold, region)
 
     # Random thứ tự mỗi lần → bán đều các SP
     shuffled = list(normalized)
@@ -466,7 +488,8 @@ def tim_vat_pham_fallback(adb, vp_list, threshold=THRESHOLD, color_threshold=0.6
         name = os.path.basename(vp_path).replace('.png', '')
         pos = _find_on_screen(screen, vp_path, threshold=vp_info["threshold"],
                               color_threshold=vp_info["color_threshold"],
-                              step_name=f"tim_vp_{name}")
+                              step_name=f"tim_vp_{name}",
+                              region=vp_info.get("region"))
         if pos:
             logger.info(f"Chọn VP '{name}' tại {pos} (t={vp_info['threshold']}, c={vp_info['color_threshold']})")
             return vp_path, pos
@@ -540,7 +563,7 @@ def dat_ban(adb, bat_qc=True, xoa_kc=False):
     if pos_cong:
         x, y = pos_cong
         logger.info(f"Bấm + tăng số lượng tại ({x}, {y})")
-        adb.taps(x, y, 8, 0.01)
+        adb.tap_sendevent_fast(x, y, 10)
         _sleep(0.3)
         # Nút + thứ 2 (giá bán) — cũng cache riêng
         screen = adb.screenshot_full()
@@ -548,7 +571,7 @@ def dat_ban(adb, bat_qc=True, xoa_kc=False):
                                "cong2", threshold=0.9, step_name="dat_ban_cong2")
         if pos_cong2:
             x2, y2 = pos_cong2
-            adb.taps(x2, y2, 8, 0.01)
+            adb.tap_sendevent_fast(x2, y2, 10)
             _sleep(0.3)
 
     # Xé kim cương nếu config bật
@@ -592,7 +615,7 @@ def dat_ban(adb, bat_qc=True, xoa_kc=False):
 # STEP 4+5 kết hợp: Tìm VP + đặt bán, thử SP khác nếu fail
 # ================================================================
 def _thu_dat_ban_voi_fallback(adb, vp_list, path_kho_selected, path_kho_not_selected,
-                               threshold, color_threshold, bat_qc, xoa_kc):
+                               threshold, color_threshold, bat_qc, xoa_kc, region=None):
     """Tìm SP theo thứ tự random → click → đặt bán.
     vp_list: list of str (path) hoặc list of dict {"path", "threshold", "color_threshold"}
     Nếu SP đó không đặt được (hết hàng) → back ra kho → thử SP khác.
@@ -601,7 +624,7 @@ def _thu_dat_ban_voi_fallback(adb, vp_list, path_kho_selected, path_kho_not_sele
         return False
 
     # Chuẩn hóa vp_list thành list of dict
-    normalized = _normalize_vp_list(vp_list, threshold, color_threshold)
+    normalized = _normalize_vp_list(vp_list, threshold, color_threshold, region)
 
     # Random thứ tự SP
     shuffled = list(normalized)
@@ -628,7 +651,8 @@ def _thu_dat_ban_voi_fallback(adb, vp_list, path_kho_selected, path_kho_not_sele
         _sleep(0.3)
         pos_vp, _ = _find(adb, vp_path, threshold=vp_threshold,
                           color_threshold=vp_color,
-                          step_name=f"tim_vp_{name}")
+                          step_name=f"tim_vp_{name}",
+                          region=vp_info.get("region"))
         if not pos_vp:
             logger.info(f"SP '{name}' không thấy trong kho (t={vp_threshold}, c={vp_color}), thử SP tiếp...")
             continue
@@ -778,7 +802,7 @@ def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
         _set_stop_event(stop_event)
 
     # Reset cache nút mỗi session
-    _reset_btn_cache()
+    # _reset_btn_cache()
 
     # Bật debug mode nếu config yêu cầu
     if config.get("debug", False):
@@ -793,6 +817,7 @@ def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
     bat_qc = config.get("dat_quang_cao", True)
     cfg_threshold = config.get("threshold") or THRESHOLD
     cfg_color_threshold = config.get("color_threshold", 0.6)
+    cfg_region = config.get("region")
     qc_templates_cfg = config.get("qc_templates", [])
     xoa_kc_templates_cfg = config.get("xoa_kc_templates", [])
     qc_templates = [_normalize_template_path(t) for t in qc_templates_cfg if t]
@@ -816,6 +841,7 @@ def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
 
     path_kho_selected = kho_info["path_warehouse_select"]
     path_kho_not_selected = kho_info["path_warehouse_not_select"]
+    kho_position = kho_info.get("position")
 
     logger.info(f"=== BÁN HÀNG: kho={loai_kho}, ô={so_lan}, VP={data_vp}, "
                 f"QC={bat_qc}, xé KC={xoa_kc}, threshold={cfg_threshold}, color={cfg_color_threshold} ===")
@@ -845,18 +871,18 @@ def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
 
         # Click vào ô trống
         x, y = pos
-        adb.tap(x, y)
+        adb.taps(x, y, 2, 1)
         _sleep(CLICK_DELAY)
 
         # Step 3: Chọn kho
-        if not chon_kho(adb, path_kho_selected, path_kho_not_selected):
+        if not chon_kho(adb, path_kho_selected, path_kho_not_selected, position=kho_position):
             logger.warning("Không chọn được kho, bỏ qua ô này")
             continue
 
         # Step 4+5: Tìm VP → đặt bán. Nếu SP hết → thử SP khác trong cùng ô
         da_ban = _thu_dat_ban_voi_fallback(
             adb, data_vp, path_kho_selected, path_kho_not_selected,
-            cfg_threshold, cfg_color_threshold, bat_qc, xoa_kc
+            cfg_threshold, cfg_color_threshold, bat_qc, xoa_kc, region=cfg_region
         )
         if not da_ban:
             logger.warning("Không đặt được SP nào cho ô này")

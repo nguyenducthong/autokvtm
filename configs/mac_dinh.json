@@ -38,7 +38,14 @@
       ],
       "path_row": "assets/items/num/1.png",
       "path_item": "assets/items/cay_tao.png",
-      "path_item_default": "assets/items/cay_hong.png"
+      "path_item_default": "assets/items/cay_hong.png",
+      "threshold": 0.85,
+      "region": [
+        108,
+        435,
+        578,
+        362
+      ]
     },
     {
       "id": 1,
@@ -54,7 +61,14 @@
       ],
       "path_row": "assets/items/num/4.png",
       "path_item": "assets/items/cay_bong.png",
-      "path_item_default": "assets/items/cay_hong.png"
+      "path_item_default": "assets/items/cay_hong.png",
+      "threshold": 0.85,
+      "region": [
+        108,
+        435,
+        578,
+        362
+      ]
     },
     {
       "id": 1,
@@ -80,7 +94,14 @@
       ],
       "path_row": "assets/items/num/5.png",
       "path_item": "assets/items/cay_tuyet.png",
-      "path_item_default": "assets/items/cay_hong.png"
+      "path_item_default": "assets/items/cay_hong.png",
+      "threshold": 0.85,
+      "region": [
+        108,
+        435,
+        578,
+        362
+      ]
     },
     {
       "id": 1,
@@ -102,7 +123,14 @@
         "3.6"
       ],
       "path_item": "assets/items/cay_hong.png",
-      "path_item_default": "assets/items/cay_hong.png"
+      "path_item_default": "assets/items/cay_hong.png",
+      "threshold": 0.85,
+      "region": [
+        108,
+        435,
+        578,
+        362
+      ]
     },
     {
       "id": 1,
@@ -130,7 +158,14 @@
       ],
       "path_row": "assets/items/num/1.png",
       "path_item": "assets/items/cay_tao.png",
-      "path_item_default": "assets/items/cay_hong.png"
+      "path_item_default": "assets/items/cay_hong.png",
+      "threshold": 0.85,
+      "region": [
+        108,
+        435,
+        578,
+        362
+      ]
     },
     {
       "id": 1,
@@ -146,7 +181,14 @@
       ],
       "path_row": "assets/items/num/4.png",
       "path_item": "assets/items/cay_bong.png",
-      "path_item_default": "assets/items/cay_hong.png"
+      "path_item_default": "assets/items/cay_hong.png",
+      "threshold": 0.85,
+      "region": [
+        108,
+        435,
+        578,
+        362
+      ]
     },
     {
       "id": 1,
@@ -172,7 +214,14 @@
       ],
       "path_row": "assets/items/num/5.png",
       "path_item": "assets/items/cay_tuyet.png",
-      "path_item_default": "assets/items/cay_hong.png"
+      "path_item_default": "assets/items/cay_hong.png",
+      "threshold": 0.85,
+      "region": [
+        108,
+        435,
+        578,
+        362
+      ]
     },
     {
       "id": 1,
@@ -194,7 +243,14 @@
         "3.6"
       ],
       "path_item": "assets/items/cay_hong.png",
-      "path_item_default": "assets/items/cay_hong.png"
+      "path_item_default": "assets/items/cay_hong.png",
+      "threshold": 0.85,
+      "region": [
+        108,
+        435,
+        578,
+        362
+      ]
     },
     {
       "id": 2,
@@ -206,6 +262,12 @@
           "path_item": "assets/items/hong_say.png",
           "total": 8
         }
+      ],
+      "region": [
+        110,
+        211,
+        510,
+        560
       ]
     },
     {
@@ -222,6 +284,12 @@
           "path_item": "assets/items/nuoc_tuyet.png",
           "total": 4
         }
+      ],
+      "region": [
+        110,
+        211,
+        510,
+        560
       ]
     },
     {
@@ -232,8 +300,14 @@
       "data": [
         {
           "path_item": "assets/items/vai_vang.png",
-          "total": 4
+          "total": 5
         }
+      ],
+      "region": [
+        110,
+        211,
+        510,
+        560
       ]
     },
     {
@@ -244,8 +318,14 @@
       "data": [
         {
           "path_item": "assets/items/tinh_dau_tao.png",
-          "total": 4
+          "total": 5
         }
+      ],
+      "region": [
+        110,
+        211,
+        510,
+        560
       ]
     },
     {
@@ -256,8 +336,14 @@
       "data": [
         {
           "path_item": "assets/items/tra_hoa_hong.png",
-          "total": 4
+          "total": 5
         }
+      ],
+      "region": [
+        110,
+        211,
+        510,
+        560
       ]
     }
   ],
@@ -277,6 +363,14 @@
     ],
     "xoa_kc": false,
     "dat_quang_cao": true,
+    "qc_templates": [
+      "assets/items/ch_tra_hoa_hong.png",
+      "assets/items/ch_tinh_dau_tao.png",
+      "assets/items/ch_vai_vang.png"
+    ],
+    "xoa_kc_templates": [
+      "assets/items/ch_tra_hoa_hong.png"
+    ],
     "threshold": 0.85,
     "color_threshold": 0.85
   }

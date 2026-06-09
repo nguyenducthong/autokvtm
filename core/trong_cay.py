@@ -1,5 +1,7 @@
 import sys
 import os
+
+from adbutils import adb
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from .adb import ADBController
 from .image import ImageProcessor
@@ -10,7 +12,7 @@ from utils.utils import (
 )
 from config import (
     DEVICE_SERIAL, INDEX_HANG, CONFIG_TEMP_TC, INDEX_MAY,
-    INDEX_SAN_XUAT_MAC_DINH, INDEX_NEXT_SAN_XUAT_MAC_DINH,
+    INDEX_SAN_XUAT_MAC_DINH, INDEX_NEXT_SAN_XUAT_MAC_DINH, INDEX_SUA_MAY_MAC_DINH,
     INDEX_THOAT_SAN_XUAT_MAC_DINH
 )
 import time
@@ -76,6 +78,7 @@ def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None
         elif type_item == "TC":
             path_cay = item.get('path_item')
             path_cay_default = item.get('path_item_default')
+            region = item.get('region')
             # Ưu tiên: threshold per-task > global_threshold > THRESHOLD code
             item_threshold = item.get('threshold', global_threshold or THRESHOLD)
             if not item.get('indexs'):
@@ -97,7 +100,7 @@ def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None
                     break
                 set_state(PlayerState.TRONG_CAY)
                 trong_cay(path_cay, path_cay_default, listIndex, tap,
-                          threshold=item_threshold)
+                          threshold=item_threshold, region=region)
             elif check_trong == "gio_hang":
                 logger.info("Tìm thấy giỏ hàng, tiến hành thu hoạch")
                 set_state(PlayerState.THU_HOACH)
@@ -106,7 +109,7 @@ def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None
                 _sleep(TIME_SLEEP_SHORT)
                 set_state(PlayerState.TRONG_CAY)
                 trong_cay(path_cay, path_cay_default, listIndex, tap,
-                          threshold=item_threshold)
+                          threshold=item_threshold, region=region)
 
         logger.info(f"Hoàn thành config {idx}/{len(config)}")
 
@@ -114,7 +117,7 @@ def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None
 
 
 def tim_cay_trong(template_path, template_path_default=None, count=1,
-                  threshold: float=THRESHOLD):
+                  threshold: float=THRESHOLD, region=None):
     """Tìm cây để gieo. Tối ưu: 1 screenshot cho cả cây + next_gieo.
 
     - count 1-3: tìm template chính (VD: cay_bong.png)
@@ -148,7 +151,8 @@ def tim_cay_trong(template_path, template_path_default=None, count=1,
         label = "default"
 
     # Tìm cây trên screenshot đã chụp (không retry, không chụp lại)
-    pos = img.find_template_color(search_path, threshold=threshold, screen_img=screen)
+    pos = img.find_template_color(search_path, threshold=threshold, screen_img=screen,
+                                  region=region)
     if pos:
         logger.info(f"Tìm được {label} tại {pos} (lần {count}, threshold={threshold})")
         return pos
@@ -161,20 +165,21 @@ def tim_cay_trong(template_path, template_path_default=None, count=1,
         adb.tap(x, y)
         _sleep(TIME_SLEEP_SHORT)
         return tim_cay_trong(template_path, template_path_default, count + 1,
-                             threshold=threshold)
+                             threshold=threshold, region=region)
     else:
         logger.info(f"Không tìm thấy nút next_gieo")
         return None
 
 
 def trong_cay(template_path, template_path_default, points: list, tap,
-              duration_ms: int = 800, threshold: float = THRESHOLD):
+              duration_ms: int = 800, threshold: float = THRESHOLD, region=None):
     """Trồng cây: tìm icon cây → kéo qua các vị trí.
     duration_ms giảm từ 1500 → 800ms cho nhanh hơn."""
     adb = _get_adb()
     x, y = tap
 
-    pos = tim_cay_trong(template_path, template_path_default, threshold=threshold)
+    pos = tim_cay_trong(template_path, template_path_default, threshold=threshold,
+                        region=region)
     logger.info(f"Tìm cây tại: {pos}")
 
     if pos:
@@ -224,6 +229,7 @@ def xu_ly_may(config_may: dict, threshold: float = THRESHOLD, is_sua_may: bool =
     adb = _get_adb()
     row = str(config_may['row'])
     data = config_may.get('data', [])
+    region = config_may.get('region')
 
     if row not in INDEX_MAY:
         logger.error(f"Không tìm thấy INDEX_MAY cho row {row}")
@@ -239,23 +245,21 @@ def xu_ly_may(config_may: dict, threshold: float = THRESHOLD, is_sua_may: bool =
         if _should_stop():
             return False
 
-        adb.tap_fast(x_may, y_may, 10)
+        adb.tap_sendevent_fast(x_may, y_may, 10)
         _sleep(TIME_SLEEP_SHORT)
 
         # Chụp 1 screenshot, tìm cả 2 template
         screen = adb.screenshot_full()
         if screen is None:
             continue
-        pos_slot = img.find_template_color("assets/items/sanxuat_vp.png",
-                                           threshold=threshold, screen_img=screen)
+        pos_slot = img.find_template_color("assets/items/sanxuat_vp.png", threshold=threshold, screen_img=screen)
         if pos_slot:
             logger.info(f"Máy rảnh sau {i+1} lần tap")
             found_next_sanxuat = True
             break
 
         logger.info(f"Máy chưa rảnh, tap lần {i+1}")
-        pos_next_sx = img.find_template_color("assets/items/next_sanxuat.png",
-                                              threshold=threshold, screen_img=screen)
+        pos_next_sx = img.find_template_color("assets/items/next_sanxuat.png", threshold=threshold, screen_img=screen)
         if pos_next_sx:
             logger.info(f"Tìm thấy next_sanxuat sau {i+1} lần tap")
             found_next_sanxuat = True
@@ -273,7 +277,7 @@ def xu_ly_may(config_may: dict, threshold: float = THRESHOLD, is_sua_may: bool =
 
         set_state(PlayerState.SAN_XUAT)
         logger.info(f"Sản xuất {total} x {path_item}")
-        pos_item = tim_vp(path_item, threshold=threshold)
+        pos_item = tim_vp(path_item, threshold=threshold, region=region)
         if pos_item:
             x_item, y_item = pos_item
         else:
@@ -297,12 +301,16 @@ def xu_ly_may(config_may: dict, threshold: float = THRESHOLD, is_sua_may: bool =
             break
     if is_sua_may:
         sua_may(threshold=threshold)
+    else:
+        (x, y) = INDEX_THOAT_SAN_XUAT_MAC_DINH
+        adb.tap_fast(x, y, 2)
+
     logger.info(f"Hoàn thành xử lý máy hàng {row}")
     _sleep(TIME_SLEEP_SHORT)
     return True
 
 
-def tim_vp(template_path, count=1, threshold: float=THRESHOLD):
+def tim_vp(template_path, count=1, threshold: float=THRESHOLD, region=None):
     """Tìm vật phẩm sản xuất. Tối ưu: 1 screenshot cho cả VP + next_sanxuat."""
     adb = _get_adb()
     if _should_stop():
@@ -316,7 +324,7 @@ def tim_vp(template_path, count=1, threshold: float=THRESHOLD):
     if screen is None:
         return None
 
-    pos = img.find_template_color(template_path, threshold=threshold, screen_img=screen)
+    pos = img.find_template_color(template_path, threshold=threshold, screen_img=screen, region=region)
     if pos:
         logger.info(f"Tìm được {template_path} tại {pos}")
         return pos
@@ -335,10 +343,11 @@ def tim_vp(template_path, count=1, threshold: float=THRESHOLD):
     (x, y) = INDEX_NEXT_SAN_XUAT_MAC_DINH
     adb.tap(x, y)
     _sleep(TIME_SLEEP_SHORT)
-    return tim_vp(template_path, count + 1, threshold=threshold)
+    return tim_vp(template_path, count + 1, threshold=threshold, region=region)
 
 
 def sua_may(threshold: float = THRESHOLD):
+    
     adb = _get_adb()
     set_state(PlayerState.SUA_MAY)
     pos_sua = find_image_v2("assets/items/sua_may.png", True, threshold=threshold,
@@ -347,15 +356,21 @@ def sua_may(threshold: float = THRESHOLD):
         x_sua, y_sua = pos_sua
         adb.tap(x_sua, y_sua)
         _sleep(TIME_SLEEP_SHORT)
-        pos_vang = find_image_v2("assets/items/sua_may_vang.png", True, threshold=threshold,
-                                max_retry=0)
-        if pos_vang:
-            x_vang, y_vang = pos_vang
+        if INDEX_SUA_MAY_MAC_DINH is not None:
+            (x_vang, y_vang) = INDEX_SUA_MAY_MAC_DINH
             adb.tap(x_vang, y_vang)
             _sleep(TIME_SLEEP_SHORT)
             logger.info("Sửa máy thành công")
-        else:
-            logger.info("Không tìm thấy nút sửa máy vàng")
+        else:    
+            pos_vang = find_image_v2("assets/items/sua_may_vang.png", True, threshold=threshold,
+                                    max_retry=0)
+            if pos_vang:
+                x_vang, y_vang = pos_vang
+                adb.tap(x_vang, y_vang)
+                _sleep(TIME_SLEEP_SHORT)
+                logger.info("Sửa máy thành công")
+            else:
+                logger.info("Không tìm thấy nút sửa máy vàng")
 
     (x, y) = INDEX_THOAT_SAN_XUAT_MAC_DINH
-    adb.tap_fast(x, y, 2)
+    adb.tap_fast(x, y, 2)  

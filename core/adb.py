@@ -141,6 +141,30 @@ class ADBController:
         cmd = " && ".join([f"input tap {x} {y}" for _ in range(count)])
         self.device.shell(cmd)
         logger.debug(f"[TAP_FAST] ({x}, {y}) x{count}")
+
+    def tap_sendevent_fast(self, x: int, y: int, count: int = 1, event: str = "/dev/input/event2"):
+        """Tap nhanh bang sendevent. Dung tot tren LDPlayer khi event2 dung la touch device."""
+        if count <= 0:
+            return
+        sx, sy = self.px_to_system(x, y)
+        cmds = []
+        for _ in range(count):
+            cmds.extend([
+                f"sendevent {event} 1 330 1",
+                f"sendevent {event} 3 57 0",
+                f"sendevent {event} 3 53 {sx}",
+                f"sendevent {event} 3 54 {sy}",
+                f"sendevent {event} 0 0 0",
+                f"sendevent {event} 1 330 0",
+                f"sendevent {event} 3 57 -1",
+                f"sendevent {event} 0 0 0",
+            ])
+        try:
+            self.device.shell(";".join(cmds))
+            logger.debug(f"[TAP_SENDEVENT_FAST] ({x}, {y}) x{count}")
+        except Exception as e:
+            logger.warning(f"[TAP_SENDEVENT_FAST] failed, fallback tap_fast: {e}")
+            self.tap_fast(x, y, count)
         
     def tap_relative(self, x: int, y: int, offset: Tuple[int, int] = (0, 0), delay: float = 0.5):
         """Tap tọa độ tương đối + offset (dùng với vùng chụp)"""

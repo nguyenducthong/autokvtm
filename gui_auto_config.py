@@ -17,6 +17,7 @@ import cv2
 from core.adb_helper import get_adb_helper, ADBHelper
 from core.adb import ADBController
 from core.trong_cay import main_tc
+from config import CONFIG_LOAI_KHO, REGION_PRESETS, REGION_FROM_CROP
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,30 @@ DEFAULT_BAN_DO = {
     "threshold": 0.85,
     "color_threshold": 0.6
 }
+
+def normalize_region(region):
+    """Return region as [x, y, w, h] or None."""
+    if region in (None, "", []):
+        return None
+    if isinstance(region, str):
+        parts = [p.strip() for p in region.replace(";", ",").split(",")]
+    elif isinstance(region, (list, tuple)):
+        parts = list(region)
+    else:
+        return None
+    if len(parts) != 4:
+        return None
+    try:
+        x, y, w, h = [int(float(p)) for p in parts]
+    except (TypeError, ValueError):
+        return None
+    if w <= 0 or h <= 0:
+        return None
+    return [x, y, w, h]
+
+def format_region(region):
+    region = normalize_region(region)
+    return "" if region is None else ",".join(str(v) for v in region)
 
 def scan_row_templates():
     """Scan assets/items/num/*.png"""
@@ -519,6 +544,31 @@ class AutoConfigGUI:
         tk.Label(r_th, text="Độ chính xác tìm ảnh (0.5-1.0)",
                  bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=4)
 
+        # Region optional: x,y,w,h
+        r_region = tk.Frame(form_frame, bg="#ecf0f1")
+        r_region.pack(fill=tk.X, pady=3)
+        tk.Label(r_region, text="Region:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        self.region_preset_var = tk.StringVar(value=self._default_region_preset())
+        self.region_x_var = tk.StringVar()
+        self.region_y_var = tk.StringVar()
+        self.region_w_var = tk.StringVar()
+        self.region_h_var = tk.StringVar()
+        self.region_preset_combo = ttk.Combobox(
+            r_region,
+            textvariable=self.region_preset_var,
+            values=self._region_combo_values(),
+            state="readonly",
+            width=24,
+            font=("Arial", 9)
+        )
+        self.region_preset_combo.pack(side=tk.LEFT)
+        self.region_preset_combo.bind("<<ComboboxSelected>>", lambda e: self._auto_update_selected_task_region())
+        tk.Button(r_region, text="Xoa", command=self._clear_task_region,
+                  bg="#95a5a6", fg="white", relief=tk.FLAT, cursor="hand2",
+                  font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=(4, 0))
+        tk.Label(r_region, text="(co the lay tu vung crop hien tai)",
+                 bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=4)
+
         # MAY: data (total)
         r7 = tk.Frame(form_frame, bg="#ecf0f1")
         r7.pack(fill=tk.X, pady=3)
@@ -551,19 +601,21 @@ class AutoConfigGUI:
                                    bg="#ecf0f1", padx=10, pady=8)
         list_frame.pack(fill=tk.BOTH, expand=True)
 
-        cols = ("stt", "type", "row", "path_item", "indexs_or_data")
+        cols = ("stt", "type", "row", "path_item", "indexs_or_data", "region")
         self.cfg_tree = ttk.Treeview(list_frame, columns=cols, show="headings", height=8)
         self.cfg_tree.heading("stt", text="#")
         self.cfg_tree.heading("type", text="Loại")
         self.cfg_tree.heading("row", text="Hàng")
         self.cfg_tree.heading("path_item", text="Item")
         self.cfg_tree.heading("indexs_or_data", text="Indexs / Data")
+        self.cfg_tree.heading("region", text="Region")
 
         self.cfg_tree.column("stt", width=35, anchor=tk.CENTER)
         self.cfg_tree.column("type", width=50, anchor=tk.CENTER)
         self.cfg_tree.column("row", width=45, anchor=tk.CENTER)
         self.cfg_tree.column("path_item", width=160)
-        self.cfg_tree.column("indexs_or_data", width=350)
+        self.cfg_tree.column("indexs_or_data", width=270)
+        self.cfg_tree.column("region", width=110)
 
         tree_scroll = tk.Scrollbar(list_frame, command=self.cfg_tree.yview)
         self.cfg_tree.config(yscrollcommand=tree_scroll.set)
@@ -598,7 +650,7 @@ class AutoConfigGUI:
         tk.Label(bk1, text="Loại kho:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT)
         self.bd_loai_kho_var = tk.StringVar(value="KTP")
         ttk.Combobox(bk1, textvariable=self.bd_loai_kho_var,
-                     values=["KSK", "KNS", "KTP"], state="readonly", width=10).pack(side=tk.LEFT)
+                     values=[kho["code"] for kho in CONFIG_LOAI_KHO], state="readonly", width=10).pack(side=tk.LEFT)
         tk.Label(bk1, text="(KSK=Sự Kiện, KNS=Nông Sản, KTP=Thành Phẩm)", bg="#ecf0f1",
                  fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=8)
 
@@ -638,6 +690,30 @@ class AutoConfigGUI:
                    font=("Arial", 10)).pack(side=tk.LEFT)
         tk.Label(bk3b, text="(Mặc định, VP có thể ghi đè)", bg="#ecf0f1",
                  fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=8)
+
+        # Region mac dinh cho ban do
+        bk3c = tk.Frame(bando_frame, bg="#ecf0f1")
+        bk3c.pack(fill=tk.X, pady=3)
+        tk.Label(bk3c, text="Region ban do:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT)
+        self.bd_region_preset_var = tk.StringVar(value=self._default_region_preset())
+        self.bd_region_x_var = tk.StringVar()
+        self.bd_region_y_var = tk.StringVar()
+        self.bd_region_w_var = tk.StringVar()
+        self.bd_region_h_var = tk.StringVar()
+        self.bd_region_preset_combo = ttk.Combobox(
+            bk3c,
+            textvariable=self.bd_region_preset_var,
+            values=self._region_combo_values(),
+            state="readonly",
+            width=24,
+            font=("Arial", 9)
+        )
+        self.bd_region_preset_combo.pack(side=tk.LEFT)
+        tk.Button(bk3c, text="Xoa", command=self._clear_bd_region,
+                  bg="#95a5a6", fg="white", relief=tk.FLAT, cursor="hand2",
+                  font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=(4, 0))
+        tk.Label(bk3c, text="(ap dung cho VP khong co Region VP rieng)",
+                 bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=4)
 
         # Danh sach VP can ban
         bk4 = tk.Frame(bando_frame, bg="#ecf0f1")
@@ -681,16 +757,42 @@ class AutoConfigGUI:
                   bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=8).pack(side=tk.LEFT, padx=4)
 
+        bk4_region = tk.Frame(bk4_right, bg="#ecf0f1")
+        bk4_region.pack(fill=tk.X, pady=2)
+        tk.Label(bk4_region, text="Region VP:", bg="#ecf0f1", font=("Arial", 8)).pack(side=tk.LEFT)
+        self.bd_vp_region_preset_var = tk.StringVar(value=self._default_region_preset())
+        self.bd_vp_region_x_var = tk.StringVar()
+        self.bd_vp_region_y_var = tk.StringVar()
+        self.bd_vp_region_w_var = tk.StringVar()
+        self.bd_vp_region_h_var = tk.StringVar()
+        self.bd_vp_region_preset_combo = ttk.Combobox(
+            bk4_region,
+            textvariable=self.bd_vp_region_preset_var,
+            values=self._region_combo_values(),
+            state="readonly",
+            width=24,
+            font=("Arial", 9)
+        )
+        self.bd_vp_region_preset_combo.pack(side=tk.LEFT, padx=(6, 0))
+        self.bd_vp_region_preset_combo.bind("<<ComboboxSelected>>", lambda e: self._auto_update_selected_vp_region())
+        tk.Button(bk4_region, text="Xoa", command=self._clear_bd_vp_region,
+                  bg="#95a5a6", fg="white", relief=tk.FLAT, cursor="hand2",
+                  font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=6)
+
         # VP list
         self.bd_vp_listbox = tk.Listbox(bk4_right, font=("Consolas", 9), height=4,
                                          selectmode=tk.SINGLE, bg="white")
         self.bd_vp_listbox.pack(fill=tk.X, pady=4)
+        self.bd_vp_listbox.bind("<<ListboxSelect>>", lambda e: self._bd_load_selected_vp())
 
         bk4_btns = tk.Frame(bk4_right, bg="#ecf0f1")
         bk4_btns.pack(fill=tk.X)
+        tk.Button(bk4_btns, text="Cap nhat VP", command=self._bd_update_selected_vp,
+                  bg="#f39c12", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=8).pack(side=tk.LEFT)
         tk.Button(bk4_btns, text="Xoa", command=self._bd_remove_vp,
                   bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
-                  padx=8).pack(side=tk.LEFT)
+                  padx=8).pack(side=tk.LEFT, padx=4)
         tk.Button(bk4_btns, text="Xoa tat ca", command=self._bd_clear_vp,
                   bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=8).pack(side=tk.LEFT, padx=4)
@@ -979,13 +1081,15 @@ class AutoConfigGUI:
                     pi = os.path.basename(item.get("path_item", ""))
                     idxs = item.get("indexs", [])
                     th_txt = f"  th={item['threshold']}" if 'threshold' in item else ""
+                    rg_txt = f"  region={format_region(item.get('region'))}" if item.get('region') else ""
                     self.preview_text.insert(tk.END,
-                        f"#{i}  [{t}]  Hang {row}  |  {pi}  |  {len(idxs)} vi tri{th_txt}\n")
+                        f"#{i}  [{t}]  Hang {row}  |  {pi}  |  {len(idxs)} vi tri{th_txt}{rg_txt}\n")
                 elif t == "MAY":
                     data_items = item.get("data", [])
                     parts = [f"{os.path.basename(d['path_item'])} x{d.get('total',1)}" for d in data_items]
+                    rg_txt = f"  region={format_region(item.get('region'))}" if item.get('region') else ""
                     self.preview_text.insert(tk.END,
-                        f"#{i}  [{t}]  Hang {row}  |  {', '.join(parts)}\n")
+                        f"#{i}  [{t}]  Hang {row}  |  {', '.join(parts)}{rg_txt}\n")
 
             # Ban do summary
             if ban_do.get("data"):
@@ -1000,6 +1104,8 @@ class AutoConfigGUI:
                             extras.append(f"t={item['threshold']}")
                         if "color_threshold" in item:
                             extras.append(f"c={item['color_threshold']}")
+                        if "region" in item:
+                            extras.append(f"r={format_region(item['region'])}")
                         vp_displays.append(name + (f"({','.join(extras)})" if extras else ""))
                 bd_th = ban_do.get('threshold', 0.85)
                 bd_ct = ban_do.get('color_threshold', 0.6)
@@ -1787,6 +1893,167 @@ class AutoConfigGUI:
     # ================================================================
     # TAB CONFIG: LOGIC
     # ================================================================
+    def _region_combo_values(self, extra=None):
+        values = list(REGION_PRESETS.keys()) + [REGION_FROM_CROP]
+        if extra and extra not in values:
+            values.append(extra)
+        return values
+
+    def _default_region_preset(self):
+        return next(iter(REGION_PRESETS), "Toan man")
+
+    def _get_current_crop_region(self):
+        try:
+            raw = [
+                self.ss_crop_x.get().strip(),
+                self.ss_crop_y.get().strip(),
+                self.ss_crop_w.get().strip(),
+                self.ss_crop_h.get().strip(),
+            ]
+        except (AttributeError, tk.TclError):
+            return None
+        return normalize_region(raw)
+
+    def _get_region_from_preset(self, preset_var, x_var, y_var, w_var, h_var):
+        selected = preset_var.get().strip()
+        if selected in REGION_PRESETS:
+            return normalize_region(REGION_PRESETS[selected])
+        if selected == REGION_FROM_CROP:
+            region = self._get_current_crop_region()
+            if region is None:
+                messagebox.showwarning("Loi", "Chua co vung crop hien tai. Vao tab Chup & Cat anh de keo chon vung truoc.")
+            return region
+        if selected.startswith("Da luu:"):
+            return normalize_region(selected.split(":", 1)[1].strip())
+        return self._get_region_from_vars(x_var, y_var, w_var, h_var)
+
+    def _set_region_preset(self, region, preset_var, combo, x_var, y_var, w_var, h_var):
+        self._set_region_vars(region, x_var, y_var, w_var, h_var)
+        normalized = normalize_region(region)
+        if normalized is None:
+            preset = self._default_region_preset()
+        else:
+            preset = None
+            for name, preset_region in REGION_PRESETS.items():
+                if normalize_region(preset_region) == normalized:
+                    preset = name
+                    break
+            if preset is None:
+                preset = f"Da luu: {format_region(normalized)}"
+        preset_var.set(preset)
+        if combo is not None:
+            combo["values"] = self._region_combo_values(preset if preset.startswith("Da luu:") else None)
+
+    def _get_region_from_vars(self, x_var, y_var, w_var, h_var):
+        raw = [x_var.get().strip(), y_var.get().strip(),
+               w_var.get().strip(), h_var.get().strip()]
+        if not any(raw):
+            return None
+        region = normalize_region(raw)
+        if region is None:
+            messagebox.showwarning("Loi", "Region phai co dang X, Y, W, H va W/H > 0")
+        return region
+
+    def _set_region_vars(self, region, x_var, y_var, w_var, h_var):
+        values = normalize_region(region) or ["", "", "", ""]
+        for var, value in zip([x_var, y_var, w_var, h_var], values):
+            var.set(str(value) if value != "" else "")
+
+    def _get_task_region_from_ui(self):
+        return self._get_region_from_preset(
+            self.region_preset_var,
+            self.region_x_var, self.region_y_var,
+            self.region_w_var, self.region_h_var
+        )
+
+    def _set_task_region_to_ui(self, region):
+        self._set_region_preset(
+            region,
+            self.region_preset_var,
+            getattr(self, "region_preset_combo", None),
+            self.region_x_var, self.region_y_var,
+            self.region_w_var, self.region_h_var
+        )
+
+    def _clear_task_region(self):
+        self._set_task_region_to_ui(None)
+
+    def _get_bd_region_from_ui(self):
+        return self._get_region_from_preset(
+            self.bd_region_preset_var,
+            self.bd_region_x_var, self.bd_region_y_var,
+            self.bd_region_w_var, self.bd_region_h_var
+        )
+
+    def _set_bd_region_to_ui(self, region):
+        self._set_region_preset(
+            region,
+            self.bd_region_preset_var,
+            getattr(self, "bd_region_preset_combo", None),
+            self.bd_region_x_var, self.bd_region_y_var,
+            self.bd_region_w_var, self.bd_region_h_var
+        )
+
+    def _clear_bd_region(self):
+        self._set_bd_region_to_ui(None)
+
+    def _auto_update_selected_task_region(self):
+        region = self._get_task_region_from_ui()
+        idx = self._editing_index
+        if idx is None:
+            sel = self.cfg_tree.selection() if hasattr(self, "cfg_tree") else ()
+            if sel:
+                idx = self.cfg_tree.index(sel[0])
+        if idx is None or idx < 0 or idx >= len(self.config_items):
+            return
+        if region:
+            self.config_items[idx]["region"] = region
+        else:
+            self.config_items[idx].pop("region", None)
+        self._refresh_tree()
+        children = self.cfg_tree.get_children()
+        if idx < len(children):
+            self.cfg_tree.selection_set(children[idx])
+            self.cfg_tree.focus(children[idx])
+
+    def _get_bd_vp_region_from_ui(self):
+        return self._get_region_from_preset(
+            self.bd_vp_region_preset_var,
+            self.bd_vp_region_x_var, self.bd_vp_region_y_var,
+            self.bd_vp_region_w_var, self.bd_vp_region_h_var
+        )
+
+    def _clear_bd_vp_region(self):
+        self._set_region_preset(
+            None,
+            self.bd_vp_region_preset_var,
+            getattr(self, "bd_vp_region_preset_combo", None),
+            self.bd_vp_region_x_var, self.bd_vp_region_y_var,
+            self.bd_vp_region_w_var, self.bd_vp_region_h_var
+        )
+        self._auto_update_selected_vp_region()
+
+    def _auto_update_selected_vp_region(self):
+        if getattr(self, "_loading_bd_vp", False):
+            return
+        sel = self.bd_vp_listbox.curselection() if hasattr(self, "bd_vp_listbox") else ()
+        if not sel:
+            return
+        idx = sel[0]
+        if idx < 0 or idx >= len(self.bd_vp_list):
+            return
+        item = self.bd_vp_list[idx]
+        vp_info = {"path": item} if isinstance(item, str) else dict(item)
+        region = self._get_bd_vp_region_from_ui()
+        if region:
+            vp_info["region"] = region
+        else:
+            vp_info.pop("region", None)
+        self.bd_vp_list[idx] = vp_info
+        self.bd_vp_listbox.delete(idx)
+        self.bd_vp_listbox.insert(idx, self._bd_format_vp_display(vp_info))
+        self.bd_vp_listbox.selection_set(idx)
+
     # --- Ban do VP list helpers ---
     def _update_bd_vp_preview(self):
         photo = self._load_preview(self.bd_vp_var.get())
@@ -1818,6 +2085,9 @@ class AutoConfigGUI:
                 vp_info["color_threshold"] = float(c_str)
             except ValueError:
                 pass
+        region = self._get_bd_vp_region_from_ui()
+        if region:
+            vp_info["region"] = region
 
         self.bd_vp_list.append(vp_info)
         # Hiển thị trong listbox
@@ -1827,9 +2097,88 @@ class AutoConfigGUI:
             extras.append(f"t={vp_info['threshold']}")
         if "color_threshold" in vp_info:
             extras.append(f"c={vp_info['color_threshold']}")
+        if "region" in vp_info:
+            extras.append(f"r={format_region(vp_info['region'])}")
         if extras:
             display += f"  ({', '.join(extras)})"
         self.bd_vp_listbox.insert(tk.END, display)
+
+    def _bd_format_vp_display(self, vp_info):
+        if isinstance(vp_info, str):
+            vp_info = {"path": vp_info}
+        display = os.path.basename(vp_info.get("path", ""))
+        extras = []
+        if "threshold" in vp_info:
+            extras.append(f"t={vp_info['threshold']}")
+        if "color_threshold" in vp_info:
+            extras.append(f"c={vp_info['color_threshold']}")
+        if "region" in vp_info:
+            extras.append(f"r={format_region(vp_info['region'])}")
+        if extras:
+            display += f"  ({', '.join(extras)})"
+        return display
+
+    def _bd_load_selected_vp(self):
+        sel = self.bd_vp_listbox.curselection()
+        if not sel:
+            return
+        self._loading_bd_vp = True
+        try:
+            item = self.bd_vp_list[sel[0]]
+            vp_info = {"path": item} if isinstance(item, str) else dict(item)
+            self.bd_vp_var.set(os.path.basename(vp_info.get("path", "")))
+            self.bd_vp_threshold_var.set(str(vp_info.get("threshold", "")))
+            self.bd_vp_color_var.set(str(vp_info.get("color_threshold", "")))
+            self._set_region_preset(
+                vp_info.get("region"),
+                self.bd_vp_region_preset_var,
+                getattr(self, "bd_vp_region_preset_combo", None),
+                self.bd_vp_region_x_var, self.bd_vp_region_y_var,
+                self.bd_vp_region_w_var, self.bd_vp_region_h_var
+            )
+            self._update_bd_vp_preview()
+        finally:
+            self._loading_bd_vp = False
+
+    def _bd_update_selected_vp(self):
+        sel = self.bd_vp_listbox.curselection()
+        if not sel:
+            messagebox.showinfo("Thong bao", "Chon 1 VP trong danh sach de cap nhat!")
+            return
+        idx = sel[0]
+        vp = self.bd_vp_var.get().strip()
+        if not vp:
+            return
+        vp_info = {"path": f"assets/items/{vp}" if not vp.startswith("assets/") else vp}
+        t_str = self.bd_vp_threshold_var.get().strip()
+        c_str = self.bd_vp_color_var.get().strip()
+        if t_str:
+            try:
+                vp_info["threshold"] = float(t_str)
+            except ValueError:
+                pass
+        if c_str:
+            try:
+                vp_info["color_threshold"] = float(c_str)
+            except ValueError:
+                pass
+        region = self._get_bd_vp_region_from_ui()
+        if region:
+            vp_info["region"] = region
+
+        new_path = vp_info["path"]
+        for i, item in enumerate(self.bd_vp_list):
+            if i == idx:
+                continue
+            existing_path = item["path"] if isinstance(item, dict) else item
+            if existing_path == new_path:
+                messagebox.showwarning("Loi", "VP nay da co trong danh sach!")
+                return
+
+        self.bd_vp_list[idx] = vp_info
+        self.bd_vp_listbox.delete(idx)
+        self.bd_vp_listbox.insert(idx, self._bd_format_vp_display(vp_info))
+        self.bd_vp_listbox.selection_set(idx)
 
     def _bd_remove_vp(self):
         sel = self.bd_vp_listbox.curselection()
@@ -1935,6 +2284,9 @@ class AutoConfigGUI:
             ban_do["color_threshold"] = self.bd_color_threshold_var.get()
         except (ValueError, tk.TclError):
             ban_do["color_threshold"] = 0.6
+        region = self._get_bd_region_from_ui()
+        if region:
+            ban_do["region"] = region
         return ban_do
 
     def _set_settings_to_ui(self, settings):
@@ -1950,6 +2302,7 @@ class AutoConfigGUI:
         self.bd_so_lan_var.set(str(ban_do.get("so_lan_dat_vp", 4)))
         self.bd_xoa_kc_var.set(ban_do.get("xoa_kc", True))
         self.bd_dat_qc_var.set(ban_do.get("dat_quang_cao", True))
+        self._set_bd_region_to_ui(ban_do.get("region"))
         # Set QC/XE lists
         qc_list = ban_do.get("qc_templates", [])
         xe_list = ban_do.get("xoa_kc_templates", [])
@@ -1980,6 +2333,8 @@ class AutoConfigGUI:
                 extras.append(f"t={vp_info['threshold']}")
             if "color_threshold" in vp_info:
                 extras.append(f"c={vp_info['color_threshold']}")
+            if "region" in vp_info:
+                extras.append(f"r={format_region(vp_info['region'])}")
             display = name + (f"  ({', '.join(extras)})" if extras else "")
             self.bd_vp_listbox.insert(tk.END, display)
         # Load qc list
@@ -2140,6 +2495,7 @@ class AutoConfigGUI:
         row = self.row_var.get()
         path_row_file = self.path_row_var.get()
         path_row = f"assets/items/num/{path_row_file}"
+        region = self._get_task_region_from_ui()
 
         if t == "TC":
             indexs = list(self.selected_indexs)
@@ -2163,6 +2519,8 @@ class AutoConfigGUI:
                 "path_item_default": path_default,
                 "threshold": th
             }
+            if region:
+                item["region"] = region
             th_label = f" th={th}" if th != 0.85 else ""
             display_extra = ", ".join(indexs[:6]) + ("..." if len(indexs) > 6 else "") + th_label
             display_item = path_item_file
@@ -2182,6 +2540,8 @@ class AutoConfigGUI:
                 "path_row": path_row,
                 "data": [{"path_item": path_item, "total": total}]
             }
+            if region:
+                item["region"] = region
             display_extra = f"{path_item_file} x{total}"
             display_item = path_item_file
         else:
@@ -2207,7 +2567,7 @@ class AutoConfigGUI:
             else:
                 pi = ""
                 extra = ""
-            self.cfg_tree.insert("", tk.END, values=(i, t, row, pi, extra))
+            self.cfg_tree.insert("", tk.END, values=(i, t, row, pi, extra, format_region(cfg.get("region"))))
 
     def _remove_selected(self):
         sel = self.cfg_tree.selection()
@@ -2249,6 +2609,7 @@ class AutoConfigGUI:
         t = item.get("type", "TC")
         self.type_var.set(t)
         self.row_var.set(str(item.get("row", 1)))
+        self._set_task_region_to_ui(item.get("region"))
 
         path_row = item.get("path_row", "")
         self.path_row_var.set(os.path.basename(path_row))
@@ -2299,6 +2660,7 @@ class AutoConfigGUI:
         row = self.row_var.get()
         path_row_file = self.path_row_var.get()
         path_row = f"assets/items/num/{path_row_file}"
+        region = self._get_task_region_from_ui()
 
         if t == "TC":
             indexs = list(self.selected_indexs)
@@ -2322,6 +2684,8 @@ class AutoConfigGUI:
                 "path_item_default": path_default,
                 "threshold": th
             }
+            if region:
+                new_item["region"] = region
 
         elif t == "MAY":
             path_item_file = self.path_item_var.get()
@@ -2338,6 +2702,8 @@ class AutoConfigGUI:
                 "path_row": path_row,
                 "data": [{"path_item": path_item, "total": total}]
             }
+            if region:
+                new_item["region"] = region
         else:
             return
 

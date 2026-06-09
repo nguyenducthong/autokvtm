@@ -2,6 +2,14 @@
 # Không có giá trị mặc định - người dùng phải chọn thiết bị
 DEVICE_SERIAL = None  # Sẽ được set khi chọn thiết bị trong GUI
 GARDEN_REGION = (100, 380, 880, 1100)
+REGION_PRESETS = {
+    "Toàn màn": None,
+    "Cây và gieo": [108, 435, 578, 362],
+    "Máy sản xuất": [110, 211, 510, 560],
+    "Mây": [630,571,51,225],
+    "Quầy hàng": [12, 216, 682, 374]
+}
+REGION_FROM_CROP = "Vung crop hien tai"
 SIZE = 800
 SWIPE_DURATION = 1000  # Tốc độ kéo (ms)
 PLANTS = [
@@ -240,21 +248,24 @@ CONFIG_TEMP_TC = [
 CONFIG_LOAI_KHO = [
     {
         "code": "KSK",
-        "name": "Kho Sự Kiện",
-        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+        "name": "Kho Su Kien",
+        "path_warehouse_not_select": "assets/items/kho_event_0.png",
+        "path_warehouse_select": "assets/items/kho_event.png",
+        "position": (361, 530)
     },
     {
         "code": "KNS",
-        "name": "Kho Nông Sản",
-        "path_warehouse_not_select": "assets/items/kho_nong_san_0.png", 
-        "path_warehouse_select": "assets/items/kho_nong_san.png"
+        "name": "Kho Nong San",
+        "path_warehouse_not_select": "assets/items/kho_nong_san_0.png",
+        "path_warehouse_select": "assets/items/kho_nong_san.png",
+        "position": (361, 296)
     },
     {
         "code": "KTP",
-        "name": "Kho Thành Phẩm",
+        "name": "Kho Thanh Pham",
         "path_warehouse_not_select": "assets/items/kho_thanh_pham_0.png",
-        "path_warehouse_select": "assets/items/kho_thanh_pham.png"
+        "path_warehouse_select": "assets/items/kho_thanh_pham.png",
+        "position": (361, 353)
     }
 ]
 
@@ -318,3 +329,4 @@ INDEX_SAN_XUAT_MAC_DINH = (319, 576)
 INDEX_THOAT_SAN_XUAT_MAC_DINH = (735, 420)
 INDEX_NEXT_SAN_XUAT_MAC_DINH = (514, 511)
 INDEX_CUA_HANG_MAC_DINH = (513, 690)
+INDEX_SUA_MAY_MAC_DINH = (577, 475)
