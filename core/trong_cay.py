@@ -188,7 +188,7 @@ def trong_cay(template_path, template_path_default, points: list, tap,
         adb.drag_smooth(points, total_duration_ms=duration_ms)
     else:
         logger.warning("Không tìm thấy loại cây, tap lại")
-        adb.tap(x, y)
+        adb.tap(*INDEX_THOAT_SAN_XUAT_MAC_DINH)
 
 
 def check_trong_cay(threshold=None, is_retry = False, tap = None):

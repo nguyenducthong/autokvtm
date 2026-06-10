@@ -2,6 +2,8 @@ import os
 import json
 import subprocess
 from typing import Optional
+import glob
+import csv
 
 class ADBHelper:
     """Tìm và quản lý ADB của LDPlayer"""
@@ -39,6 +41,7 @@ class ADBHelper:
         if ldplayer_dir:
             adb_path = os.path.join(ldplayer_dir, "adb.exe")
             if os.path.isfile(adb_path):
+                self.ldplayer_dir = ldplayer_dir
                 print(f"[OK] Tim thay ADB trong LDPlayer: {adb_path}")
                 return adb_path
 
@@ -101,6 +104,185 @@ class ADBHelper:
                     devices.append(parts[0].strip())
 
         return devices
+
+    def get_ldplayers(self) -> list:
+        """Lay tat ca LDPlayer instance, ke ca instance chua start."""
+        running_serials = set()
+        try:
+            running_serials = set(self.get_devices())
+        except Exception:
+            running_serials = set()
+
+        players_by_index = {}
+        for player in self._get_ldplayers_from_config(running_serials):
+            players_by_index[player["index"]] = player
+
+        # ldconsole list2 co may ban chi tra instance da tung mo, nen chi dung de bo sung/ghi de ten.
+        for player in self._get_ldplayers_from_console(running_serials):
+            current = players_by_index.get(player["index"])
+            if current:
+                current.update({
+                    "name": current["name"] or player["name"],
+                    "running": player["running"],
+                    "serial": player["serial"],
+                    "adb_port": player["adb_port"],
+                })
+            else:
+                players_by_index[player["index"]] = player
+
+        self._apply_ldplayer_isrunning(players_by_index)
+        players = list(players_by_index.values())
+
+        if not players:
+            for serial in sorted(running_serials):
+                players.append({
+                    "index": None,
+                    "name": self.get_device_name(serial),
+                    "serial": serial,
+                    "running": True,
+                    "adb_port": None,
+                })
+
+        return sorted(players, key=lambda p: (p["index"] is None, p["index"] if p["index"] is not None else 9999, p["name"]))
+
+    def _make_ldplayer_info(self, idx: int, name: str, running_serials: set, running_override=None) -> dict:
+        port = 5555 + 2 * idx
+        serial_emu = f"emulator-{port - 1}"
+        serial_ip = f"127.0.0.1:{port}"
+        running = serial_emu in running_serials or serial_ip in running_serials
+        if running_override is not None:
+            running = running_override
+        serial = serial_emu if serial_emu in running_serials else serial_ip if serial_ip in running_serials else serial_emu
+        return {
+            "index": idx,
+            "name": name or f"LDPlayer-{idx}",
+            "serial": serial,
+            "running": running,
+            "adb_port": port,
+        }
+
+    def _get_ldplayers_from_console(self, running_serials: set) -> list:
+        console_path = self._find_ldconsole_path()
+        if not console_path:
+            return []
+        try:
+            result = subprocess.run(
+                [console_path, "list2"],
+                capture_output=True,
+                text=True,
+                timeout=8
+            )
+        except Exception:
+            return []
+        if result.returncode != 0:
+            return []
+
+        players = []
+        for row in csv.reader(result.stdout.splitlines()):
+            if len(row) < 2:
+                continue
+            try:
+                idx = int(row[0])
+            except ValueError:
+                continue
+            running = None
+            if len(row) >= 7:
+                try:
+                    android_started = int(row[4])
+                    pid = int(row[5])
+                    vbox_pid = int(row[6])
+                    running = android_started == 1 or pid > 0 or vbox_pid > 0
+                except ValueError:
+                    running = None
+            players.append(self._make_ldplayer_info(idx, row[1].strip(), running_serials, running_override=running))
+        return players
+
+    def _apply_ldplayer_isrunning(self, players_by_index: dict):
+        console_path = self._find_ldconsole_path()
+        if not console_path:
+            return
+        for idx, player in players_by_index.items():
+            if idx is None:
+                continue
+            try:
+                result = subprocess.run(
+                    [console_path, "isrunning", "--index", str(idx)],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+            except Exception:
+                continue
+            status = (result.stdout or "").strip().lower()
+            if "running" in status:
+                player["running"] = True
+            elif "stop" in status or "not" in status or status == "false":
+                player["running"] = False
+
+    def _get_ldplayers_from_config(self, running_serials: set) -> list:
+        ld_dir = self._find_ldplayer_dir()
+        players = []
+        if ld_dir:
+            config_dir = os.path.join(ld_dir, "vms", "config")
+            for cfg_path in glob.glob(os.path.join(config_dir, "leidian*.config")):
+                filename = os.path.basename(cfg_path)
+                idx_str = filename.replace("leidian", "").replace(".config", "")
+                try:
+                    idx = int(idx_str)
+                except ValueError:
+                    continue
+
+                name = f"LDPlayer-{idx}"
+                try:
+                    with open(cfg_path, "r", encoding="utf-8") as f:
+                        cfg = json.load(f)
+                    status_settings = cfg.get("statusSettings")
+                    if isinstance(status_settings, dict):
+                        name = status_settings.get("playerName") or name
+                    else:
+                        name = cfg.get("statusSettings.playerName") or name
+                except Exception:
+                    pass
+                players.append(self._make_ldplayer_info(idx, name, running_serials))
+        return players
+
+    def _find_ldconsole_path(self) -> Optional[str]:
+        ld_dir = self._find_ldplayer_dir()
+        candidates = []
+        if ld_dir:
+            candidates.extend([
+                os.path.join(ld_dir, "ldconsole.exe"),
+                os.path.join(ld_dir, "dnconsole.exe"),
+            ])
+        if self.adb_path and os.path.isabs(self.adb_path):
+            adb_dir = os.path.dirname(self.adb_path)
+            candidates.extend([
+                os.path.join(adb_dir, "ldconsole.exe"),
+                os.path.join(adb_dir, "dnconsole.exe"),
+            ])
+        for path in candidates:
+            if os.path.isfile(path):
+                return path
+        return None
+
+    def start_ldplayer(self, index: int = None, name: str = None) -> bool:
+        """Start LDPlayer instance bang ldconsole/dnconsole."""
+        console_path = self._find_ldconsole_path()
+        if not console_path:
+            raise FileNotFoundError("Khong tim thay ldconsole.exe/dnconsole.exe")
+        if index is not None:
+            args = [console_path, "launch", "--index", str(index)]
+        elif name:
+            args = [console_path, "launch", "--name", name]
+        else:
+            raise ValueError("Can index hoac name de start LDPlayer")
+
+        creationflags = 0
+        if os.name == "nt":
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         creationflags=creationflags)
+        return True
 
     def connect_emulator(self, port: int = 5554) -> bool:
         """Kết nối với emulator"""

@@ -22,6 +22,50 @@ from config import CONFIG_LOAI_KHO, REGION_PRESETS, REGION_FROM_CROP
 logger = logging.getLogger(__name__)
 
 
+class DeviceButtonState:
+    def __init__(self, owner, serial, state_key):
+        self.owner = owner
+        self.serial = serial
+        self.state_key = state_key
+
+    def config(self, **kwargs):
+        if "state" in kwargs:
+            card = self.owner.device_cards.get(self.serial)
+            if card:
+                card[self.state_key] = kwargs["state"]
+                self.owner._update_device_row(self.serial)
+                self.owner._refresh_device_action_buttons()
+
+
+class TreeTooltip:
+    def __init__(self, widget):
+        self.widget = widget
+        self.tip = None
+        self.text = None
+
+    def show(self, text, x, y):
+        if self.text == text and self.tip:
+            self.tip.geometry(f"+{x + 14}+{y + 14}")
+            return
+        self.hide()
+        self.text = text
+        self.tip = tk.Toplevel(self.widget)
+        self.tip.wm_overrideredirect(True)
+        self.tip.geometry(f"+{x + 14}+{y + 14}")
+        label = tk.Label(self.tip, text=text, bg="#2c3e50", fg="white",
+                         font=("Arial", 8), padx=6, pady=3, relief=tk.SOLID, bd=1)
+        label.pack()
+
+    def hide(self):
+        if self.tip:
+            try:
+                self.tip.destroy()
+            except tk.TclError:
+                pass
+        self.tip = None
+        self.text = None
+
+
 class AutocompleteCombobox(ttk.Combobox):
     """Combobox click mo het danh sach, go de loc."""
 
@@ -225,6 +269,7 @@ class AutoConfigGUI:
         self._refresh_devices()
         self._refresh_configs()
         self._ss_refresh_devices()
+        self._schedule_device_auto_refresh()
 
     # ================================================================
     # UI
@@ -322,19 +367,54 @@ class AutoConfigGUI:
                   bg="#7f8c8d", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=4)
 
-        # Scrollable device list
-        dev_canvas = tk.Canvas(dev_frame, bg="#ecf0f1", highlightthickness=0)
-        dev_scrollbar = tk.Scrollbar(dev_frame, orient=tk.VERTICAL, command=dev_canvas.yview)
-        self.dev_list_frame = tk.Frame(dev_canvas, bg="#ecf0f1")
-        self.dev_list_frame.bind("<Configure>",
-            lambda e: dev_canvas.configure(scrollregion=dev_canvas.bbox("all")))
-        dev_canvas.create_window((0, 0), window=self.dev_list_frame, anchor=tk.NW)
-        dev_canvas.configure(yscrollcommand=dev_scrollbar.set)
-        dev_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        dev_canvas.pack(fill=tk.BOTH, expand=True)
+        action_bar = tk.Frame(dev_frame, bg="#ecf0f1")
+        self.btn_selected_start_ld = tk.Button(action_bar, text="Start LD", command=self._start_selected_ldplayer,
+                                              bg="#2980b9", fg="white", relief=tk.FLAT, cursor="hand2",
+                                              padx=10, font=("Arial", 9, "bold"), state=tk.DISABLED)
+        self.btn_selected_start_ld.pack(side=tk.LEFT)
+        self.btn_selected_start = tk.Button(action_bar, text="Chạy", command=self._start_selected_device,
+                                            bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
+                                            padx=10, font=("Arial", 9, "bold"), state=tk.DISABLED)
+        self.btn_selected_start.pack(side=tk.LEFT, padx=4)
+        self.btn_selected_stop = tk.Button(action_bar, text="Dừng", command=self._stop_selected_device,
+                                           bg="#c0392b", fg="white", relief=tk.FLAT, cursor="hand2",
+                                           padx=10, font=("Arial", 9, "bold"), state=tk.DISABLED)
+        self.btn_selected_stop.pack(side=tk.LEFT)
+
+        # Device table
+        self.device_table = tk.Frame(dev_frame, bg="#cfd8df", bd=1, relief=tk.SOLID)
+        self.device_table.pack(fill=tk.BOTH, expand=True)
+        self.device_table_tooltip = TreeTooltip(self.device_table)
+
+        header = tk.Frame(self.device_table, bg="#e9eef2")
+        header.pack(fill=tk.X)
+        self.device_col_widths = (70, 230, 110, 300, 62, 62, 62)
+        self.device_col_weights = (0, 1, 0, 1, 0, 0, 0)
+        headers = [
+            ("STT", tk.CENTER),
+            ("Tên LDPlayer", tk.W),
+            ("LD", tk.CENTER),
+            ("Trạng thái job", tk.W),
+            ("Mở", tk.CENTER),
+            ("Chạy", tk.CENTER),
+            ("Dừng", tk.CENTER),
+        ]
+        for col, (text, anchor) in enumerate(headers):
+            lbl = tk.Label(header, text=text, bg="#e9eef2", fg="#111111",
+                           font=("Arial", 10, "bold"), anchor=anchor,
+                           padx=6, pady=6, bd=0, relief=tk.FLAT)
+            lbl.grid(row=0, column=col, sticky="nsew", padx=(0, 1), pady=(0, 1))
+            header.grid_columnconfigure(col, weight=self.device_col_weights[col],
+                                        minsize=self.device_col_widths[col])
+
+        self.device_rows_frame = tk.Frame(self.device_table, bg="#cfd8df")
+        self.device_rows_frame.pack(fill=tk.BOTH, expand=True)
+        for col in range(len(self.device_col_widths)):
+            self.device_rows_frame.grid_columnconfigure(col, weight=self.device_col_weights[col],
+                                                       minsize=self.device_col_widths[col])
 
         self.devices_list = []
-        self.device_cards = {}  # serial -> {frame, status_label, btn_start, btn_stop, stop_event, thread}
+        self.device_cards = {}  # serial -> state row cua LDPlayer
 
         # --- Mini log (5 dong gan nhat) ---
         mini_log_frame = tk.LabelFrame(pad, text="Log gần đây (xem đầy đủ ở tab Nhật Ký)",
@@ -923,25 +1003,65 @@ class AutoConfigGUI:
     # ================================================================
     # TAB AUTO: LOGIC
     # ================================================================
-    def _refresh_devices(self):
+    def _schedule_device_auto_refresh(self):
         try:
-            serials = self.adb_helper.get_devices()
+            if not getattr(self, "_device_refresh_busy", False):
+                self._refresh_devices(silent=True)
+        finally:
+            self.root.after(5000, self._schedule_device_auto_refresh)
+
+    def _refresh_devices(self, silent=False):
+        try:
+            self._device_refresh_busy = True
+            players = self.adb_helper.get_ldplayers()
             self.devices_list = []
+            old_states = {}
+            for old_serial, old_card in self.device_cards.items():
+                key = old_card.get("index") if old_card.get("index") is not None else old_serial
+                thread = old_card.get("thread")
+                try:
+                    status_text = old_card["status_label"].cget("text")
+                    status_fg = old_card["status_label"].cget("fg")
+                    dot_fg = old_card["status_dot"].cget("fg")
+                except tk.TclError:
+                    status_text = None
+                    status_fg = None
+                    dot_fg = None
+                old_states[key] = {
+                    "thread": thread,
+                    "stop_event": old_card.get("stop_event"),
+                    "status_text": status_text,
+                    "status_fg": status_fg,
+                    "dot_fg": dot_fg,
+                }
             # Xóa cards cũ
             for w in self.dev_list_frame.winfo_children():
                 w.destroy()
             self.device_cards = {}
 
-            for s in serials:
-                name = self.adb_helper.get_device_name(s)
-                self.devices_list.append({"serial": s, "name": name})
-                self._create_device_card(s, name)
+            for player in players:
+                self.devices_list.append(player)
+                self._create_device_card(
+                    player["serial"],
+                    player["name"],
+                    index=player.get("index"),
+                    running=player.get("running", False),
+                    adb_port=player.get("adb_port"),
+                )
+                key = player.get("index") if player.get("index") is not None else player["serial"]
+                old_state = old_states.get(key)
+                if old_state:
+                    self._restore_card_state(player["serial"], old_state)
 
-            if not serials:
+            if not players:
                 tk.Label(self.dev_list_frame, text="Không tìm thấy thiết bị. Bấm 'Làm mới'.",
                          bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 10)).pack(pady=10)
-            self.status_label.config(text=f"Tim thay {len(serials)} thiet bi")
+            running_count = sum(1 for p in players if p.get("running"))
+            if not silent:
+                self.status_label.config(text=f"Tìm thấy {len(players)} LDPlayer | Đang chạy {running_count}")
         except (FileNotFoundError, OSError) as e:
+            if silent:
+                return
             self.status_label.config(text="✗ Lỗi: Không tìm thấy ADB")
             if messagebox.askyesno(
                 "Lỗi ADB",
@@ -969,31 +1089,85 @@ class AutoConfigGUI:
             else:
                 self.status_label.config(text=f"Lỗi quét thiết bị: {e}")
             messagebox.showerror("Lỗi", f"Có lỗi xảy ra: {e}")
+        finally:
+            self._device_refresh_busy = False
 
-    def _create_device_card(self, serial, name):
+    def _restore_card_state(self, serial, old_state):
+        card = self.device_cards.get(serial)
+        if not card:
+            return
+
+        thread = old_state.get("thread")
+        is_job_running = bool(thread and thread.is_alive())
+        card["thread"] = thread
+        card["stop_event"] = old_state.get("stop_event")
+
+        if not is_job_running and not card.get("running", False):
+            card["status_label"].config(text="Chưa chạy", fg="#7f8c8d")
+            card["status_dot"].config(fg="#95a5a6")
+            card["btn_start"].config(state=tk.DISABLED)
+            card["btn_stop"].config(state=tk.DISABLED)
+            card["btn_ld_start"].config(state=tk.NORMAL)
+            return
+
+        if not is_job_running:
+            return
+
+        if old_state.get("status_text"):
+            card["status_label"].config(
+                text=old_state["status_text"],
+                fg=old_state.get("status_fg") or card["status_label"].cget("fg")
+            )
+        if old_state.get("dot_fg"):
+            card["status_dot"].config(fg=old_state["dot_fg"])
+
+        card["btn_start"].config(state=tk.DISABLED)
+        card["btn_stop"].config(state=tk.NORMAL)
+        card["btn_ld_start"].config(state=tk.DISABLED)
+
+    def _config_current_card(self, serial, widget_key, **kwargs):
+        card = self.device_cards.get(serial)
+        if not card:
+            return
+        widget = card.get(widget_key)
+        if not widget:
+            return
+        try:
+            widget.config(**kwargs)
+        except tk.TclError:
+            pass
+
+    def _create_device_card(self, serial, name, index=None, running=True, adb_port=None):
         """Tạo 1 card cho 1 thiết bị."""
         card = tk.Frame(self.dev_list_frame, bg="white", relief=tk.RIDGE, bd=1, padx=10, pady=6)
         card.pack(fill=tk.X, pady=2)
 
         # Đèn trạng thái
-        status_dot = tk.Label(card, text="●", font=("Arial", 14), fg="#95a5a6", bg="white")
+        status_dot = tk.Label(card, text="●", font=("Arial", 14), fg="#27ae60" if running else "#95a5a6", bg="white")
         status_dot.pack(side=tk.LEFT, padx=(0, 8))
 
         # Tên + serial
         info = tk.Frame(card, bg="white")
         info.pack(side=tk.LEFT, fill=tk.X, expand=True)
         tk.Label(info, text=name, font=("Arial", 11, "bold"), bg="white", anchor=tk.W).pack(anchor=tk.W)
-        tk.Label(info, text=serial, font=("Arial", 8), fg="#7f8c8d", bg="white", anchor=tk.W).pack(anchor=tk.W)
+        meta = f"index={index} | {serial}" if index is not None else serial
+        tk.Label(info, text=meta, font=("Arial", 8), fg="#7f8c8d", bg="white", anchor=tk.W).pack(anchor=tk.W)
 
         # Trạng thái text
-        status_label = tk.Label(card, text="Sẵn sàng", font=("Arial", 9), fg="#7f8c8d",
+        status_label = tk.Label(card, text="Sẵn sàng" if running else "Chưa chạy", font=("Arial", 9), fg="#27ae60" if running else "#7f8c8d",
                                  bg="white", width=18, anchor=tk.W)
         status_label.pack(side=tk.LEFT, padx=8)
 
         # Nút Chạy
+        btn_ld_start = tk.Button(card, text="Start LD", font=("Arial", 9, "bold"),
+                                 bg="#2980b9", fg="white", relief=tk.FLAT, cursor="hand2",
+                                 padx=10, state=tk.DISABLED if running else tk.NORMAL,
+                                 command=lambda i=index, s=serial: self._start_ldplayer(i, s))
+        btn_ld_start.pack(side=tk.RIGHT, padx=2)
+
         btn_start = tk.Button(card, text="Chạy", font=("Arial", 9, "bold"),
                                bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
-                               padx=12, command=lambda s=serial: self._start_one(s))
+                               padx=12, state=tk.NORMAL if running else tk.DISABLED, command=lambda s=serial: self._start_one(s))
         btn_start.pack(side=tk.RIGHT, padx=2)
 
         # Nút Dừng
@@ -1009,9 +1183,13 @@ class AutoConfigGUI:
             "status_label": status_label,
             "btn_start": btn_start,
             "btn_stop": btn_stop,
+            "btn_ld_start": btn_ld_start,
             "stop_event": None,
             "thread": None,
             "name": name,
+            "index": index,
+            "running": running,
+            "adb_port": adb_port,
         }
 
     def _set_card_status(self, serial, status, color):
@@ -1029,6 +1207,407 @@ class AutoConfigGUI:
             self.root.after(0, _update)
         except RuntimeError:
             pass
+
+    def _start_ldplayer(self, index, serial):
+        card = self.device_cards.get(serial)
+        if card:
+            card["btn_ld_start"].config(state=tk.DISABLED)
+            card["status_label"].config(text="Đang mở...", fg="#2980b9")
+        try:
+            self.adb_helper.start_ldplayer(index=index)
+            self.status_label.config(text=f"Đang mở LDPlayer index={index}", bg="#2980b9")
+            self._open_game_after_ld_start(serial)
+            self.root.after(3000, self._refresh_devices)
+            self.root.after(8000, self._refresh_devices)
+            self.root.after(14000, self._refresh_devices)
+            self.root.after(22000, self._refresh_devices)
+        except Exception as e:
+            if silent:
+                return
+            if card:
+                card["btn_ld_start"].config(state=tk.NORMAL)
+                card["status_label"].config(text="Start loi", fg="#e74c3c")
+            messagebox.showerror("Lỗi mở LDPlayer", str(e))
+
+    def _refresh_devices(self, silent=False):
+        try:
+            self._device_refresh_busy = True
+            players = self.adb_helper.get_ldplayers()
+            self._sync_device_rows(players)
+            running_count = sum(1 for p in players if p.get("running"))
+            if not silent:
+                self.status_label.config(text=f"Tìm thấy {len(players)} LDPlayer | Đang chạy {running_count}")
+            self._refresh_device_action_buttons()
+        except (FileNotFoundError, OSError) as e:
+            if silent:
+                return
+            self.status_label.config(text="Lỗi: Không tìm thấy ADB")
+            if messagebox.askyesno(
+                "Lỗi ADB",
+                "Không tìm thấy ADB!\n\nBạn có muốn chọn thư mục LDPlayer thủ công không?"
+            ):
+                if self._choose_adb_path():
+                    self._refresh_devices()
+                    return
+            messagebox.showerror("Lỗi ADB", f"Không tìm thấy ADB!\n\n{e}")
+        except Exception as e:
+            if silent:
+                return
+            self.status_label.config(text=f"Lỗi quét thiết bị: {e}")
+            messagebox.showerror("Lỗi", f"Có lỗi xảy ra: {e}")
+        finally:
+            self._device_refresh_busy = False
+
+    def _sync_device_rows(self, players):
+        self.devices_list = list(players)
+        old_states = {
+            (card.get("index") if card.get("index") is not None else serial): card
+            for serial, card in self.device_cards.items()
+        }
+        seen_serials = set()
+
+        for pos, player in enumerate(players):
+            key = player.get("index") if player.get("index") is not None else player["serial"]
+            card = self._upsert_device_row(
+                player["serial"],
+                player["name"],
+                index=player.get("index"),
+                running=player.get("running", False),
+                adb_port=player.get("adb_port"),
+                old_state=old_states.get(key),
+            )
+            seen_serials.add(player["serial"])
+            card["row"].pack_forget()
+            card["row"].pack(fill=tk.X)
+            self._update_device_row(player["serial"])
+
+        for serial, card in list(self.device_cards.items()):
+            if serial not in seen_serials:
+                try:
+                    card["row"].destroy()
+                except tk.TclError:
+                    pass
+                self.device_cards.pop(serial, None)
+
+    def _upsert_device_row(self, serial, name, index=None, running=True, adb_port=None, old_state=None):
+        old_state = old_state or {}
+        old_serial = old_state.get("serial")
+        if old_serial and old_serial != serial and old_serial in self.device_cards:
+            self.device_cards.pop(old_serial, None)
+
+        row = old_state.get("row")
+        widgets = old_state.get("widgets")
+        if not row or not row.winfo_exists():
+            row = tk.Frame(self.device_rows_frame, bg="#cfd8df", bd=0, relief=tk.FLAT)
+            widgets = self._create_device_row_widgets(row, serial)
+
+        thread = old_state.get("thread")
+        is_job_running = bool(thread and thread.is_alive())
+        if is_job_running:
+            job_status = old_state.get("status", "Đang chạy")
+            tag = old_state.get("tag", "working")
+            start_state = tk.DISABLED
+            stop_state = tk.NORMAL
+            ld_start_state = tk.DISABLED
+        else:
+            job_status = "Sẵn sàng" if running else "Chưa chạy"
+            tag = "running" if running else "stopped"
+            start_state = tk.NORMAL if running else tk.DISABLED
+            stop_state = tk.DISABLED
+            ld_start_state = tk.DISABLED if running else tk.NORMAL
+
+        card = {
+            "row": row,
+            "widgets": widgets,
+            "serial": serial,
+            "name": name,
+            "index": index,
+            "running": running,
+            "adb_port": adb_port,
+            "thread": thread,
+            "stop_event": old_state.get("stop_event"),
+            "status": job_status,
+            "tag": tag,
+            "start_state": old_state.get("start_state", start_state) if is_job_running else start_state,
+            "stop_state": old_state.get("stop_state", stop_state) if is_job_running else stop_state,
+            "ld_start_state": old_state.get("ld_start_state", ld_start_state) if is_job_running else ld_start_state,
+        }
+        card["btn_start"] = DeviceButtonState(self, serial, "start_state")
+        card["btn_stop"] = DeviceButtonState(self, serial, "stop_state")
+        card["btn_ld_start"] = DeviceButtonState(self, serial, "ld_start_state")
+        self.device_cards[serial] = card
+        self._bind_device_row_actions(serial)
+        self._update_device_row(serial)
+        return card
+
+    def _create_device_row_widgets(self, row, serial):
+        anchors = (tk.CENTER, tk.W, tk.CENTER, tk.W, tk.CENTER, tk.CENTER, tk.CENTER)
+        keys = ("index", "name", "ld_status", "job_status")
+        widgets = {}
+
+        for col, key in enumerate(keys):
+            lbl = tk.Label(row, bg="white", fg="#111111", font=("Arial", 10),
+                           anchor=anchors[col], padx=6, pady=5,
+                           bd=0, relief=tk.FLAT)
+            lbl.grid(row=0, column=col, sticky="nsew", padx=(0, 1), pady=(0, 1))
+            row.grid_columnconfigure(col, weight=self.device_col_weights[col],
+                                     minsize=self.device_col_widths[col])
+            widgets[key] = lbl
+
+        button_specs = [
+            ("btn_ld", 4, "⏻", "#2980b9", "Mở LDPlayer này"),
+            ("btn_run", 5, "▶", "#27ae60", "Chạy auto cho LDPlayer này"),
+            ("btn_stop", 6, "■", "#c0392b", "Dừng auto của LDPlayer này"),
+        ]
+        for key, col, text, color, tooltip in button_specs:
+            btn = tk.Label(row, text=text, bg="white", fg=color,
+                           font=("Segoe UI Symbol", 14, "bold"),
+                           anchor=tk.CENTER, padx=0, pady=0, bd=0, relief=tk.FLAT)
+            btn.grid(row=0, column=col, sticky="nsew", padx=(0, 1), pady=(0, 1))
+            row.grid_columnconfigure(col, weight=self.device_col_weights[col],
+                                     minsize=self.device_col_widths[col])
+            btn.bind("<Enter>", lambda e, b=btn, t=tooltip: self._show_device_action_tooltip(e, b, t))
+            btn.bind("<Leave>", lambda e: self.device_table_tooltip.hide())
+            widgets[key] = btn
+
+        return widgets
+
+    def _show_device_action_tooltip(self, event, button, text):
+        if button.cget("text"):
+            self.device_table_tooltip.show(text, event.x_root, event.y_root)
+        else:
+            self.device_table_tooltip.hide()
+
+    def _bind_device_row_actions(self, serial):
+        card = self.device_cards.get(serial)
+        if not card:
+            return
+        widgets = card.get("widgets", {})
+        widgets["btn_ld"].bind("<Button-1>", lambda e, s=serial: self._start_row_ldplayer(s))
+        widgets["btn_run"].bind("<Button-1>", lambda e, s=serial: self._start_row_device(s))
+        widgets["btn_stop"].bind("<Button-1>", lambda e, s=serial: self._stop_row_device(s))
+
+    def _start_row_ldplayer(self, serial):
+        card = self.device_cards.get(serial)
+        if card and card.get("ld_start_state") == tk.NORMAL:
+            self._start_ldplayer(card.get("index"), serial)
+
+    def _start_row_device(self, serial):
+        card = self.device_cards.get(serial)
+        if card and card.get("start_state") == tk.NORMAL:
+            self._start_one(serial)
+
+    def _stop_row_device(self, serial):
+        card = self.device_cards.get(serial)
+        if card and card.get("stop_state") == tk.NORMAL:
+            self._stop_one(serial)
+
+    def _update_device_row(self, serial):
+        card = self.device_cards.get(serial)
+        if not card:
+            return
+        ld_status = "Đang chạy" if card.get("running") else "Tắt"
+        index_text = "" if card.get("index") is None else str(card.get("index"))
+        row_bg = "#f4f7f9" if list(self.device_cards).index(serial) % 2 else "#ffffff"
+        widgets = card.get("widgets", {})
+        widgets["index"].config(text=index_text, bg=row_bg)
+        widgets["name"].config(text=card.get("name", ""), bg=row_bg)
+        widgets["ld_status"].config(text=ld_status, bg=row_bg)
+        widgets["job_status"].config(text=card.get("status", ""), bg=row_bg)
+        action_state = [
+            ("btn_ld", card.get("ld_start_state", tk.DISABLED), "⏻", "#2980b9"),
+            ("btn_run", card.get("start_state", tk.DISABLED), "▶", "#27ae60"),
+            ("btn_stop", card.get("stop_state", tk.DISABLED), "■", "#c0392b"),
+        ]
+        for key, state, text, color in action_state:
+            enabled = state == tk.NORMAL
+            widgets[key].config(
+                text=text if enabled else "",
+                bg=row_bg,
+                fg=color,
+                cursor="hand2" if enabled else "",
+            )
+
+    def _get_selected_serial(self):
+        selected = self.device_tree.selection()
+        if not selected:
+            return None
+        item = selected[0]
+        return self._get_serial_by_item(item)
+
+    def _get_serial_by_item(self, item):
+        for serial, card in self.device_cards.items():
+            if card.get("item") == item:
+                return serial
+        return None
+
+    def _device_tree_action_at_event(self, event):
+        item = self.device_tree.identify_row(event.y)
+        col = self.device_tree.identify_column(event.x)
+        if not item or col not in ("#6", "#7", "#8"):
+            return None, None
+        serial = self._get_serial_by_item(item)
+        if not serial:
+            return None, None
+        action = {"#6": "start_ld", "#7": "run", "#8": "stop"}[col]
+        return serial, action
+
+    def _on_device_tree_click(self, event):
+        serial, action = self._device_tree_action_at_event(event)
+        if not serial:
+            return
+        card = self.device_cards.get(serial)
+        if not card:
+            return
+        self.device_tree.selection_set(card["item"])
+        if action == "start_ld" and card.get("ld_start_state") == tk.NORMAL:
+            self._start_ldplayer(card.get("index"), serial)
+            return "break"
+        if action == "run" and card.get("start_state") == tk.NORMAL:
+            self._start_one(serial)
+            return "break"
+        if action == "stop" and card.get("stop_state") == tk.NORMAL:
+            self._stop_one(serial)
+            return "break"
+
+    def _on_device_tree_motion(self, event):
+        serial, action = self._device_tree_action_at_event(event)
+        card = self.device_cards.get(serial) if serial else None
+        if not card:
+            self.device_tree.configure(cursor="")
+            self.device_tree_tooltip.hide()
+            return
+        labels = {
+            "start_ld": ("Mở LDPlayer này", card.get("ld_start_state") == tk.NORMAL),
+            "run": ("Chạy auto cho LDPlayer này", card.get("start_state") == tk.NORMAL),
+            "stop": ("Dừng auto của LDPlayer này", card.get("stop_state") == tk.NORMAL),
+        }
+        text, enabled = labels.get(action, ("", False))
+        if not enabled:
+            text = {
+                "start_ld": "LDPlayer đang chạy hoặc đang mở",
+                "run": "Chỉ chạy khi LDPlayer đang mở và job đang dừng",
+                "stop": "Chỉ dừng khi job đang chạy",
+            }.get(action, "")
+        self.device_tree.configure(cursor="hand2" if enabled else "")
+        if text:
+            self.device_tree_tooltip.show(text, event.x_root, event.y_root)
+        else:
+            self.device_tree_tooltip.hide()
+
+    def _refresh_device_action_buttons(self):
+        if not hasattr(self, "device_tree"):
+            return
+        serial = self._get_selected_serial()
+        card = self.device_cards.get(serial) if serial else None
+        if not card:
+            self.btn_selected_start_ld.config(state=tk.DISABLED)
+            self.btn_selected_start.config(state=tk.DISABLED)
+            self.btn_selected_stop.config(state=tk.DISABLED)
+            return
+        self.btn_selected_start_ld.config(state=card.get("ld_start_state", tk.DISABLED))
+        self.btn_selected_start.config(state=card.get("start_state", tk.DISABLED))
+        self.btn_selected_stop.config(state=card.get("stop_state", tk.DISABLED))
+
+    def _start_selected_ldplayer(self):
+        serial = self._get_selected_serial()
+        card = self.device_cards.get(serial) if serial else None
+        if card:
+            self._start_ldplayer(card.get("index"), serial)
+
+    def _start_selected_device(self):
+        serial = self._get_selected_serial()
+        if serial:
+            self._start_one(serial)
+
+    def _stop_selected_device(self):
+        serial = self._get_selected_serial()
+        if serial:
+            self._stop_one(serial)
+
+    def _set_card_status(self, serial, status, color):
+        def _update():
+            card = self.device_cards.get(serial)
+            if not card:
+                return
+            card["status"] = status
+            if color == "#e74c3c":
+                card["tag"] = "error"
+            elif color in ("#f39c12", "#e67e22"):
+                card["tag"] = "working"
+            elif color == "#27ae60":
+                card["tag"] = "running"
+            elif color == "#c0392b":
+                card["tag"] = "error"
+            else:
+                card["tag"] = "stopped"
+            self._update_device_row(serial)
+            self._refresh_device_action_buttons()
+
+        self._ui_safe(_update)
+
+    def _config_current_card(self, serial, widget_key, **kwargs):
+        card = self.device_cards.get(serial)
+        if not card:
+            return
+        if widget_key == "btn_start" and "state" in kwargs:
+            card["start_state"] = kwargs["state"]
+        elif widget_key == "btn_stop" and "state" in kwargs:
+            card["stop_state"] = kwargs["state"]
+        elif widget_key == "btn_ld_start" and "state" in kwargs:
+            card["ld_start_state"] = kwargs["state"]
+        self._update_device_row(serial)
+        self._refresh_device_action_buttons()
+
+    def _start_ldplayer(self, index, serial):
+        card = self.device_cards.get(serial)
+        if card:
+            card["ld_start_state"] = tk.DISABLED
+            card["status"] = "Đang mở..."
+            card["tag"] = "working"
+            self._update_device_row(serial)
+            self._refresh_device_action_buttons()
+        try:
+            self.adb_helper.start_ldplayer(index=index)
+            self.status_label.config(text=f"Đang mở LDPlayer index={index}", bg="#2980b9")
+            self._open_game_after_ld_start(serial)
+            self.root.after(3000, self._refresh_devices)
+            self.root.after(8000, self._refresh_devices)
+            self.root.after(14000, self._refresh_devices)
+            self.root.after(22000, self._refresh_devices)
+        except Exception as e:
+            if card:
+                card["ld_start_state"] = tk.NORMAL
+                card["status"] = "Start loi"
+                card["tag"] = "error"
+                self._update_device_row(serial)
+                self._refresh_device_action_buttons()
+            messagebox.showerror("Lỗi mở LDPlayer", str(e))
+
+    def _open_game_after_ld_start(self, serial):
+        try:
+            from config import AUTO_OPEN_GAME_AFTER_LD_START
+        except Exception:
+            AUTO_OPEN_GAME_AFTER_LD_START = True
+        if not AUTO_OPEN_GAME_AFTER_LD_START:
+            return
+
+        def run():
+            try:
+                self._set_card_status(serial, "Đợi LD sẵn sàng...", "#f39c12")
+                from core.vao_game import vao_game_sau_khi_start_ld
+                ok = vao_game_sau_khi_start_ld(serial)
+                if ok:
+                    self._set_card_status(serial, "Đã vào game", "#27ae60")
+                    self._ui_safe(lambda: self.status_label.config(text=f"Đã vào game: {serial}", bg="#27ae60"))
+                else:
+                    self._set_card_status(serial, "Không vào được game", "#e74c3c")
+                    self._ui_safe(lambda: self.status_label.config(text=f"Không vào được game: {serial}", bg="#e74c3c"))
+            except Exception as e:
+                self._set_card_status(serial, "Lỗi vào game", "#e74c3c")
+                self._log(f"[{serial}] Lỗi vào game: {e}", "error")
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _refresh_configs(self):
         files = glob_mod.glob(os.path.join(CONFIG_DIR, "*.json"))
@@ -1159,9 +1738,9 @@ class AutoConfigGUI:
         messagebox.showerror("Lỗi", "Format config không hợp lệ!")
         return None
 
-    def _start_one(self, serial):
+    def _start_one(self, serial, cfg=None):
         """Chạy auto cho 1 nick."""
-        cfg = self._load_config()
+        cfg = cfg or self._load_config()
         if not cfg:
             return
         settings, tasks, ban_do = cfg
@@ -1170,6 +1749,9 @@ class AutoConfigGUI:
         if not card:
             return
         # Đang chạy rồi thì bỏ qua
+        if not card.get("running", True):
+            self._set_card_status(serial, "Chua start LD", "#7f8c8d")
+            return
         if card["thread"] and card["thread"].is_alive():
             return
 
@@ -1180,7 +1762,7 @@ class AutoConfigGUI:
         card["btn_start"].config(state=tk.DISABLED)
         card["btn_stop"].config(state=tk.NORMAL)
         self._set_card_status(serial, f"Đang chạy: {config_name}", "#f39c12")
-        card["status_dot"].config(fg="#27ae60")
+        self._config_current_card(serial, "status_dot", fg="#27ae60")
 
         loop_tc_may = settings.get("loop", 1)
         loop_tong_mode = settings.get("loop_tong_mode", "count")
@@ -1212,6 +1794,8 @@ class AutoConfigGUI:
                 tc_tasks = [t for t in tasks if
                             (t.get("type") == "TC" and settings.get("bat_trong_cay")) or
                             (t.get("type") == "MAY" and settings.get("bat_may"))]
+                if settings.get("bat_mo_ruong"):
+                    from core.mo_ruong import can_mo_ruong, da_day_kho, mo_ruong
 
                 tong_i = 0
                 while not stop_ev.is_set():
@@ -1221,6 +1805,16 @@ class AutoConfigGUI:
                     lbl = f"{tong_i}{'/' + str(loop_tong_count) if loop_tong_mode != 'forever' else ''}"
                     self._log(f"{dev_label} [{config_name}] LOOP {lbl}")
                     self._set_card_status(serial, f"{config_name} | Loop {lbl}", "#f39c12")
+
+                    if settings.get("bat_mo_ruong"):
+                        if da_day_kho(serial):
+                            self._log(f"{dev_label} [{config_name}] Bỏ qua mở rương vì kho đã đầy")
+                        elif can_mo_ruong(serial):
+                            self._set_card_status(serial, f"{config_name} | Kiểm tra rương...", "#e67e22")
+                            opened = mo_ruong(adb_inst, serial=serial, stop_event=stop_ev)
+                            if opened:
+                                self._log(f"{dev_label} [{config_name}] Đã mở rương")
+                                self._set_card_status(serial, f"{config_name} | Đã mở rương", "#27ae60")
 
                     if tc_tasks:
                         start_time = time.time()
@@ -1263,18 +1857,18 @@ class AutoConfigGUI:
                 if not stop_ev.is_set():
                     self._log(f"{dev_label} [{config_name}] Hoàn thành!")
                     self._set_card_status(serial, f"{config_name} | Hoàn thành", "#27ae60")
-                    self._ui_safe(lambda: card["status_dot"].config(fg="#3498db"))
+                    self._ui_safe(lambda: self._config_current_card(serial, "status_dot", fg="#3498db"))
                 else:
                     self._log(f"{dev_label} [{config_name}] Đã dừng.")
                     self._set_card_status(serial, f"{config_name} | Đã dừng", "#c0392b")
-                    self._ui_safe(lambda: card["status_dot"].config(fg="#c0392b"))
+                    self._ui_safe(lambda: self._config_current_card(serial, "status_dot", fg="#c0392b"))
             except Exception as e:
                 self._log(f"{dev_label} [{config_name}] Lỗi: {e}", "error")
                 self._set_card_status(serial, f"{config_name} | Lỗi!", "#e74c3c")
-                self._ui_safe(lambda: card["status_dot"].config(fg="#e74c3c"))
+                self._ui_safe(lambda: self._config_current_card(serial, "status_dot", fg="#e74c3c"))
             finally:
-                self._ui_safe(lambda: card["btn_start"].config(state=tk.NORMAL))
-                self._ui_safe(lambda: card["btn_stop"].config(state=tk.DISABLED))
+                self._ui_safe(lambda: self._config_current_card(serial, "btn_start", state=tk.NORMAL))
+                self._ui_safe(lambda: self._config_current_card(serial, "btn_stop", state=tk.DISABLED))
 
         t = threading.Thread(target=run, daemon=True)
         card["thread"] = t
@@ -1290,14 +1884,52 @@ class AutoConfigGUI:
 
     def _start_all(self):
         """Chạy tất cả nick."""
-        for serial in self.device_cards:
-            card = self.device_cards[serial]
-            if not card["thread"] or not card["thread"].is_alive():
-                self._start_one(serial)
+        if getattr(self, "_start_all_queue_running", False):
+            self.status_label.config(text="Đang chạy tất cả, vui lòng đợi...")
+            return
+
+        cfg = self._load_config()
+        if not cfg:
+            return
+
+        targets = []
+        skipped_not_running = 0
+        for serial, card in list(self.device_cards.items()):
+            if card["thread"] and card["thread"].is_alive():
+                continue
+            if not card.get("running", True):
+                skipped_not_running += 1
+                self._set_card_status(serial, "Chưa mở LD", "#7f8c8d")
+                continue
+            targets.append(serial)
+
+        if not targets:
+            self.status_label.config(text="Không có LDPlayer nào sẵn sàng để chạy")
+            return
+
+        self.status_label.config(text=f"Đang xếp lịch chạy {len(targets)} LDPlayer")
+        self._start_all_queue_running = True
+
+        def start_next(pos=0):
+            if not getattr(self, "_start_all_queue_running", False):
+                self.status_label.config(text="Đã hủy xếp lịch chạy tất cả")
+                return
+            if pos >= len(targets):
+                self._start_all_queue_running = False
+                if skipped_not_running:
+                    self.status_label.config(text=f"Đã chạy {len(targets)} job | Bỏ qua {skipped_not_running} LD chưa mở")
+                else:
+                    self.status_label.config(text=f"Đã chạy {len(targets)} job")
+                return
+            self._start_one(targets[pos], cfg=cfg)
+            self.root.after(700, lambda: start_next(pos + 1))
+
+        self.root.after(0, start_next)
 
     def _stop_all(self):
         """Dừng tất cả nick."""
-        for serial in self.device_cards:
+        self._start_all_queue_running = False
+        for serial in list(self.device_cards):
             self._stop_one(serial)
 
     def _toggle_debug_mode(self):

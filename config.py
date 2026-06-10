@@ -1,6 +1,10 @@
 # DEVICE_SERIAL sẽ được chọn từ GUI mỗi khi chạy
 # Không có giá trị mặc định - người dùng phải chọn thiết bị
 DEVICE_SERIAL = None  # Sẽ được set khi chọn thiết bị trong GUI
+GAME_PACKAGE_NAME = "vn.kvtm.js"
+GAME_ACTIVITY_NAME = "gsn.game.zingplaynew.AppActivity"
+AUTO_OPEN_GAME_AFTER_LD_START = True
+
 GARDEN_REGION = (100, 380, 880, 1100)
 REGION_PRESETS = {
     "Toàn màn": None,
@@ -330,3 +334,7 @@ INDEX_THOAT_SAN_XUAT_MAC_DINH = (735, 420)
 INDEX_NEXT_SAN_XUAT_MAC_DINH = (514, 511)
 INDEX_CUA_HANG_MAC_DINH = (513, 690)
 INDEX_SUA_MAY_MAC_DINH = (577, 475)
+INDEX_THUYEN_MAC_DINH = (300, 500)
+
+TAB_LEN_2_HANG = (318, 225)
+
