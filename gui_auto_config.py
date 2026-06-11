@@ -209,6 +209,7 @@ DEFAULT_BAN_DO = {
     "dat_quang_cao": True,
     "qc_templates": [],
     "xoa_kc_templates": [],
+    "dsvp_bo_qua": [],
     "threshold": 0.85,
     "color_threshold": 0.6
 }
@@ -360,15 +361,15 @@ class AutoConfigGUI:
 
         # Debug mode checkbox
         self.debug_mode_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(dev_toolbar, text="Debug (luu anh)", variable=self.debug_mode_var,
+        tk.Checkbutton(dev_toolbar, text="Gỡ lỗi (lưu ảnh)", variable=self.debug_mode_var,
                        bg="#ecf0f1", font=("Arial", 8),
                        command=self._toggle_debug_mode).pack(side=tk.LEFT, padx=(12, 0))
-        tk.Button(dev_toolbar, text="Mở debug/", command=self._open_debug_folder,
+        tk.Button(dev_toolbar, text="Mở thư mục gỡ lỗi", command=self._open_debug_folder,
                   bg="#7f8c8d", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=4)
 
         action_bar = tk.Frame(dev_frame, bg="#ecf0f1")
-        self.btn_selected_start_ld = tk.Button(action_bar, text="Start LD", command=self._start_selected_ldplayer,
+        self.btn_selected_start_ld = tk.Button(action_bar, text="Mở LD", command=self._start_selected_ldplayer,
                                               bg="#2980b9", fg="white", relief=tk.FLAT, cursor="hand2",
                                               padx=10, font=("Arial", 9, "bold"), state=tk.DISABLED)
         self.btn_selected_start_ld.pack(side=tk.LEFT)
@@ -394,7 +395,7 @@ class AutoConfigGUI:
             ("STT", tk.CENTER),
             ("Tên LDPlayer", tk.W),
             ("LD", tk.CENTER),
-            ("Trạng thái job", tk.W),
+            ("Trạng thái tác vụ", tk.W),
             ("Mở", tk.CENTER),
             ("Chạy", tk.CENTER),
             ("Dừng", tk.CENTER),
@@ -417,7 +418,7 @@ class AutoConfigGUI:
         self.device_cards = {}  # serial -> state row cua LDPlayer
 
         # --- Mini log (5 dong gan nhat) ---
-        mini_log_frame = tk.LabelFrame(pad, text="Log gần đây (xem đầy đủ ở tab Nhật Ký)",
+        mini_log_frame = tk.LabelFrame(pad, text="Nhật ký gần đây (xem đầy đủ ở tab Nhật Ký)",
                                         font=("Arial", 9), bg="#ecf0f1", padx=6, pady=4)
         mini_log_frame.pack(fill=tk.X, pady=(4, 0))
         self.mini_log_text = tk.Text(mini_log_frame, font=("Consolas", 8), bg="#2c3e50",
@@ -452,7 +453,7 @@ class AutoConfigGUI:
 
         tk.Button(top, text="Lưu", command=self._save_config, bg="#27ae60", fg="white",
                   relief=tk.FLAT, cursor="hand2", padx=12, font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=4)
-        tk.Button(top, text="Load cấu hình", command=self._load_config_to_editor, bg="#3498db", fg="white",
+        tk.Button(top, text="Tải cấu hình", command=self._load_config_to_editor, bg="#3498db", fg="white",
                   relief=tk.FLAT, cursor="hand2", padx=12, font=("Arial", 10)).pack(side=tk.LEFT, padx=4)
         tk.Button(top, text="Xóa file", command=self._delete_config_file, bg="#e74c3c", fg="white",
                   relief=tk.FLAT, cursor="hand2", padx=12, font=("Arial", 10)).pack(side=tk.LEFT, padx=4)
@@ -461,7 +462,7 @@ class AutoConfigGUI:
         self.cfg_load_combo = ttk.Combobox(top, textvariable=self.cfg_load_var, state="readonly",
                                             width=20, font=("Arial", 9))
         self.cfg_load_combo.pack(side=tk.RIGHT)
-        tk.Label(top, text="File:", bg="#ecf0f1", font=("Arial", 9)).pack(side=tk.RIGHT, padx=(0, 4))
+        tk.Label(top, text="Tệp:", bg="#ecf0f1", font=("Arial", 9)).pack(side=tk.RIGHT, padx=(0, 4))
         self._refresh_cfg_load_combo()
 
         # ===== SECTION 1: SETTINGS (toggles + loop) =====
@@ -469,10 +470,10 @@ class AutoConfigGUI:
                                         bg="#ecf0f1", padx=10, pady=8)
         settings_frame.pack(fill=tk.X, pady=(0, 8))
 
-        # Loop tong
+        # Lặp tong
         loop_tong_row = tk.Frame(settings_frame, bg="#ecf0f1")
         loop_tong_row.pack(fill=tk.X, pady=3)
-        tk.Label(loop_tong_row, text="Loop tổng:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(loop_tong_row, text="Lặp tổng:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
         self.loop_tong_mode_var = tk.StringVar(value="count")
         tk.Radiobutton(loop_tong_row, text="Số lần:", variable=self.loop_tong_mode_var,
                        value="count", bg="#ecf0f1", font=("Arial", 9)).pack(side=tk.LEFT)
@@ -484,10 +485,10 @@ class AutoConfigGUI:
         tk.Radiobutton(loop_tong_row, text="Chạy mãi", variable=self.loop_tong_mode_var,
                        value="forever", bg="#ecf0f1", font=("Arial", 9)).pack(side=tk.LEFT)
 
-        # Loop TC+MAY
+        # Lặp TC+MAY
         loop_row = tk.Frame(settings_frame, bg="#ecf0f1")
         loop_row.pack(fill=tk.X, pady=3)
-        tk.Label(loop_row, text="Loop TC+MAY:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(loop_row, text="Lặp TC+MÁY:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
         self.loop_var = tk.StringVar(value="1")
         tk.Spinbox(loop_row, from_=1, to=999, textvariable=self.loop_var, width=6,
                    font=("Arial", 10)).pack(side=tk.LEFT)
@@ -519,7 +520,7 @@ class AutoConfigGUI:
         # Global threshold
         th_row = tk.Frame(settings_frame, bg="#ecf0f1")
         th_row.pack(fill=tk.X, pady=3)
-        tk.Label(th_row, text="Threshold mặc định:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(th_row, text="Ngưỡng mặc định:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
         self.global_threshold_var = tk.DoubleVar(value=0.85)
         tk.Spinbox(th_row, from_=0.5, to=1.0, increment=0.05,
                    textvariable=self.global_threshold_var, width=6,
@@ -535,7 +536,7 @@ class AutoConfigGUI:
         # Type
         r1 = tk.Frame(form_frame, bg="#ecf0f1")
         r1.pack(fill=tk.X, pady=3)
-        tk.Label(r1, text="Loai:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r1, text="Loại:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.type_var = tk.StringVar(value="TC")
         ttk.Combobox(r1, textvariable=self.type_var, values=["TC", "MAY"], state="readonly",
                      width=10).pack(side=tk.LEFT)
@@ -543,7 +544,7 @@ class AutoConfigGUI:
         # Row
         r2 = tk.Frame(form_frame, bg="#ecf0f1")
         r2.pack(fill=tk.X, pady=3)
-        tk.Label(r2, text="Hang (row):", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r2, text="Hàng:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.row_var = tk.StringVar(value="1")
         row_nums = [str(i) for i in range(1, 11)]
         ttk.Combobox(r2, textvariable=self.row_var, values=row_nums, state="readonly",
@@ -552,7 +553,7 @@ class AutoConfigGUI:
         # path_row
         r3 = tk.Frame(form_frame, bg="#ecf0f1")
         r3.pack(fill=tk.X, pady=3)
-        tk.Label(r3, text="path_row:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r3, text="Ảnh hàng:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.path_row_var = tk.StringVar()
         row_templates = scan_row_templates()
         AutocompleteCombobox(r3, textvariable=self.path_row_var, values=row_templates,
@@ -563,7 +564,7 @@ class AutoConfigGUI:
         # indexs (for TC) - grid picker
         r4 = tk.Frame(form_frame, bg="#ecf0f1")
         r4.pack(fill=tk.X, pady=3)
-        tk.Label(r4, text="indexs:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r4, text="Vị trí:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.indexs_display = tk.Label(r4, text="(Chưa chọn)", bg="white", fg="#2c3e50",
                                         font=("Consolas", 9), relief=tk.SUNKEN, anchor=tk.W,
                                         padx=6, width=45)
@@ -576,7 +577,7 @@ class AutoConfigGUI:
         # path_item (cay) + preview
         r5 = tk.Frame(form_frame, bg="#ecf0f1")
         r5.pack(fill=tk.X, pady=3)
-        tk.Label(r5, text="path_item:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r5, text="Ảnh vật phẩm:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.path_item_var = tk.StringVar()
         all_templates = scan_all_templates()
         self.cay_combo = AutocompleteCombobox(r5, textvariable=self.path_item_var,
@@ -597,7 +598,7 @@ class AutoConfigGUI:
         # path_item_default (for TC) + preview
         r6 = tk.Frame(form_frame, bg="#ecf0f1")
         r6.pack(fill=tk.X, pady=3)
-        tk.Label(r6, text="path_item_default:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r6, text="Ảnh mặc định:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.path_item_default_var = tk.StringVar()
         self.default_combo = AutocompleteCombobox(r6, textvariable=self.path_item_default_var,
                                                   values=all_templates, width=30)
@@ -617,17 +618,17 @@ class AutoConfigGUI:
         # Threshold (cho TC)
         r_th = tk.Frame(form_frame, bg="#ecf0f1")
         r_th.pack(fill=tk.X, pady=3)
-        tk.Label(r_th, text="Threshold:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r_th, text="Ngưỡng:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.threshold_var = tk.DoubleVar(value=0.85)
         tk.Spinbox(r_th, from_=0.5, to=1.0, increment=0.05, textvariable=self.threshold_var,
                    width=6, font=("Arial", 9)).pack(side=tk.LEFT)
         tk.Label(r_th, text="Độ chính xác tìm ảnh (0.5-1.0)",
                  bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=4)
 
-        # Region optional: x,y,w,h
+        # Vùng optional: x,y,w,h
         r_region = tk.Frame(form_frame, bg="#ecf0f1")
         r_region.pack(fill=tk.X, pady=3)
-        tk.Label(r_region, text="Region:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r_region, text="Vùng:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.region_preset_var = tk.StringVar(value=self._default_region_preset())
         self.region_x_var = tk.StringVar()
         self.region_y_var = tk.StringVar()
@@ -643,16 +644,16 @@ class AutoConfigGUI:
         )
         self.region_preset_combo.pack(side=tk.LEFT)
         self.region_preset_combo.bind("<<ComboboxSelected>>", lambda e: self._auto_update_selected_task_region())
-        tk.Button(r_region, text="Xoa", command=self._clear_task_region,
+        tk.Button(r_region, text="Xóa", command=self._clear_task_region,
                   bg="#95a5a6", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=(4, 0))
-        tk.Label(r_region, text="(co the lay tu vung crop hien tai)",
+        tk.Label(r_region, text="(có thể lấy từ vùng cắt hiện tại)",
                  bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=4)
 
         # MAY: data (total)
         r7 = tk.Frame(form_frame, bg="#ecf0f1")
         r7.pack(fill=tk.X, pady=3)
-        tk.Label(r7, text="Total (MAY):", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r7, text="Tổng (MÁY):", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.total_entry = tk.Entry(r7, font=("Arial", 9), width=10)
         self.total_entry.pack(side=tk.LEFT)
         self.total_entry.insert(0, "4")
@@ -677,7 +678,7 @@ class AutoConfigGUI:
         self._editing_index = None
 
         # --- Tasks list ---
-        list_frame = tk.LabelFrame(pad, text="Danh sách tasks (TC + MAY)", font=("Arial", 10, "bold"),
+        list_frame = tk.LabelFrame(pad, text="Danh sách công việc (TC + MÁY)", font=("Arial", 10, "bold"),
                                    bg="#ecf0f1", padx=10, pady=8)
         list_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -686,9 +687,9 @@ class AutoConfigGUI:
         self.cfg_tree.heading("stt", text="#")
         self.cfg_tree.heading("type", text="Loại")
         self.cfg_tree.heading("row", text="Hàng")
-        self.cfg_tree.heading("path_item", text="Item")
-        self.cfg_tree.heading("indexs_or_data", text="Indexs / Data")
-        self.cfg_tree.heading("region", text="Region")
+        self.cfg_tree.heading("path_item", text="Vật phẩm")
+        self.cfg_tree.heading("indexs_or_data", text="Vị trí / Dữ liệu")
+        self.cfg_tree.heading("region", text="Vùng")
 
         self.cfg_tree.column("stt", width=35, anchor=tk.CENTER)
         self.cfg_tree.column("type", width=50, anchor=tk.CENTER)
@@ -719,8 +720,8 @@ class AutoConfigGUI:
         # Double-click de sua
         self.cfg_tree.bind("<Double-1>", lambda e: self._edit_selected())
 
-        # ===== SECTION 3: BAN DO (Ban vat pham) =====
-        bando_frame = tk.LabelFrame(pad, text="Cấu hình bản vật phẩm", font=("Arial", 10, "bold"),
+        # ===== SECTION 3: BAN DO (Bán vật phẩm) =====
+        bando_frame = tk.LabelFrame(pad, text="Cấu hình bán vật phẩm", font=("Arial", 10, "bold"),
                                      bg="#ecf0f1", padx=10, pady=8)
         bando_frame.pack(fill=tk.X, pady=(8, 0))
 
@@ -742,7 +743,7 @@ class AutoConfigGUI:
         tk.Spinbox(bk2, from_=1, to=99, textvariable=self.bd_so_lan_var, width=6,
                    font=("Arial", 10)).pack(side=tk.LEFT)
 
-        # Xoa kim cuong + Dat quang cao
+        # Xóa kim cuong + Dat quang cao
         bk3 = tk.Frame(bando_frame, bg="#ecf0f1")
         bk3.pack(fill=tk.X, pady=3)
         self.bd_xoa_kc_var = tk.BooleanVar(value=True)
@@ -758,12 +759,12 @@ class AutoConfigGUI:
         # Threshold + Color threshold cho ban do
         bk3b = tk.Frame(bando_frame, bg="#ecf0f1")
         bk3b.pack(fill=tk.X, pady=3)
-        tk.Label(bk3b, text="Threshold:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(bk3b, text="Ngưỡng:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT)
         self.bd_threshold_var = tk.DoubleVar(value=0.85)
         tk.Spinbox(bk3b, from_=0.5, to=1.0, increment=0.05,
                    textvariable=self.bd_threshold_var, width=5,
                    font=("Arial", 10)).pack(side=tk.LEFT)
-        tk.Label(bk3b, text="  Color:", bg="#ecf0f1", anchor=tk.W).pack(side=tk.LEFT, padx=(8, 0))
+        tk.Label(bk3b, text="  Màu:", bg="#ecf0f1", anchor=tk.W).pack(side=tk.LEFT, padx=(8, 0))
         self.bd_color_threshold_var = tk.DoubleVar(value=0.6)
         tk.Spinbox(bk3b, from_=0.3, to=1.0, increment=0.05,
                    textvariable=self.bd_color_threshold_var, width=5,
@@ -771,10 +772,10 @@ class AutoConfigGUI:
         tk.Label(bk3b, text="(Mặc định, VP có thể ghi đè)", bg="#ecf0f1",
                  fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=8)
 
-        # Region mac dinh cho ban do
+        # Vùng mac dinh cho ban do
         bk3c = tk.Frame(bando_frame, bg="#ecf0f1")
         bk3c.pack(fill=tk.X, pady=3)
-        tk.Label(bk3c, text="Region ban do:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(bk3c, text="Vùng bán đồ:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT)
         self.bd_region_preset_var = tk.StringVar(value=self._default_region_preset())
         self.bd_region_x_var = tk.StringVar()
         self.bd_region_y_var = tk.StringVar()
@@ -789,10 +790,10 @@ class AutoConfigGUI:
             font=("Arial", 9)
         )
         self.bd_region_preset_combo.pack(side=tk.LEFT)
-        tk.Button(bk3c, text="Xoa", command=self._clear_bd_region,
+        tk.Button(bk3c, text="Xóa", command=self._clear_bd_region,
                   bg="#95a5a6", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=(4, 0))
-        tk.Label(bk3c, text="(ap dung cho VP khong co Region VP rieng)",
+        tk.Label(bk3c, text="(áp dụng cho VP không có vùng VP riêng)",
                  bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=4)
 
         # Danh sach VP can ban
@@ -833,13 +834,13 @@ class AutoConfigGUI:
         tk.Entry(bk4_add, textvariable=self.bd_vp_color_var, width=4,
                  font=("Arial", 9)).pack(side=tk.LEFT)
 
-        tk.Button(bk4_add, text="+ Them", command=self._bd_add_vp,
+        tk.Button(bk4_add, text="+ Thêm", command=self._bd_add_vp,
                   bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=8).pack(side=tk.LEFT, padx=4)
 
         bk4_region = tk.Frame(bk4_right, bg="#ecf0f1")
         bk4_region.pack(fill=tk.X, pady=2)
-        tk.Label(bk4_region, text="Region VP:", bg="#ecf0f1", font=("Arial", 8)).pack(side=tk.LEFT)
+        tk.Label(bk4_region, text="Vùng VP:", bg="#ecf0f1", font=("Arial", 8)).pack(side=tk.LEFT)
         self.bd_vp_region_preset_var = tk.StringVar(value=self._default_region_preset())
         self.bd_vp_region_x_var = tk.StringVar()
         self.bd_vp_region_y_var = tk.StringVar()
@@ -855,7 +856,7 @@ class AutoConfigGUI:
         )
         self.bd_vp_region_preset_combo.pack(side=tk.LEFT, padx=(6, 0))
         self.bd_vp_region_preset_combo.bind("<<ComboboxSelected>>", lambda e: self._auto_update_selected_vp_region())
-        tk.Button(bk4_region, text="Xoa", command=self._clear_bd_vp_region,
+        tk.Button(bk4_region, text="Xóa", command=self._clear_bd_vp_region,
                   bg="#95a5a6", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=6)
 
@@ -867,17 +868,17 @@ class AutoConfigGUI:
 
         bk4_btns = tk.Frame(bk4_right, bg="#ecf0f1")
         bk4_btns.pack(fill=tk.X)
-        tk.Button(bk4_btns, text="Cap nhat VP", command=self._bd_update_selected_vp,
+        tk.Button(bk4_btns, text="Cập nhật VP", command=self._bd_update_selected_vp,
                   bg="#f39c12", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=8).pack(side=tk.LEFT)
-        tk.Button(bk4_btns, text="Xoa", command=self._bd_remove_vp,
+        tk.Button(bk4_btns, text="Xóa", command=self._bd_remove_vp,
                   bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=8).pack(side=tk.LEFT, padx=4)
-        tk.Button(bk4_btns, text="Xoa tat ca", command=self._bd_clear_vp,
+        tk.Button(bk4_btns, text="Xóa tất cả", command=self._bd_clear_vp,
                   bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=8).pack(side=tk.LEFT, padx=4)
 
-        # --- Mẫu QC (list giống VP) ---
+
         bk_qc = tk.Frame(bando_frame, bg="#ecf0f1")
         bk_qc.pack(fill=tk.X, pady=6)
         tk.Label(bk_qc, text="DS quảng cáo:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT, anchor=tk.N)
@@ -952,9 +953,45 @@ class AutoConfigGUI:
               bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
               padx=8).pack(side=tk.LEFT, padx=4)
 
+        # --- Cấu hình giao cú ---
+        giao_cu_frame = tk.LabelFrame(pad, text="Cấu hình giao cú", font=("Arial", 10, "bold"),
+                                      bg="#ecf0f1", padx=10, pady=8)
+        giao_cu_frame.pack(fill=tk.X, pady=(8, 0))
+
+        bk_gc_skip = tk.Frame(giao_cu_frame, bg="#ecf0f1")
+        bk_gc_skip.pack(fill=tk.X, pady=3)
+        tk.Label(bk_gc_skip, text="Giao cú bỏ qua:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT, anchor=tk.N)
+        bk_gc_skip_r = tk.Frame(bk_gc_skip, bg="#ecf0f1")
+        bk_gc_skip_r.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        bk_gc_skip_add = tk.Frame(bk_gc_skip_r, bg="#ecf0f1")
+        bk_gc_skip_add.pack(fill=tk.X, pady=2)
+        self.gc_skip_var = tk.StringVar()
+        all_templates = scan_all_templates()
+        self.gc_skip_combo = AutocompleteCombobox(bk_gc_skip_add, textvariable=self.gc_skip_var,
+                                                  values=all_templates, width=20)
+        self.gc_skip_combo.pack(side=tk.LEFT)
+        tk.Button(bk_gc_skip_add, text="+ Thêm", command=self._gc_skip_add,
+                  bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=8).pack(side=tk.LEFT, padx=6)
+
+        self.gc_skip_listbox = tk.Listbox(bk_gc_skip_r, font=("Consolas", 9), height=3,
+                                          selectmode=tk.SINGLE, bg="white")
+        self.gc_skip_listbox.pack(fill=tk.X, pady=4)
+        bk_gc_skip_btns = tk.Frame(bk_gc_skip_r, bg="#ecf0f1")
+        bk_gc_skip_btns.pack(fill=tk.X)
+        tk.Button(bk_gc_skip_btns, text="Xóa", command=self._gc_skip_remove,
+                  bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=8).pack(side=tk.LEFT)
+        tk.Button(bk_gc_skip_btns, text="Xóa tất cả", command=self._gc_skip_clear,
+                  bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=8).pack(side=tk.LEFT, padx=4)
         # Internal data
         self.config_items = []
         self.bd_vp_list = []  # list of dict: {"path", "threshold", "color_threshold"}
+        self.bd_qc_list = []
+        self.bd_xe_list = []
+        self.gc_skip_list = []
 
     def _choose_adb_path(self) -> bool:
         """Cho phép người dùng chọn thư mục LDPlayer chứa adb.exe."""
@@ -1159,7 +1196,7 @@ class AutoConfigGUI:
         status_label.pack(side=tk.LEFT, padx=8)
 
         # Nút Chạy
-        btn_ld_start = tk.Button(card, text="Start LD", font=("Arial", 9, "bold"),
+        btn_ld_start = tk.Button(card, text="Mở LD", font=("Arial", 9, "bold"),
                                  bg="#2980b9", fg="white", relief=tk.FLAT, cursor="hand2",
                                  padx=10, state=tk.DISABLED if running else tk.NORMAL,
                                  command=lambda i=index, s=serial: self._start_ldplayer(i, s))
@@ -1226,7 +1263,7 @@ class AutoConfigGUI:
                 return
             if card:
                 card["btn_ld_start"].config(state=tk.NORMAL)
-                card["status_label"].config(text="Start loi", fg="#e74c3c")
+                card["status_label"].config(text="Mở lỗi", fg="#e74c3c")
             messagebox.showerror("Lỗi mở LDPlayer", str(e))
 
     def _refresh_devices(self, silent=False):
@@ -1486,8 +1523,8 @@ class AutoConfigGUI:
         if not enabled:
             text = {
                 "start_ld": "LDPlayer đang chạy hoặc đang mở",
-                "run": "Chỉ chạy khi LDPlayer đang mở và job đang dừng",
-                "stop": "Chỉ dừng khi job đang chạy",
+                "run": "Chỉ chạy khi LDPlayer đang mở và tác vụ đang dừng",
+                "stop": "Chỉ dừng khi tác vụ đang chạy",
             }.get(action, "")
         self.device_tree.configure(cursor="hand2" if enabled else "")
         if text:
@@ -1578,7 +1615,7 @@ class AutoConfigGUI:
         except Exception as e:
             if card:
                 card["ld_start_state"] = tk.NORMAL
-                card["status"] = "Start loi"
+                card["status"] = "Mở lỗi"
                 card["tag"] = "error"
                 self._update_device_row(serial)
                 self._refresh_device_action_buttons()
@@ -1660,15 +1697,15 @@ class AutoConfigGUI:
                     pi = os.path.basename(item.get("path_item", ""))
                     idxs = item.get("indexs", [])
                     th_txt = f"  th={item['threshold']}" if 'threshold' in item else ""
-                    rg_txt = f"  region={format_region(item.get('region'))}" if item.get('region') else ""
+                    rg_txt = f"  vùng={format_region(item.get('region'))}" if item.get('region') else ""
                     self.preview_text.insert(tk.END,
-                        f"#{i}  [{t}]  Hang {row}  |  {pi}  |  {len(idxs)} vi tri{th_txt}{rg_txt}\n")
+                        f"#{i}  [{t}]  Hàng {row}  |  {pi}  |  {len(idxs)} vị trí{th_txt}{rg_txt}\n")
                 elif t == "MAY":
                     data_items = item.get("data", [])
                     parts = [f"{os.path.basename(d['path_item'])} x{d.get('total',1)}" for d in data_items]
-                    rg_txt = f"  region={format_region(item.get('region'))}" if item.get('region') else ""
+                    rg_txt = f"  vùng={format_region(item.get('region'))}" if item.get('region') else ""
                     self.preview_text.insert(tk.END,
-                        f"#{i}  [{t}]  Hang {row}  |  {', '.join(parts)}{rg_txt}\n")
+                        f"#{i}  [{t}]  Hàng {row}  |  {', '.join(parts)}{rg_txt}\n")
 
             # Ban do summary
             if ban_do.get("data"):
@@ -1735,7 +1772,7 @@ class AutoConfigGUI:
             return raw.get("settings", DEFAULT_SETTINGS), raw.get("tasks", []), raw.get("ban_do", DEFAULT_BAN_DO)
         elif isinstance(raw, list):
             return DEFAULT_SETTINGS, raw, DEFAULT_BAN_DO
-        messagebox.showerror("Lỗi", "Format config không hợp lệ!")
+        messagebox.showerror("Lỗi", "Định dạng cấu hình không hợp lệ!")
         return None
 
     def _start_one(self, serial, cfg=None):
@@ -1750,7 +1787,7 @@ class AutoConfigGUI:
             return
         # Đang chạy rồi thì bỏ qua
         if not card.get("running", True):
-            self._set_card_status(serial, "Chua start LD", "#7f8c8d")
+            self._set_card_status(serial, "Chưa mở LD", "#7f8c8d")
             return
         if card["thread"] and card["thread"].is_alive():
             return
@@ -1789,13 +1826,15 @@ class AutoConfigGUI:
                 from utils.utils import setup_thread
                 setup_thread(adb_inst, stop_ev, device_name=dev_name)
 
-                self._log(f"{dev_label} Kết nối OK | Config: {config_name}")
+                self._log(f"{dev_label} Kết nối thành công | Config: {config_name}")
 
                 tc_tasks = [t for t in tasks if
                             (t.get("type") == "TC" and settings.get("bat_trong_cay")) or
                             (t.get("type") == "MAY" and settings.get("bat_may"))]
                 if settings.get("bat_mo_ruong"):
                     from core.mo_ruong import can_mo_ruong, da_day_kho, mo_ruong
+                if settings.get("bat_giao_cu"):
+                    from core.giao_cu import can_giao_cu, giao_cu
 
                 tong_i = 0
                 while not stop_ev.is_set():
@@ -1803,8 +1842,8 @@ class AutoConfigGUI:
                     if loop_tong_mode != "forever" and tong_i > loop_tong_count:
                         break
                     lbl = f"{tong_i}{'/' + str(loop_tong_count) if loop_tong_mode != 'forever' else ''}"
-                    self._log(f"{dev_label} [{config_name}] LOOP {lbl}")
-                    self._set_card_status(serial, f"{config_name} | Loop {lbl}", "#f39c12")
+                    self._log(f"{dev_label} [{config_name}] LẶP {lbl}")
+                    self._set_card_status(serial, f"{config_name} | Lặp {lbl}", "#f39c12")
 
                     if settings.get("bat_mo_ruong"):
                         if da_day_kho(serial):
@@ -1815,6 +1854,18 @@ class AutoConfigGUI:
                             if opened:
                                 self._log(f"{dev_label} [{config_name}] Đã mở rương")
                                 self._set_card_status(serial, f"{config_name} | Đã mở rương", "#27ae60")
+
+                    if settings.get("bat_giao_cu") and can_giao_cu(serial):
+                        self._set_card_status(serial, f"{config_name} | Giao cú...", "#e67e22")
+                        handled_gc = giao_cu(
+                            adb_inst,
+                            serial=serial,
+                            dsvp_bo_qua=ban_do.get("dsvp_bo_qua", []),
+                            stop_event=stop_ev
+                        )
+                        if handled_gc:
+                            self._log(f"{dev_label} [{config_name}] Đã xử lý giao cú")
+                            self._set_card_status(serial, f"{config_name} | Đã giao cú", "#27ae60")
 
                     if tc_tasks:
                         start_time = time.time()
@@ -1837,8 +1888,8 @@ class AutoConfigGUI:
                         break
 
                     if settings.get("bat_ban_vp") and ban_do.get("data"):
-                        self._log(f"{dev_label} [{config_name}] Ban vat pham")
-                        self._set_card_status(serial, f"{config_name} | Ban VP...", "#e67e22")
+                        self._log(f"{dev_label} [{config_name}] Bán vật phẩm")
+                        self._set_card_status(serial, f"{config_name} | Bán VP...", "#e67e22")
                         from core.ban_do import main_ban_hang
                         ban_do_cfg = {
                             "loai_kho": ban_do.get("loai_kho", "KTP"),
@@ -1917,9 +1968,9 @@ class AutoConfigGUI:
             if pos >= len(targets):
                 self._start_all_queue_running = False
                 if skipped_not_running:
-                    self.status_label.config(text=f"Đã chạy {len(targets)} job | Bỏ qua {skipped_not_running} LD chưa mở")
+                    self.status_label.config(text=f"Đã chạy {len(targets)} tác vụ | Bỏ qua {skipped_not_running} LD chưa mở")
                 else:
-                    self.status_label.config(text=f"Đã chạy {len(targets)} job")
+                    self.status_label.config(text=f"Đã chạy {len(targets)} tác vụ")
                 return
             self._start_one(targets[pos], cfg=cfg)
             self.root.after(700, lambda: start_next(pos + 1))
@@ -1938,7 +1989,7 @@ class AutoConfigGUI:
         from utils.utils import set_debug_mode as utils_debug
         ban_do_debug(enabled)
         utils_debug(enabled)
-        self._log(f"Debug mode: {'ON' if enabled else 'OFF'}")
+        self._log(f"Gỡ lỗi: {'Bật' if enabled else 'Tắt'}")
 
     def _open_debug_folder(self):
         debug_dir = os.path.abspath("debug")
@@ -1960,8 +2011,8 @@ class AutoConfigGUI:
         tk.Label(toolbar, text="Lọc:", bg="#2d2d2d", fg="#cccccc",
                  font=("Arial", 9)).pack(side=tk.LEFT)
         self.log_filter_var = tk.StringVar(value="TAT CA")
-        for lvl in ["TAT CA", "INFO", "WARNING", "ERROR"]:
-            tk.Radiobutton(toolbar, text=lvl, variable=self.log_filter_var, value=lvl,
+        for lvl, label in [("TAT CA", "TẤT CẢ"), ("INFO", "THÔNG TIN"), ("WARNING", "CẢNH BÁO"), ("ERROR", "LỖI")]:
+            tk.Radiobutton(toolbar, text=label, variable=self.log_filter_var, value=lvl,
                            bg="#2d2d2d", fg="#cccccc", selectcolor="#3c3c3c",
                            activebackground="#3c3c3c", activeforeground="white",
                            font=("Arial", 8), command=self._filter_log
@@ -1985,10 +2036,10 @@ class AutoConfigGUI:
                        font=("Arial", 8)).pack(side=tk.LEFT, padx=(12, 4))
 
         # Buttons
-        tk.Button(toolbar, text="Xóa log", command=self._clear_log,
+        tk.Button(toolbar, text="Xóa nhật ký", command=self._clear_log,
                   bg="#c0392b", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8, "bold"), padx=8).pack(side=tk.RIGHT)
-        tk.Button(toolbar, text="Mở file log", command=self._open_log_file,
+        tk.Button(toolbar, text="Mở tệp nhật ký", command=self._open_log_file,
                   bg="#2980b9", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8, "bold"), padx=8).pack(side=tk.RIGHT, padx=4)
 
@@ -2156,13 +2207,13 @@ class AutoConfigGUI:
             start = end
 
     def _clear_log(self):
-        """Xoa tat ca log."""
+        """Xóa tat ca log."""
         self._all_log_lines.clear()
         self.log_text.config(state=tk.NORMAL)
         self.log_text.delete("1.0", tk.END)
         self.log_text.config(state=tk.DISABLED)
         self.log_count_label.config(text="0 dòng")
-        # Xoa mini log
+        # Xóa mini log
         self.mini_log_text.config(state=tk.NORMAL)
         self.mini_log_text.delete("1.0", tk.END)
         self.mini_log_text.config(state=tk.DISABLED)
@@ -2173,7 +2224,7 @@ class AutoConfigGUI:
         if os.path.exists(log_path):
             os.startfile(log_path)
         else:
-            messagebox.showinfo("Thông báo", "Chưa có file log!")
+            messagebox.showinfo("Thông báo", "Chưa có tệp nhật ký!")
 
     # ----------------------------------------------------------------
     # TAB 3: SCREENSHOT & CROP
@@ -2203,10 +2254,10 @@ class AutoConfigGUI:
         tk.Button(toolbar, text="Lưu ảnh gốc", command=self._ss_save_original,
                   bg="#27ae60", fg="white", relief=tk.FLAT, padx=10,
                   font=("Arial", 9), cursor="hand2").pack(side=tk.RIGHT, padx=4, pady=6)
-        tk.Button(toolbar, text="Lưu vùng crop", command=self._ss_save_cropped,
+        tk.Button(toolbar, text="Lưu vùng cắt", command=self._ss_save_cropped,
                   bg="#e67e22", fg="white", relief=tk.FLAT, padx=10,
                   font=("Arial", 9), cursor="hand2").pack(side=tk.RIGHT, padx=4, pady=6)
-        tk.Button(toolbar, text="Reset crop", command=self._ss_reset_crop,
+        tk.Button(toolbar, text="Đặt lại vùng cắt", command=self._ss_reset_crop,
                   bg="#95a5a6", fg="white", relief=tk.FLAT, padx=10,
                   font=("Arial", 9), cursor="hand2").pack(side=tk.RIGHT, padx=4, pady=6)
 
@@ -2220,7 +2271,7 @@ class AutoConfigGUI:
         left = tk.Frame(content, bg="#2c3e50")
         left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        tk.Label(left, text="Click và kéo để crop vùng ảnh", bg="#2c3e50", fg="white",
+        tk.Label(left, text="Nhấn và kéo để chọn vùng ảnh", bg="#2c3e50", fg="white",
                  font=("Arial", 9), pady=4).pack()
 
         canvas_frame = tk.Frame(left)
@@ -2247,7 +2298,7 @@ class AutoConfigGUI:
         right.pack_propagate(False)
 
         # Info
-        info_frame = tk.LabelFrame(right, text="Thong tin", font=("Arial", 10, "bold"),
+        info_frame = tk.LabelFrame(right, text="Thông tin", font=("Arial", 10, "bold"),
                                    bg="#ecf0f1", padx=8, pady=8)
         info_frame.pack(fill=tk.X, padx=8, pady=8)
         self.ss_info = tk.Text(info_frame, font=("Consolas", 9), height=6, bg="white", wrap=tk.WORD)
@@ -2255,7 +2306,7 @@ class AutoConfigGUI:
         self._ss_set_info("Chưa có ảnh. Ấn Chụp (F2).")
 
         # Crop coords
-        crop_frame = tk.LabelFrame(right, text="Toạ độ Crop", font=("Arial", 10, "bold"),
+        crop_frame = tk.LabelFrame(right, text="Tọa độ vùng cắt", font=("Arial", 10, "bold"),
                                    bg="#ecf0f1", padx=8, pady=8)
         crop_frame.pack(fill=tk.X, padx=8, pady=4)
 
@@ -2266,7 +2317,7 @@ class AutoConfigGUI:
         self.ss_crop_w = tk.Entry(crop_frame, width=8); self.ss_crop_w.grid(row=1, column=1, padx=4, pady=4)
         self.ss_crop_h = tk.Entry(crop_frame, width=8); self.ss_crop_h.grid(row=1, column=3, padx=4, pady=4)
 
-        tk.Button(crop_frame, text="Áp dụng toạ độ", command=self._ss_apply_manual_crop,
+        tk.Button(crop_frame, text="Áp dụng tọa độ", command=self._ss_apply_manual_crop,
                   bg="#3498db", fg="white", relief=tk.FLAT, cursor="hand2"
                   ).grid(row=2, column=0, columnspan=4, pady=4, sticky=tk.EW)
 
@@ -2291,11 +2342,11 @@ class AutoConfigGUI:
 
         tk.Button(save_frame, text="Lưu ảnh gốc", command=self._ss_quick_save_original,
                   bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2").pack(fill=tk.X, pady=2)
-        tk.Button(save_frame, text="Lưu ảnh crop", command=self._ss_quick_save_cropped,
+        tk.Button(save_frame, text="Lưu ảnh đã cắt", command=self._ss_quick_save_cropped,
                   bg="#e67e22", fg="white", relief=tk.FLAT, cursor="hand2").pack(fill=tk.X, pady=2)
 
         # Crop preview
-        preview_frame = tk.LabelFrame(right, text="Preview crop", font=("Arial", 10, "bold"),
+        preview_frame = tk.LabelFrame(right, text="Xem trước vùng cắt", font=("Arial", 10, "bold"),
                                       bg="#ecf0f1", padx=8, pady=8)
         preview_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
         self.ss_preview_label = tk.Label(preview_frame, bg="white", relief=tk.SUNKEN, bd=1)
@@ -2341,7 +2392,7 @@ class AutoConfigGUI:
             if self.ss_adb is None or self.ss_adb.serial != dev["serial"]:
                 self.ss_adb = ADBController(serial=dev["serial"])
             return self.ss_adb
-        messagebox.showwarning("Loi", "Chon thiet bi truoc!")
+        messagebox.showwarning("Lỗi", "Chọn thiết bị trước!")
         return None
 
     def _ss_take(self):
@@ -2361,8 +2412,8 @@ class AutoConfigGUI:
             self._ss_set_info(f"Chụp thành công!\ních thước: {w}x{h}")
             self.status_label.config(text="Đã chụp màn hình", bg="#27ae60")
         except Exception as e:
-            self._ss_set_info(f"Loi: {e}")
-            messagebox.showerror("Loi", f"Không chup được:\n{e}")
+            self._ss_set_info(f"Lỗi: {e}")
+            messagebox.showerror("Lỗi", f"Không chụp được:\n{e}")
             self.status_label.config(text="Lỗi chụp", bg="#e74c3c")
 
     def _ss_display(self, img_bgr):
@@ -2389,7 +2440,7 @@ class AutoConfigGUI:
             self.ss_crop_rect = self.ss_canvas.create_rectangle(
                 x1, y1, x2, y2, outline="red", width=2, dash=(5, 5))
             w, h = abs(x2 - x1), abs(y2 - y1)
-            self._ss_set_info(f"Crop: ({int(min(x1,x2))},{int(min(y1,y2))}) {int(w)}x{int(h)}")
+            self._ss_set_info(f"Vùng cắt: ({int(min(x1,x2))},{int(min(y1,y2))}) {int(w)}x{int(h)}")
 
     def _ss_mouse_up(self, event):
         if self.ss_crop_start:
@@ -2403,7 +2454,7 @@ class AutoConfigGUI:
                                (self.ss_crop_w, w), (self.ss_crop_h, h)]:
                 entry.delete(0, tk.END)
                 entry.insert(0, str(val))
-            self._ss_set_info(f"Crop: X={x} Y={y}\nW={w} H={h}")
+            self._ss_set_info(f"Vùng cắt: X={x} Y={y}\nW={w} H={h}")
             self._ss_update_preview()
 
     def _ss_reset_crop(self):
@@ -2475,12 +2526,12 @@ class AutoConfigGUI:
             initialfile=f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
         if path:
             cv2.imwrite(path, self.ss_screenshot)
-            messagebox.showinfo("OK", f"Đã lưu:\n{path}")
+            messagebox.showinfo("Xong", f"Đã lưu:\n{path}")
 
     def _ss_save_cropped(self):
         cropped = self._ss_get_cropped()
         if cropped is None:
-            messagebox.showwarning("Chưa crop", "Chọn vùng crop trước!")
+            messagebox.showwarning("Chưa chọn vùng cắt", "Chọn vùng cắt trước!")
             return
         from tkinter import filedialog
         from datetime import datetime
@@ -2489,7 +2540,7 @@ class AutoConfigGUI:
             initialfile=f"cropped_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
         if path:
             cv2.imwrite(path, cropped)
-            messagebox.showinfo("OK", f"Đã lưu crop:\n{path}")
+            messagebox.showinfo("Xong", f"Đã lưu ảnh cắt:\n{path}")
 
     def _ss_quick_save_original(self):
         if self.ss_screenshot is None:
@@ -2503,13 +2554,13 @@ class AutoConfigGUI:
         os.makedirs(folder, exist_ok=True)
         path = os.path.join(folder, f"{name}.png")
         cv2.imwrite(path, self.ss_screenshot)
-        messagebox.showinfo("OK", f"Đã lưu:\n{path}")
+        messagebox.showinfo("Xong", f"Đã lưu:\n{path}")
         self.status_label.config(text=f"Đã lưu: {name}.png", bg="#27ae60")
 
     def _ss_quick_save_cropped(self):
         cropped = self._ss_get_cropped()
         if cropped is None:
-            messagebox.showwarning("Chưa crop", "Chọn vùng crop trước!")
+            messagebox.showwarning("Chưa chọn vùng cắt", "Chọn vùng cắt trước!")
             return
         folder = self.ss_folder.get()
         name = self.ss_filename.get().strip()
@@ -2519,8 +2570,8 @@ class AutoConfigGUI:
         os.makedirs(folder, exist_ok=True)
         path = os.path.join(folder, f"{name}.png")
         cv2.imwrite(path, cropped)
-        messagebox.showinfo("OK", f"Đã lưu crop:\n{path}")
-        self.status_label.config(text=f"Đã lưu crop: {name}.png", bg="#27ae60")
+        messagebox.showinfo("Xong", f"Đã lưu ảnh cắt:\n{path}")
+        self.status_label.config(text=f"Đã lưu ảnh cắt: {name}.png", bg="#27ae60")
 
     # ================================================================
     # TAB CONFIG: LOGIC
@@ -2553,9 +2604,9 @@ class AutoConfigGUI:
         if selected == REGION_FROM_CROP:
             region = self._get_current_crop_region()
             if region is None:
-                messagebox.showwarning("Loi", "Chua co vung crop hien tai. Vao tab Chup & Cat anh de keo chon vung truoc.")
+                messagebox.showwarning("Lỗi", "Chưa có vùng cắt hiện tại. Vào tab Chụp & Cắt ảnh để kéo chọn vùng trước.")
             return region
-        if selected.startswith("Da luu:"):
+        if selected.startswith("Đã lưu:"):
             return normalize_region(selected.split(":", 1)[1].strip())
         return self._get_region_from_vars(x_var, y_var, w_var, h_var)
 
@@ -2571,10 +2622,10 @@ class AutoConfigGUI:
                     preset = name
                     break
             if preset is None:
-                preset = f"Da luu: {format_region(normalized)}"
+                preset = f"Đã lưu: {format_region(normalized)}"
         preset_var.set(preset)
         if combo is not None:
-            combo["values"] = self._region_combo_values(preset if preset.startswith("Da luu:") else None)
+            combo["values"] = self._region_combo_values(preset if preset.startswith("Đã lưu:") else None)
 
     def _get_region_from_vars(self, x_var, y_var, w_var, h_var):
         raw = [x_var.get().strip(), y_var.get().strip(),
@@ -2583,7 +2634,7 @@ class AutoConfigGUI:
             return None
         region = normalize_region(raw)
         if region is None:
-            messagebox.showwarning("Loi", "Region phai co dang X, Y, W, H va W/H > 0")
+            messagebox.showwarning("Lỗi", "Vùng phải có dạng X, Y, W, H và W/H > 0")
         return region
 
     def _set_region_vars(self, region, x_var, y_var, w_var, h_var):
@@ -2775,7 +2826,7 @@ class AutoConfigGUI:
     def _bd_update_selected_vp(self):
         sel = self.bd_vp_listbox.curselection()
         if not sel:
-            messagebox.showinfo("Thong bao", "Chon 1 VP trong danh sach de cap nhat!")
+            messagebox.showinfo("Thông báo", "Chọn 1 VP trong danh sách để cập nhật!")
             return
         idx = sel[0]
         vp = self.bd_vp_var.get().strip()
@@ -2804,7 +2855,7 @@ class AutoConfigGUI:
                 continue
             existing_path = item["path"] if isinstance(item, dict) else item
             if existing_path == new_path:
-                messagebox.showwarning("Loi", "VP nay da co trong danh sach!")
+                messagebox.showwarning("Lỗi", "VP này đã có trong danh sách!")
                 return
 
         self.bd_vp_list[idx] = vp_info
@@ -2879,6 +2930,31 @@ class AutoConfigGUI:
         self.bd_xe_list = []
         self.bd_xe_listbox.delete(0, tk.END)
 
+    def _gc_skip_add(self):
+        sel = self.gc_skip_var.get().strip()
+        if not sel:
+            return
+        path = f"assets/items/{sel}" if not sel.startswith("assets/") else sel
+        if not hasattr(self, 'gc_skip_list'):
+            self.gc_skip_list = []
+        if path in self.gc_skip_list:
+            return
+        self.gc_skip_list.append(path)
+        self.gc_skip_listbox.insert(tk.END, os.path.basename(path))
+
+    def _gc_skip_remove(self):
+        sel = self.gc_skip_listbox.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        if hasattr(self, 'gc_skip_list'):
+            self.gc_skip_list.pop(idx)
+        self.gc_skip_listbox.delete(idx)
+
+    def _gc_skip_clear(self):
+        self.gc_skip_list = []
+        self.gc_skip_listbox.delete(0, tk.END)
+
     def _get_settings_from_ui(self):
         settings = {}
         settings["loop_tong_mode"] = self.loop_tong_mode_var.get()
@@ -2907,6 +2983,7 @@ class AutoConfigGUI:
             "dat_quang_cao": self.bd_dat_qc_var.get(),
             "qc_templates": list(getattr(self, 'bd_qc_list', [])),
             "xoa_kc_templates": list(getattr(self, 'bd_xe_list', [])),
+            "dsvp_bo_qua": list(getattr(self, 'gc_skip_list', [])),
         }
         try:
             ban_do["threshold"] = self.bd_threshold_var.get()
@@ -2938,11 +3015,16 @@ class AutoConfigGUI:
         # Set QC/XE lists
         qc_list = ban_do.get("qc_templates", [])
         xe_list = ban_do.get("xoa_kc_templates", [])
+        gc_skip_list = ban_do.get("dsvp_bo_qua", [])
         # Set first item into the small selector vars (for quick add preview)
         if qc_list:
             self.bd_qc_var.set(os.path.basename(qc_list[0]))
         if xe_list:
             self.bd_xe_var.set(os.path.basename(xe_list[0]))
+        self.gc_skip_list = list(gc_skip_list)
+        self.gc_skip_listbox.delete(0, tk.END)
+        for path in self.gc_skip_list:
+            self.gc_skip_listbox.insert(tk.END, os.path.basename(path))
         self.bd_threshold_var.set(ban_do.get("threshold", 0.85))
         self.bd_color_threshold_var.set(ban_do.get("color_threshold", 0.6))
 
@@ -3041,7 +3123,7 @@ class AutoConfigGUI:
     def _open_index_picker(self):
         """Mo popup grid 4x6 de chon vi tri indexs."""
         popup = tk.Toplevel(self.root)
-        popup.title("Chon vi tri")
+        popup.title("Chọn vị trí")
         popup.geometry("420x320")
         popup.resizable(False, False)
         popup.transient(self.root)
@@ -3089,14 +3171,14 @@ class AutoConfigGUI:
                 var.set(False)
 
         for r in range(1, 5):
-            tk.Button(quick_frame, text=f"Hang {r}", command=lambda r=r: select_row(r),
+            tk.Button(quick_frame, text=f"Hàng {r}", command=lambda r=r: select_row(r),
                       bg="#3498db", fg="white", relief=tk.FLAT, padx=6,
                       font=("Arial", 8), cursor="hand2").pack(side=tk.LEFT, padx=3)
 
-        tk.Button(quick_frame, text="Tat ca", command=select_all,
+        tk.Button(quick_frame, text="Tất cả", command=select_all,
                   bg="#27ae60", fg="white", relief=tk.FLAT, padx=8,
                   font=("Arial", 8), cursor="hand2").pack(side=tk.LEFT, padx=3)
-        tk.Button(quick_frame, text="Bo chon", command=clear_all,
+        tk.Button(quick_frame, text="Bỏ chọn", command=clear_all,
                   bg="#e74c3c", fg="white", relief=tk.FLAT, padx=8,
                   font=("Arial", 8), cursor="hand2").pack(side=tk.LEFT, padx=3)
 
@@ -3111,13 +3193,13 @@ class AutoConfigGUI:
             if self.selected_indexs:
                 self.indexs_display.config(text=", ".join(self.selected_indexs))
             else:
-                self.indexs_display.config(text="(chua chon)")
+                self.indexs_display.config(text="(chưa chọn)")
             popup.destroy()
 
-        tk.Button(btn_frame, text="Xac nhan", command=on_ok,
+        tk.Button(btn_frame, text="Xác nhận", command=on_ok,
                   bg="#27ae60", fg="white", relief=tk.FLAT, padx=20, pady=5,
                   font=("Arial", 10, "bold"), cursor="hand2").pack(side=tk.LEFT, padx=8)
-        tk.Button(btn_frame, text="Huy", command=popup.destroy,
+        tk.Button(btn_frame, text="Hủy", command=popup.destroy,
                   bg="#95a5a6", fg="white", relief=tk.FLAT, padx=20, pady=5,
                   font=("Arial", 10), cursor="hand2").pack(side=tk.LEFT, padx=8)
 
@@ -3132,7 +3214,7 @@ class AutoConfigGUI:
         if t == "TC":
             indexs = list(self.selected_indexs)
             if not indexs:
-                messagebox.showwarning("Lỗi", "Vui lòng chọn vị trí indexs!")
+                messagebox.showwarning("Lỗi", "Vui lòng chọn vị trí!")
                 return
 
             path_item_file = self.path_item_var.get()
@@ -3257,7 +3339,7 @@ class AutoConfigGUI:
             if self.selected_indexs:
                 self.indexs_display.config(text=", ".join(self.selected_indexs))
             else:
-                self.indexs_display.config(text="(chua chon)")
+                self.indexs_display.config(text="(chưa chọn)")
 
             th = item.get("threshold", 0.85)
             self.threshold_var.set(th)
@@ -3297,7 +3379,7 @@ class AutoConfigGUI:
         if t == "TC":
             indexs = list(self.selected_indexs)
             if not indexs:
-                messagebox.showwarning("Lỗi", "Vui lòng chọn vị trí indexs!")
+                messagebox.showwarning("Lỗi", "Vui lòng chọn vị trí!")
                 return
 
             path_item_file = self.path_item_var.get()
@@ -3361,7 +3443,7 @@ class AutoConfigGUI:
 
         path = os.path.join(CONFIG_DIR, f"{safe_name}.json")
         if os.path.exists(path):
-            if not messagebox.askyesno("Xac nhan", f"File '{safe_name}.json' da ton tai. Ghi de?"):
+            if not messagebox.askyesno("Xác nhận", f"File '{safe_name}.json' đã tồn tại. Ghi đè?"):
                 return
 
         config_data = {
@@ -3373,11 +3455,11 @@ class AutoConfigGUI:
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(config_data, f, ensure_ascii=False, indent=2)
-            messagebox.showinfo("Thanh cong", f"Da luu: {path}")
+            messagebox.showinfo("Thành công", f"Đã lưu: {path}")
             self._refresh_configs()
             self._refresh_cfg_load_combo()
         except Exception as e:
-            messagebox.showerror("Loi", f"Khong luu duoc: {e}")
+            messagebox.showerror("Lỗi", f"Không lưu được: {e}")
 
     def _refresh_cfg_load_combo(self):
         files = glob_mod.glob(os.path.join(CONFIG_DIR, "*.json"))
@@ -3389,11 +3471,11 @@ class AutoConfigGUI:
     def _load_config_to_editor(self):
         name = self.cfg_load_var.get()
         if not name:
-            messagebox.showwarning("Loi", "Chon file cau hinh can tai!")
+            messagebox.showwarning("Lỗi", "Chọn file cấu hình cần tải!")
             return
         path = os.path.join(CONFIG_DIR, f"{name}.json")
         if not os.path.exists(path):
-            messagebox.showerror("Loi", f"File khong ton tai: {path}")
+            messagebox.showerror("Lỗi", f"File không tồn tại: {path}")
             return
         try:
             with open(path, "r", encoding="utf-8") as f:

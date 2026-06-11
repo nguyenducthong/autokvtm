@@ -13,6 +13,18 @@ class ADBHelper:
         self.ldplayer_dir = None
         self.adb_path = self.find_adb()
 
+    @staticmethod
+    def _hidden_subprocess_kwargs():
+        if os.name != "nt":
+            return {}
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 0
+        return {
+            "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            "startupinfo": startupinfo,
+        }
+
     def find_adb(self) -> Optional[str]:
         """Tìm đường dẫn ADB bằng cách tìm thư mục LDPlayer."""
 
@@ -22,7 +34,8 @@ class ADBHelper:
                 ["adb", "version"],
                 capture_output=True,
                 text=True,
-                timeout=2
+                timeout=2,
+                **self._hidden_subprocess_kwargs()
             )
             if result.returncode == 0:
                 print("[OK] Tim thay ADB trong PATH")
@@ -87,7 +100,8 @@ class ADBHelper:
             cmd,
             capture_output=True,
             text=True,
-            timeout=timeout
+            timeout=timeout,
+            **self._hidden_subprocess_kwargs()
         )
 
     def get_devices(self) -> list:
@@ -170,7 +184,8 @@ class ADBHelper:
                 [console_path, "list2"],
                 capture_output=True,
                 text=True,
-                timeout=8
+                timeout=8,
+                **self._hidden_subprocess_kwargs()
             )
         except Exception:
             return []
@@ -209,7 +224,8 @@ class ADBHelper:
                     [console_path, "isrunning", "--index", str(idx)],
                     capture_output=True,
                     text=True,
-                    timeout=2
+                    timeout=2,
+                    **self._hidden_subprocess_kwargs()
                 )
             except Exception:
                 continue
@@ -277,11 +293,8 @@ class ADBHelper:
         else:
             raise ValueError("Can index hoac name de start LDPlayer")
 
-        creationflags = 0
-        if os.name == "nt":
-            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         creationflags=creationflags)
+                         **self._hidden_subprocess_kwargs())
         return True
 
     def connect_emulator(self, port: int = 5554) -> bool:

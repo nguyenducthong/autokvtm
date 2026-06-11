@@ -8,7 +8,7 @@
     "bat_may": true,
     "bat_ban_vp": true,
     "bat_thu_hoach": true,
-    "bat_mo_ruong": false,
+    "bat_mo_ruong": true,
     "bat_giao_cu": false
   },
   "tasks": [
@@ -349,7 +349,7 @@
   ],
   "ban_do": {
     "loai_kho": "KTP",
-    "so_lan_dat_vp": 4,
+    "so_lan_dat_vp": 6,
     "data": [
       {
         "path": "assets/items/kho_tra_hoa_hong.png"
@@ -361,7 +361,7 @@
         "path": "assets/items/kho_vai_vang.png"
       }
     ],
-    "xoa_kc": false,
+    "xoa_kc": true,
     "dat_quang_cao": true,
     "qc_templates": [
       "assets/items/ch_tra_hoa_hong.png",
@@ -372,6 +372,12 @@
       "assets/items/ch_tra_hoa_hong.png"
     ],
     "threshold": 0.85,
-    "color_threshold": 0.85
+    "color_threshold": 0.85,
+    "region": [
+      12,
+      216,
+      682,
+      374
+    ]
   }
 }

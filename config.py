@@ -281,7 +281,8 @@ CONFIG_BAN_DO = {
     "dat_quang_cao": True, # có đặt quảng cáo không
     # New: lists of templates (thứ tự sẽ được thử từng cái)
     "qc_templates": ["assets/items/cua_hang_qc.png"],
-    "xoa_kc_templates": ["assets/items/xoa_vp_kc.png"]
+    "xoa_kc_templates": ["assets/items/xoa_vp_kc.png"],
+    "dsvp_bo_qua": []
 }
 
 INDEX_HANG = {
@@ -335,6 +336,8 @@ INDEX_NEXT_SAN_XUAT_MAC_DINH = (514, 511)
 INDEX_CUA_HANG_MAC_DINH = (513, 690)
 INDEX_SUA_MAY_MAC_DINH = (577, 475)
 INDEX_THUYEN_MAC_DINH = (300, 500)
-
+# giao cú
+INDEX_MAC_DINH_GIAO_CU = (767, 38)
+INDEX_XOA_DON_GIAO_CU = (178, 556)
 TAB_LEN_2_HANG = (318, 225)
 

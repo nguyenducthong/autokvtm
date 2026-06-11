@@ -324,7 +324,7 @@ def tim_o_ban(adb, max_swipe=SWIPE_LEFT_MAX):
     set_state(PlayerState.TIM_O_BAN)
     if _should_stop():
         return None
-
+    _sleep(CLICK_DELAY)
     for swipe_i in range(max_swipe + 1):  # 0 = trang hiện tại, 1..max = sau kéo
         if _should_stop():
             return None
@@ -351,7 +351,7 @@ def tim_o_ban(adb, max_swipe=SWIPE_LEFT_MAX):
         if swipe_i < max_swipe:
             logger.info(f"Không tìm thấy ô trống, kéo quầy sang trái ({swipe_i+1}/{max_swipe})...")
             _keo_quay_hang_sang_trai(adb)
-            _sleep(0.8)
+            _sleep(CLICK_DELAY)
 
     logger.warning(f"Không tìm thấy ô trống sau {max_swipe} lần kéo (đã xem hết 20 ô)")
     return None
