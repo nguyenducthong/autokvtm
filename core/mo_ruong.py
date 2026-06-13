@@ -1,9 +1,11 @@
-import logging
+﻿import logging
 import time
 
 from config import (
     INDEX_THOAT_SAN_XUAT_MAC_DINH,
     INDEX_THUYEN_MAC_DINH,
+    INDEX_MO_RUONG_MAC_DINH,
+    INDEX_BACK_MAC_DINH,
 )
 from core.image import ImageProcessor
 from utils.utils import tim_may_v2, xuong_nha
@@ -15,8 +17,7 @@ CHEST_TEMPLATE = "assets/items/chest.png"
 RUONG_GO_TEMPLATE = "assets/items/ruong_go.png"
 OPEN_CHEST_TEMPLATE = "assets/items/open_chest.png"
 FULL_KHO_TEMPLATE = "assets/items/full_kho.png"
-BACK_TEMPLATE = "assets/items/back.png"
-
+CHAM_VAO_DE_MO_TEMPLATE = "assets/items/ruong_cham_de_nhan_qua.png"
 RUONG_INTERVAL_SECONDS = 20 * 60
 
 _day_kho_flags = {}
@@ -93,10 +94,9 @@ def _xu_ly_day_kho(adb, serial: str, stop_event=None):
     logger.warning("[MỞ RƯƠNG] Kho quá tải, đặt cờ đầy kho cho %s", serial)
     _day_kho_flags[serial] = True
     _thoat_mac_dinh(adb, stop_event=stop_event)
-    pos_back = _doi_anh(adb, BACK_TEMPLATE, timeout=8, interval=1, threshold=0.82, stop_event=stop_event)
-    if pos_back:
-        adb.tap(*pos_back)
-        _sleep(1.0, stop_event)
+    adb.tap(*INDEX_BACK_MAC_DINH)
+    _sleep(0.5, stop_event)
+    _thoat_mac_dinh(adb, stop_event=stop_event)    
 
 
 def mo_ruong(adb, serial: str = None, force: bool = False, stop_event=None) -> bool:
@@ -125,34 +125,27 @@ def mo_ruong(adb, serial: str = None, force: bool = False, stop_event=None) -> b
     adb.tap(*INDEX_THUYEN_MAC_DINH)
     _sleep(2.0, stop_event)
 
-    pos_ruong = _doi_anh(adb, RUONG_GO_TEMPLATE, timeout=12, interval=1, threshold=0.82, stop_event=stop_event)
+    pos_ruong = _doi_anh(adb, RUONG_GO_TEMPLATE, timeout=2, interval=1, threshold=0.82, stop_event=stop_event)
     if not pos_ruong:
         logger.info("[MỞ RƯƠNG] Không thấy ruong_go.png, thoát")
         _thoat_mac_dinh(adb, stop_event=stop_event)
         return False
     adb.tap(*pos_ruong)
     _sleep(1.5, stop_event)
-
-    pos_open = _doi_anh(adb, OPEN_CHEST_TEMPLATE, timeout=12, interval=1, threshold=0.82, stop_event=stop_event)
-    if not pos_open:
-        logger.info("[MỞ RƯƠNG] Không thấy open_chest.png, coi như kho quá tải")
-        _xu_ly_day_kho(adb, serial, stop_event=stop_event)
-        return False
-
-    logger.info("[MỞ RƯƠNG] Mở rương tại %s", pos_open)
-    adb.tap(*pos_open)
+    # Tap mở rương
+    adb.tap(*INDEX_MO_RUONG_MAC_DINH)
+    _sleep(1.0, stop_event) 
+    # Tap nhân quà
+    adb.tap(*INDEX_MO_RUONG_MAC_DINH)
     _sleep(1.5, stop_event)
-
-    full_kho = _doi_anh(adb, FULL_KHO_TEMPLATE, timeout=6, interval=1, threshold=0.82, stop_event=stop_event)
+    adb.tap(*INDEX_MO_RUONG_MAC_DINH)
+    _sleep(1.0, stop_event)
+    full_kho = _doi_anh(adb, FULL_KHO_TEMPLATE, timeout=1, interval=1, threshold=0.82, stop_event=stop_event)
     if full_kho:
         logger.info("[MỞ RƯƠNG] Kho đầy sau khi mở rương")
         _xu_ly_day_kho(adb, serial, stop_event=stop_event)
         return False
 
-    adb.tap(*pos_open)
-    _sleep(0.5, stop_event)
-    adb.tap(*pos_open)
-    _sleep(0.5, stop_event)
     _thoat_mac_dinh(adb, stop_event=stop_event)
     logger.info("[MỞ RƯƠNG] Đã mở rương thành công")
     return True

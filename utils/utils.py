@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from core.adb import ADBController
 from core.image import ImageProcessor
-from config import DEVICE_SERIAL, INDEX_HANG, INDEX_XUONG_NHA_MAC_DINH, TAB_LEN_2_HANG
+from config import DEVICE_SERIAL, INDEX_HANG, INDEX_XUONG_NHA_MAC_DINH, TAB_LEN_2_HANG, INDEX_THOAT_SAN_XUAT_MAC_DINH
 import time
 import logging
 import threading
@@ -177,6 +177,7 @@ def _detect_current_row(take_screenshot=True, threshold=None):
             if screen is None:
                 screen = adb.screenshot_full()
         else:
+            adb.tap(*INDEX_THOAT_SAN_XUAT_MAC_DINH)
             if attempt > 0:
                 _sleep(0.3)
                 logger.info("Lần 1 không nhận diện được hàng, chụp lại...")

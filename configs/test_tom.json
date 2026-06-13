@@ -1,0 +1,30 @@
+{
+  "settings": {
+    "loop_tong_mode": "count",
+    "loop_tong": 1,
+    "loop": 1,
+    "threshold": 0.85,
+    "bat_trong_cay": false,
+    "bat_may": false,
+    "bat_ban_vp": false,
+    "bat_thu_hoach": false,
+    "bat_mo_ruong": false,
+    "bat_giao_cu": false,
+    "bat_giao_tom": true
+  },
+  "tasks": [],
+  "ban_do": {
+    "loai_kho": "KTP",
+    "so_lan_dat_vp": 4,
+    "data": [],
+    "xoa_kc": true,
+    "dat_quang_cao": true,
+    "qc_templates": [],
+    "xoa_kc_templates": [],
+    "dsvp_bo_qua": [],
+    "tom_vp": "assets/items/tom_giay.png",
+    "tom_kho": "KTP",
+    "threshold": 0.85,
+    "color_threshold": 0.6
+  }
+}

@@ -12,8 +12,8 @@ GIAO_CU_CO_DON = "assets/items/giao_cu_co_don.png"
 GIAO_CU_GIAO_DON = "assets/items/giao_cu_giao_don.png"
 GIAO_CU_DON_HANG_OFF = "assets/items/giao_cu_don_hang_off.png"
 GIAO_CU_BACK = "assets/items/back.png"
-
-GIAO_CU_INTERVAL_SECONDS = 30 * 60
+GIAO_CU_DONG_Y = "assets/items/giao_cu_dong_y.png"
+GIAO_CU_INTERVAL_SECONDS = 31 * 60
 
 _last_run_at = {}
 
@@ -106,7 +106,7 @@ def giao_cu(adb, serial: str = None, dsvp_bo_qua=None, force: bool = False, stop
     _sleep(1.5, stop_event)
 
     handled = False
-    for _ in range(12):
+    for _ in range(20):
         if _should_stop(stop_event):
             return handled
 
@@ -123,6 +123,7 @@ def giao_cu(adb, serial: str = None, dsvp_bo_qua=None, force: bool = False, stop
             else:
                 logger.info("[GIAO CÚ] Đợi nút giao đơn")
                 _tap_neu_thay(adb, GIAO_CU_GIAO_DON, timeout=20, stop_event=stop_event)
+                _tap_neu_thay(adb, GIAO_CU_DONG_Y, timeout=1, stop_event=stop_event)
             _sleep(1.0, stop_event)
             continue
 

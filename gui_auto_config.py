@@ -198,7 +198,8 @@ DEFAULT_SETTINGS = {
     "bat_ban_vp": False,
     "bat_thu_hoach": True,
     "bat_mo_ruong": False,
-    "bat_giao_cu": False
+    "bat_giao_cu": False,
+    "bat_giao_tom": False
 }
 
 DEFAULT_BAN_DO = {
@@ -210,6 +211,8 @@ DEFAULT_BAN_DO = {
     "qc_templates": [],
     "xoa_kc_templates": [],
     "dsvp_bo_qua": [],
+    "tom_vp": "",
+    "tom_kho": "KTP",
     "threshold": 0.85,
     "color_threshold": 0.6
 }
@@ -507,6 +510,7 @@ class AutoConfigGUI:
             ("bat_thu_hoach", "Thu hoạch", True),
             ("bat_mo_ruong", "Mở rương", False),
             ("bat_giao_cu", "Giao cú", False),
+            ("bat_giao_tom", "Giao tôm", False),
         ]
         for i, (key, label, default) in enumerate(toggles):
             var = tk.BooleanVar(value=default)
@@ -556,8 +560,9 @@ class AutoConfigGUI:
         tk.Label(r3, text="Ảnh hàng:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.path_row_var = tk.StringVar()
         row_templates = scan_row_templates()
-        AutocompleteCombobox(r3, textvariable=self.path_row_var, values=row_templates,
-                             width=30).pack(side=tk.LEFT)
+        self.row_template_combo = AutocompleteCombobox(r3, textvariable=self.path_row_var,
+                                                       values=row_templates, width=30)
+        self.row_template_combo.pack(side=tk.LEFT)
         if row_templates:
             self.path_row_var.set(row_templates[0])
 
@@ -861,9 +866,7 @@ class AutoConfigGUI:
                   font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=6)
 
         # VP list
-        self.bd_vp_listbox = tk.Listbox(bk4_right, font=("Consolas", 9), height=4,
-                                         selectmode=tk.SINGLE, bg="white")
-        self.bd_vp_listbox.pack(fill=tk.X, pady=4)
+        self.bd_vp_listbox = self._create_scrolled_listbox(bk4_right, height=4)
         self.bd_vp_listbox.bind("<<ListboxSelect>>", lambda e: self._bd_load_selected_vp())
 
         bk4_btns = tk.Frame(bk4_right, bg="#ecf0f1")
@@ -904,9 +907,7 @@ class AutoConfigGUI:
               bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
               padx=8).pack(side=tk.LEFT, padx=6)
 
-        self.bd_qc_listbox = tk.Listbox(bk_qc_r, font=("Consolas", 9), height=3,
-                        selectmode=tk.SINGLE, bg="white")
-        self.bd_qc_listbox.pack(fill=tk.X, pady=4)
+        self.bd_qc_listbox = self._create_scrolled_listbox(bk_qc_r, height=4)
         bk_qc_btns = tk.Frame(bk_qc_r, bg="#ecf0f1")
         bk_qc_btns.pack(fill=tk.X)
         tk.Button(bk_qc_btns, text="Xóa", command=self._bd_qc_remove,
@@ -941,9 +942,7 @@ class AutoConfigGUI:
               bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
               padx=8).pack(side=tk.LEFT, padx=6)
 
-        self.bd_xe_listbox = tk.Listbox(bk_xe_r, font=("Consolas", 9), height=3,
-                        selectmode=tk.SINGLE, bg="white")
-        self.bd_xe_listbox.pack(fill=tk.X, pady=4)
+        self.bd_xe_listbox = self._create_scrolled_listbox(bk_xe_r, height=4)
         bk_xe_btns = tk.Frame(bk_xe_r, bg="#ecf0f1")
         bk_xe_btns.pack(fill=tk.X)
         tk.Button(bk_xe_btns, text="Xóa", command=self._bd_xe_remove,
@@ -971,13 +970,19 @@ class AutoConfigGUI:
         self.gc_skip_combo = AutocompleteCombobox(bk_gc_skip_add, textvariable=self.gc_skip_var,
                                                   values=all_templates, width=20)
         self.gc_skip_combo.pack(side=tk.LEFT)
+        self._gc_skip_preview_photo = None
+        gc_skip_pf = tk.Frame(bk_gc_skip_add, width=44, height=44, bg="white", relief=tk.SUNKEN, bd=1)
+        gc_skip_pf.pack_propagate(False)
+        gc_skip_pf.pack(side=tk.LEFT, padx=(4, 0))
+        self.gc_skip_preview_label = tk.Label(gc_skip_pf, bg="white")
+        self.gc_skip_preview_label.pack(expand=True)
+        self.gc_skip_var.trace_add("write", lambda *_: self._update_gc_skip_preview())
+        self.gc_skip_combo.bind("<<ComboboxSelected>>", lambda e: self._update_gc_skip_preview())
         tk.Button(bk_gc_skip_add, text="+ Thêm", command=self._gc_skip_add,
                   bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=8).pack(side=tk.LEFT, padx=6)
 
-        self.gc_skip_listbox = tk.Listbox(bk_gc_skip_r, font=("Consolas", 9), height=3,
-                                          selectmode=tk.SINGLE, bg="white")
-        self.gc_skip_listbox.pack(fill=tk.X, pady=4)
+        self.gc_skip_listbox = self._create_scrolled_listbox(bk_gc_skip_r, height=4)
         bk_gc_skip_btns = tk.Frame(bk_gc_skip_r, bg="#ecf0f1")
         bk_gc_skip_btns.pack(fill=tk.X)
         tk.Button(bk_gc_skip_btns, text="Xóa", command=self._gc_skip_remove,
@@ -986,12 +991,98 @@ class AutoConfigGUI:
         tk.Button(bk_gc_skip_btns, text="Xóa tất cả", command=self._gc_skip_clear,
                   bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=8).pack(side=tk.LEFT, padx=4)
+
+        giao_tom_frame = tk.LabelFrame(pad, text="Cấu hình giao tôm", font=("Arial", 10, "bold"),
+                                       bg="#ecf0f1", padx=10, pady=8)
+        giao_tom_frame.pack(fill=tk.X, pady=(8, 0))
+
+        tom_row = tk.Frame(giao_tom_frame, bg="#ecf0f1")
+        tom_row.pack(fill=tk.X, pady=3)
+        tk.Label(tom_row, text="VP tôm cần lấy:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT)
+        self.tom_vp_var = tk.StringVar()
+        all_templates = scan_all_templates()
+        self.tom_vp_combo = AutocompleteCombobox(tom_row, textvariable=self.tom_vp_var,
+                                                 values=all_templates, width=20)
+        self.tom_vp_combo.pack(side=tk.LEFT)
+        self._tom_vp_preview_photo = None
+        tom_vp_pf = tk.Frame(tom_row, width=44, height=44, bg="white", relief=tk.SUNKEN, bd=1)
+        tom_vp_pf.pack_propagate(False)
+        tom_vp_pf.pack(side=tk.LEFT, padx=(4, 0))
+        self.tom_vp_preview_label = tk.Label(tom_vp_pf, bg="white")
+        self.tom_vp_preview_label.pack(expand=True)
+        self.tom_vp_var.trace_add("write", lambda *_: self._update_tom_vp_preview())
+        self.tom_vp_combo.bind("<<ComboboxSelected>>", lambda e: self._update_tom_vp_preview())
+
+        tk.Label(tom_row, text="Kho:", bg="#ecf0f1", padx=8).pack(side=tk.LEFT)
+        self.tom_kho_var = tk.StringVar(value="KTP")
+        ttk.Combobox(tom_row, textvariable=self.tom_kho_var,
+                     values=["KTP", "KNS"], state="readonly", width=8).pack(side=tk.LEFT)
         # Internal data
         self.config_items = []
         self.bd_vp_list = []  # list of dict: {"path", "threshold", "color_threshold"}
         self.bd_qc_list = []
         self.bd_xe_list = []
         self.gc_skip_list = []
+        self._bind_template_refresh_events()
+
+    def _create_scrolled_listbox(self, parent, height=4):
+        frame = tk.Frame(parent, bg="#ecf0f1")
+        frame.pack(fill=tk.X, pady=4)
+        scrollbar = tk.Scrollbar(frame, orient=tk.VERTICAL)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        listbox = tk.Listbox(
+            frame,
+            font=("Consolas", 9),
+            height=height,
+            selectmode=tk.SINGLE,
+            bg="white",
+            yscrollcommand=scrollbar.set
+        )
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=listbox.yview)
+        return listbox
+
+    def _bind_template_refresh_events(self):
+        for combo in self._template_combos():
+            combo.bind("<ButtonPress-1>", lambda e: self._refresh_template_combos(), add="+")
+            combo.bind("<FocusIn>", lambda e: self._refresh_template_combos(), add="+")
+
+    def _template_combos(self):
+        names = (
+            "row_template_combo",
+            "cay_combo",
+            "default_combo",
+            "bd_vp_combo",
+            "bd_qc_combo",
+            "bd_xe_combo",
+            "gc_skip_combo",
+            "tom_vp_combo",
+        )
+        return [getattr(self, name) for name in names if hasattr(self, name)]
+
+    def _refresh_template_combos(self):
+        all_templates = scan_all_templates()
+        kho_templates = scan_kho_templates()
+        row_templates = scan_row_templates()
+        values_by_name = {
+            "row_template_combo": row_templates,
+            "cay_combo": all_templates,
+            "default_combo": all_templates,
+            "bd_vp_combo": kho_templates,
+            "bd_qc_combo": all_templates,
+            "bd_xe_combo": all_templates,
+            "gc_skip_combo": all_templates,
+            "tom_vp_combo": all_templates,
+        }
+        for name, values in values_by_name.items():
+            combo = getattr(self, name, None)
+            if combo is not None and hasattr(combo, "set_values"):
+                combo.set_values(values)
+
+    def _template_path_from_name(self, name):
+        if not name:
+            return ""
+        return name if name.startswith("assets/") or os.path.isabs(name) else f"assets/items/{name}"
 
     def _choose_adb_path(self) -> bool:
         """Cho phép người dùng chọn thư mục LDPlayer chứa adb.exe."""
@@ -1045,7 +1136,7 @@ class AutoConfigGUI:
             if not getattr(self, "_device_refresh_busy", False):
                 self._refresh_devices(silent=True)
         finally:
-            self.root.after(5000, self._schedule_device_auto_refresh)
+            self.root.after(10000, self._schedule_device_auto_refresh)
 
     def _refresh_devices(self, silent=False):
         try:
@@ -1835,6 +1926,8 @@ class AutoConfigGUI:
                     from core.mo_ruong import can_mo_ruong, da_day_kho, mo_ruong
                 if settings.get("bat_giao_cu"):
                     from core.giao_cu import can_giao_cu, giao_cu
+                if settings.get("bat_giao_tom"):
+                    from core.giao_tom import giao_tom
 
                 tong_i = 0
                 while not stop_ev.is_set():
@@ -1866,6 +1959,18 @@ class AutoConfigGUI:
                         if handled_gc:
                             self._log(f"{dev_label} [{config_name}] Đã xử lý giao cú")
                             self._set_card_status(serial, f"{config_name} | Đã giao cú", "#27ae60")
+
+                    if settings.get("bat_giao_tom") and ban_do.get("tom_vp"):
+                        self._set_card_status(serial, f"{config_name} | Giao tôm...", "#e67e22")
+                        handled_tom = giao_tom(
+                            adb_inst,
+                            vp_path=ban_do.get("tom_vp"),
+                            kho=ban_do.get("tom_kho", "KTP"),
+                            stop_event=stop_ev
+                        )
+                        if handled_tom:
+                            self._log(f"{dev_label} [{config_name}] Đã xử lý giao tôm")
+                            self._set_card_status(serial, f"{config_name} | Đã giao tôm", "#27ae60")
 
                     if tc_tasks:
                         start_time = time.time()
@@ -2526,6 +2631,7 @@ class AutoConfigGUI:
             initialfile=f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
         if path:
             cv2.imwrite(path, self.ss_screenshot)
+            self._refresh_template_combos()
             messagebox.showinfo("Xong", f"Đã lưu:\n{path}")
 
     def _ss_save_cropped(self):
@@ -2540,6 +2646,7 @@ class AutoConfigGUI:
             initialfile=f"cropped_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
         if path:
             cv2.imwrite(path, cropped)
+            self._refresh_template_combos()
             messagebox.showinfo("Xong", f"Đã lưu ảnh cắt:\n{path}")
 
     def _ss_quick_save_original(self):
@@ -2554,6 +2661,7 @@ class AutoConfigGUI:
         os.makedirs(folder, exist_ok=True)
         path = os.path.join(folder, f"{name}.png")
         cv2.imwrite(path, self.ss_screenshot)
+        self._refresh_template_combos()
         messagebox.showinfo("Xong", f"Đã lưu:\n{path}")
         self.status_label.config(text=f"Đã lưu: {name}.png", bg="#27ae60")
 
@@ -2570,6 +2678,7 @@ class AutoConfigGUI:
         os.makedirs(folder, exist_ok=True)
         path = os.path.join(folder, f"{name}.png")
         cv2.imwrite(path, cropped)
+        self._refresh_template_combos()
         messagebox.showinfo("Xong", f"Đã lưu ảnh cắt:\n{path}")
         self.status_label.config(text=f"Đã lưu ảnh cắt: {name}.png", bg="#27ae60")
 
@@ -2984,6 +3093,8 @@ class AutoConfigGUI:
             "qc_templates": list(getattr(self, 'bd_qc_list', [])),
             "xoa_kc_templates": list(getattr(self, 'bd_xe_list', [])),
             "dsvp_bo_qua": list(getattr(self, 'gc_skip_list', [])),
+            "tom_vp": self._template_path_from_name(self.tom_vp_var.get().strip()),
+            "tom_kho": self.tom_kho_var.get(),
         }
         try:
             ban_do["threshold"] = self.bd_threshold_var.get()
@@ -3016,11 +3127,19 @@ class AutoConfigGUI:
         qc_list = ban_do.get("qc_templates", [])
         xe_list = ban_do.get("xoa_kc_templates", [])
         gc_skip_list = ban_do.get("dsvp_bo_qua", [])
+        tom_vp = ban_do.get("tom_vp", "")
+        self.tom_kho_var.set(ban_do.get("tom_kho", "KTP"))
         # Set first item into the small selector vars (for quick add preview)
         if qc_list:
             self.bd_qc_var.set(os.path.basename(qc_list[0]))
         if xe_list:
             self.bd_xe_var.set(os.path.basename(xe_list[0]))
+        if gc_skip_list:
+            first_gc_skip = gc_skip_list[0].get("path") if isinstance(gc_skip_list[0], dict) else gc_skip_list[0]
+            if first_gc_skip:
+                self.gc_skip_var.set(os.path.basename(first_gc_skip))
+        if tom_vp:
+            self.tom_vp_var.set(os.path.basename(tom_vp))
         self.gc_skip_list = list(gc_skip_list)
         self.gc_skip_listbox.delete(0, tk.END)
         for path in self.gc_skip_list:
@@ -3119,6 +3238,16 @@ class AutoConfigGUI:
         photo = self._load_preview(self.bd_xe_var.get())
         self._bd_xoa_kc_preview_photo = photo
         self.bd_xoa_kc_preview_label.config(image=photo if photo else "", text="")
+
+    def _update_gc_skip_preview(self):
+        photo = self._load_preview(self.gc_skip_var.get())
+        self._gc_skip_preview_photo = photo
+        self.gc_skip_preview_label.config(image=photo if photo else "", text="")
+
+    def _update_tom_vp_preview(self):
+        photo = self._load_preview(self.tom_vp_var.get())
+        self._tom_vp_preview_photo = photo
+        self.tom_vp_preview_label.config(image=photo if photo else "", text="")
 
     def _open_index_picker(self):
         """Mo popup grid 4x6 de chon vi tri indexs."""
