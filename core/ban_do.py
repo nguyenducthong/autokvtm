@@ -5,6 +5,7 @@ Flow: Kiểm tra vị trí → về nhà nếu cần → mở cửa hàng → t�
 """
 import sys
 import os
+import json
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from .adb import ADBController
 from .image import ImageProcessor
@@ -13,6 +14,7 @@ from utils.utils import (
     _detect_current_row, xuong_nha, xuong_may,
     set_state, get_state, PlayerState
 )
+from utils.daily_stats import record_daily_stat
 import time
 import logging
 import cv2
@@ -28,6 +30,9 @@ CLICK_DELAY = 1.0
 # Debug mode — bật để lưu screenshot + kết quả match vào debug/ban_do/
 DEBUG_MODE = False
 DEBUG_DIR = "debug/ban_do"
+STOCK_STATE_FILE = os.path.join("data", "ban_do_stock_state.json")
+STOCK_NUMBER_OFFSET = (0, 5, 65, 40)
+STOCK_DIGIT_THRESHOLD = 0.72
 
 
 def _normalize_template_path(template_path):
@@ -42,6 +47,7 @@ def _normalize_template_path(template_path):
 # Per-thread state cho ban_do
 import threading as _threading
 _bd_ctx = _threading.local()
+_stock_lock = _threading.Lock()
 
 def set_debug_mode(enabled: bool):
     global DEBUG_MODE
@@ -443,6 +449,231 @@ def _normalize_vp_list(vp_list, default_threshold=THRESHOLD, default_color=0.6,
     return result
 
 
+def _stock_device_key(adb):
+    return getattr(adb, "serial", None) or "default"
+
+
+def _stock_item_key(path_vp):
+    return _normalize_template_path(path_vp)
+
+
+def _load_stock_state():
+    try:
+        if not os.path.exists(STOCK_STATE_FILE):
+            return {}
+        with open(STOCK_STATE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        logger.warning(f"Khong doc duoc stock state: {e}")
+        return {}
+
+
+def _save_stock_state(state):
+    try:
+        os.makedirs(os.path.dirname(STOCK_STATE_FILE), exist_ok=True)
+        with open(STOCK_STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.warning(f"Khong luu duoc stock state: {e}")
+
+
+def _read_stock_map(adb):
+    device_key = _stock_device_key(adb)
+    with _stock_lock:
+        state = _load_stock_state()
+    device_state = state.get(device_key, {})
+    stock_map = {}
+    if not isinstance(device_state, dict):
+        return stock_map
+    for path_vp, info in device_state.items():
+        if isinstance(info, dict) and isinstance(info.get("stock"), int):
+            stock_map[path_vp] = info["stock"]
+    return stock_map
+
+
+def _digit_template_paths():
+    paths = []
+    stock_num_dir = os.path.join("assets", "items", "stock_num")
+    for digit in range(10):
+        path = os.path.join(stock_num_dir, f"{digit}.png")
+        if os.path.exists(path):
+            paths.append((str(digit), path))
+    if paths:
+        return paths
+
+    for digit in range(10):
+        path = os.path.join("assets", "items", "num", f"{digit}.png")
+        if os.path.exists(path):
+            paths.append((str(digit), path))
+    return paths
+
+
+def _find_digit_candidates(screen, region, threshold=STOCK_DIGIT_THRESHOLD):
+    if screen is None or region is None:
+        return []
+
+    rx, ry, rw, rh = region
+    h_max, w_max = screen.shape[:2]
+    rx = max(0, min(int(rx), w_max - 1))
+    ry = max(0, min(int(ry), h_max - 1))
+    rw = max(1, min(int(rw), w_max - rx))
+    rh = max(1, min(int(rh), h_max - ry))
+    crop = screen[ry:ry+rh, rx:rx+rw]
+    if crop.size == 0:
+        return []
+
+    crop_gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    candidates = []
+    for digit, template_path in _digit_template_paths():
+        template = cv2.imread(template_path, cv2.IMREAD_UNCHANGED)
+        if template is None:
+            continue
+        if template.ndim == 3 and template.shape[2] == 4:
+            template = template[:, :, :3]
+        tpl_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY) if template.ndim == 3 else template
+        th, tw = tpl_gray.shape[:2]
+        if th > crop_gray.shape[0] or tw > crop_gray.shape[1]:
+            continue
+
+        result = cv2.matchTemplate(crop_gray, tpl_gray, cv2.TM_CCOEFF_NORMED)
+        locations = zip(*cv2.threshold(result, threshold, 1.0, cv2.THRESH_TOZERO)[1].nonzero()[::-1])
+        for x, y in locations:
+            score = float(result[y, x])
+            candidates.append({
+                "digit": digit,
+                "x": rx + int(x),
+                "y": ry + int(y),
+                "w": tw,
+                "h": th,
+                "score": score
+            })
+    return candidates
+
+
+def _dedupe_digit_candidates(candidates):
+    selected = []
+    for cand in sorted(candidates, key=lambda c: c["score"], reverse=True):
+        duplicate = False
+        for prev in selected:
+            same_area = (
+                abs(cand["x"] - prev["x"]) < max(4, cand["w"] // 2) and
+                abs(cand["y"] - prev["y"]) < max(4, cand["h"] // 2)
+            )
+            if same_area:
+                duplicate = True
+                break
+        if not duplicate:
+            selected.append(cand)
+    return sorted(selected, key=lambda c: c["x"])
+
+
+def _read_stock_number_near_item(screen, pos_vp, stock_offset=STOCK_NUMBER_OFFSET):
+    if not pos_vp:
+        return None
+    x, y = pos_vp
+    ox, oy, ow, oh = stock_offset
+    region = (x + ox, y + oy, ow, oh)
+    candidates = _find_digit_candidates(screen, region)
+    digits = _dedupe_digit_candidates(candidates)
+    if not digits:
+        return None
+
+    # Keep the most likely visual row. Stock digits usually sit on one line.
+    rows = {}
+    for cand in digits:
+        bucket = int(round(cand["y"] / 10.0) * 10)
+        rows.setdefault(bucket, []).append(cand)
+    best_row = max(rows.values(), key=lambda row: (len(row), sum(c["score"] for c in row)))
+    best_row = sorted(best_row, key=lambda c: c["x"])
+    number_text = "".join(c["digit"] for c in best_row)
+    try:
+        return int(number_text)
+    except ValueError:
+        return None
+
+
+def _scan_va_luu_stock_kho(adb, vp_list, threshold=THRESHOLD, color_threshold=0.6,
+                           region=None):
+    """Quet so luong cac VP dang cau hinh trong kho va luu JSON theo tung LDPlayer."""
+    if _should_stop():
+        return {}
+
+    screen = adb.screenshot_full()
+    if screen is None:
+        return {}
+
+    normalized = _normalize_vp_list(vp_list, threshold, color_threshold, region)
+    scanned = {}
+    now = datetime.now().isoformat(timespec="seconds")
+    device_key = _stock_device_key(adb)
+
+    for vp_info in normalized:
+        if _should_stop():
+            return scanned
+        vp_path = vp_info["path"]
+        item_key = _stock_item_key(vp_path)
+        name = os.path.basename(vp_path).replace(".png", "")
+        pos = _find_on_screen(
+            screen, vp_path,
+            threshold=vp_info["threshold"],
+            color_threshold=vp_info["color_threshold"],
+            step_name=f"scan_stock_{name}",
+            region=vp_info.get("region")
+        )
+        if not pos:
+            logger.info(f"[STOCK] Khong thay '{name}' khi quet kho")
+            continue
+
+        stock = _read_stock_number_near_item(screen, pos)
+        if stock is None:
+            logger.info(f"[STOCK] Thay '{name}' tai {pos} nhung chua doc duoc so luong")
+            continue
+
+        scanned[item_key] = {
+            "stock": stock,
+            "last_scan": now,
+            "position": [int(pos[0]), int(pos[1])]
+        }
+        logger.info(f"[STOCK] {name}: {stock}")
+
+    if scanned:
+        with _stock_lock:
+            state = _load_stock_state()
+            device_state = state.get(device_key, {})
+            if not isinstance(device_state, dict):
+                device_state = {}
+            for item_key, info in scanned.items():
+                old = device_state.get(item_key, {})
+                sold_count = old.get("sold_count", 0) if isinstance(old, dict) else 0
+                info["sold_count"] = sold_count
+                device_state[item_key] = info
+            state[device_key] = device_state
+            _save_stock_state(state)
+        logger.info(f"[STOCK] Da luu {len(scanned)} SP vao {STOCK_STATE_FILE} cho {device_key}")
+
+    return {path: info["stock"] for path, info in scanned.items()}
+
+
+def _mark_stock_sold(adb, path_vp):
+    device_key = _stock_device_key(adb)
+    item_key = _stock_item_key(path_vp)
+    now = datetime.now().isoformat(timespec="seconds")
+    with _stock_lock:
+        state = _load_stock_state()
+        device_state = state.get(device_key, {})
+        if not isinstance(device_state, dict):
+            device_state = {}
+        info = device_state.get(item_key, {})
+        if not isinstance(info, dict):
+            info = {}
+        info["sold_count"] = int(info.get("sold_count", 0)) + 1
+        info["last_sold_at"] = now
+        device_state[item_key] = info
+        state[device_key] = device_state
+        _save_stock_state(state)
+
+
 def tim_vat_pham(adb, path_vp, threshold=THRESHOLD, color_threshold=0.6):
     """Tìm vật phẩm trong kho bằng find_template_color.
     Return (x,y) hoặc None."""
@@ -615,7 +846,8 @@ def dat_ban(adb, bat_qc=True, xoa_kc=False):
 # STEP 4+5 kết hợp: Tìm VP + đặt bán, thử SP khác nếu fail
 # ================================================================
 def _thu_dat_ban_voi_fallback(adb, vp_list, path_kho_selected, path_kho_not_selected,
-                               threshold, color_threshold, bat_qc, xoa_kc, region=None):
+                               threshold, color_threshold, bat_qc, xoa_kc, region=None,
+                               stock_map=None):
     """Tìm SP theo thứ tự random → click → đặt bán.
     vp_list: list of str (path) hoặc list of dict {"path", "threshold", "color_threshold"}
     Nếu SP đó không đặt được (hết hàng) → back ra kho → thử SP khác.
@@ -630,6 +862,19 @@ def _thu_dat_ban_voi_fallback(adb, vp_list, path_kho_selected, path_kho_not_sele
     shuffled = list(normalized)
     random.shuffle(shuffled)
     tried = []  # SP đã thử rồi (fail)
+
+    stock_map = stock_map or _read_stock_map(adb)
+    if stock_map:
+        shuffled.sort(
+            key=lambda vp: stock_map.get(_stock_item_key(vp["path"]), -1),
+            reverse=True
+        )
+        order = [
+            f"{os.path.basename(vp['path']).replace('.png', '')}:"
+            f"{stock_map.get(_stock_item_key(vp['path']), '?')}"
+            for vp in shuffled
+        ]
+        logger.info(f"[STOCK] Thu SP theo ton kho: {order}")
 
     for vp_info in shuffled:
         if _should_stop():
@@ -667,6 +912,8 @@ def _thu_dat_ban_voi_fallback(adb, vp_list, path_kho_selected, path_kho_not_sele
         ok = dat_ban(adb, bat_qc=bat_qc, xoa_kc=xoa_kc)
         if ok:
             logger.info(f"Đặt bán '{name}' thành công!")
+            _mark_stock_sold(adb, vp_path)
+            record_daily_stat(adb, "ban_do")
             set_state(PlayerState.CUA_HANG)
             return True
 
@@ -880,9 +1127,14 @@ def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
             continue
 
         # Step 4+5: Tìm VP → đặt bán. Nếu SP hết → thử SP khác trong cùng ô
+        stock_map = _scan_va_luu_stock_kho(
+            adb, data_vp, cfg_threshold, cfg_color_threshold, region=cfg_region
+        )
+
         da_ban = _thu_dat_ban_voi_fallback(
             adb, data_vp, path_kho_selected, path_kho_not_selected,
-            cfg_threshold, cfg_color_threshold, bat_qc, xoa_kc, region=cfg_region
+            cfg_threshold, cfg_color_threshold, bat_qc, xoa_kc, region=cfg_region,
+            stock_map=stock_map
         )
         if not da_ban:
             logger.warning("Không đặt được SP nào cho ô này")

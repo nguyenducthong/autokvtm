@@ -18,6 +18,7 @@ from core.adb_helper import get_adb_helper, ADBHelper
 from core.adb import ADBController
 from core.trong_cay import main_tc
 from config import CONFIG_LOAI_KHO, REGION_PRESETS, REGION_FROM_CROP
+from utils.daily_stats import format_daily_counts
 
 logger = logging.getLogger(__name__)
 
@@ -392,7 +393,7 @@ class AutoConfigGUI:
 
         header = tk.Frame(self.device_table, bg="#e9eef2")
         header.pack(fill=tk.X)
-        self.device_col_widths = (70, 230, 110, 300, 62, 62, 62)
+        self.device_col_widths = (55, 220, 90, 315, 50, 50, 50)
         self.device_col_weights = (0, 1, 0, 1, 0, 0, 0)
         headers = [
             ("STT", tk.CENTER),
@@ -1360,6 +1361,8 @@ class AutoConfigGUI:
     def _refresh_devices(self, silent=False):
         try:
             self._device_refresh_busy = True
+            if not getattr(self.adb_helper, "adb_path", None):
+                raise FileNotFoundError("Không tìm thấy ADB")
             players = self.adb_helper.get_ldplayers()
             self._sync_device_rows(players)
             running_count = sum(1 for p in players if p.get("running"))
@@ -1541,7 +1544,9 @@ class AutoConfigGUI:
         widgets["index"].config(text=index_text, bg=row_bg)
         widgets["name"].config(text=card.get("name", ""), bg=row_bg)
         widgets["ld_status"].config(text=ld_status, bg=row_bg)
-        widgets["job_status"].config(text=card.get("status", ""), bg=row_bg)
+        status_text = card.get("status", "")
+        stats_text = format_daily_counts(serial)
+        widgets["job_status"].config(text=f"{status_text}\n{stats_text}", bg=row_bg, justify=tk.LEFT)
         action_state = [
             ("btn_ld", card.get("ld_start_state", tk.DISABLED), "⏻", "#2980b9"),
             ("btn_run", card.get("start_state", tk.DISABLED), "▶", "#27ae60"),
@@ -2005,6 +2010,7 @@ class AutoConfigGUI:
                             "debug": self.debug_mode_var.get(),
                             "threshold": ban_do.get("threshold") or settings.get("threshold"),
                             "color_threshold": ban_do.get("color_threshold", 0.6),
+                            "region": ban_do.get("region"),
                             "qc_templates": ban_do.get("qc_templates", []),
                             "xoa_kc_templates": ban_do.get("xoa_kc_templates", [])
                         }
@@ -2470,6 +2476,8 @@ class AutoConfigGUI:
     # --- Screenshot tab logic ---
     def _ss_refresh_devices(self):
         try:
+            if not getattr(self.adb_helper, "adb_path", None):
+                raise FileNotFoundError("Không tìm thấy ADB")
             serials = self.adb_helper.get_devices()
             self.ss_devices_list = []
             names = []
@@ -2484,6 +2492,13 @@ class AutoConfigGUI:
         except Exception as e:
             self.ss_device_combo["values"] = []
             self.ss_devices_list = []
+            if isinstance(e, (FileNotFoundError, OSError)):
+                if messagebox.askyesno(
+                    "Lỗi ADB",
+                    "Không tìm thấy ADB!\n\nBạn có muốn chọn thư mục LDPlayer thủ công không?"
+                ):
+                    if self._choose_adb_path():
+                        self._ss_refresh_devices()
 
     def _ss_set_info(self, text):
         self.ss_info.delete("1.0", tk.END)

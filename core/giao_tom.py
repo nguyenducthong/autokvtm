@@ -15,6 +15,7 @@ from config import (
     REGION_TOM_O_MUA,
 )
 from core.image import ImageProcessor
+from utils.daily_stats import record_daily_stat
 from utils.utils import tim_may_v2, xuong_nha
 
 logger = logging.getLogger(__name__)
@@ -390,7 +391,10 @@ def giao_tom(adb, vp_path: str, kho: str = "KTP", stop_event=None) -> bool:
 
     if trang_thai_tom == "khong_mua_dau":
         logger.info("[GIAO TÔM] Đã có khong_mua_dau.png, đi thẳng bước mua hàng")
-        return _mua_o_lon_nhat(adb, vp_path, stop_event=stop_event)
+        ok = _mua_o_lon_nhat(adb, vp_path, stop_event=stop_event)
+        if ok:
+            record_daily_stat(adb, "giao_tom")
+        return ok
 
     if trang_thai_tom == "tim_hang":
         logger.info("[GIAO TÔM] Thấy tim_hang.png, chọn vật phẩm để mua")
@@ -399,4 +403,7 @@ def giao_tom(adb, vp_path: str, kho: str = "KTP", stop_event=None) -> bool:
 
     if not _chon_vat_pham_va_tim_hang(adb, vp_path, kho, stop_event=stop_event):
         return False
-    return _doi_tim_hang_va_mua(adb, vp_path, stop_event=stop_event)
+    ok = _doi_tim_hang_va_mua(adb, vp_path, stop_event=stop_event)
+    if ok:
+        record_daily_stat(adb, "giao_tom")
+    return ok

@@ -8,6 +8,7 @@ from config import (
     INDEX_BACK_MAC_DINH,
 )
 from core.image import ImageProcessor
+from utils.daily_stats import record_daily_stat
 from utils.utils import tim_may_v2, xuong_nha
 
 logger = logging.getLogger(__name__)
@@ -148,4 +149,5 @@ def mo_ruong(adb, serial: str = None, force: bool = False, stop_event=None) -> b
 
     _thoat_mac_dinh(adb, stop_event=stop_event)
     logger.info("[MỞ RƯƠNG] Đã mở rương thành công")
+    record_daily_stat(serial, "mo_ruong")
     return True

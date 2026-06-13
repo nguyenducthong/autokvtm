@@ -4,6 +4,7 @@ import time
 
 from config import INDEX_MAC_DINH_GIAO_CU, INDEX_THOAT_SAN_XUAT_MAC_DINH, INDEX_XOA_DON_GIAO_CU
 from core.image import ImageProcessor
+from utils.daily_stats import record_daily_stat
 
 logger = logging.getLogger(__name__)
 img = ImageProcessor()
@@ -140,4 +141,6 @@ def giao_cu(adb, serial: str = None, dsvp_bo_qua=None, force: bool = False, stop
         break
 
     _thoat_popup(adb, stop_event=stop_event)
+    if handled:
+        record_daily_stat(serial, "giao_cu")
     return handled
