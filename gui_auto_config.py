@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import json
 import os
+import shutil
 import threading
 import time
 import logging
@@ -362,6 +363,12 @@ class AutoConfigGUI:
         tk.Button(dev_toolbar, text="Dừng tất cả", command=self._stop_all,
                   bg="#c0392b", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=10, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        tk.Button(dev_toolbar, text="Quét kho TP", command=self._scan_kho_thanh_pham_all,
+                  bg="#8e44ad", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=10, font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=4)
+        tk.Button(dev_toolbar, text="Tải CSV kho TP", command=self._download_kho_thanh_pham_csv,
+                  bg="#16a085", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=10, font=("Arial", 9)).pack(side=tk.LEFT, padx=4)
 
         # Debug mode checkbox
         self.debug_mode_var = tk.BooleanVar(value=False)
@@ -2087,6 +2094,82 @@ class AutoConfigGUI:
             self.root.after(700, lambda: start_next(pos + 1))
 
         self.root.after(0, start_next)
+
+    def _scan_kho_thanh_pham_all(self):
+        """Quét kho thành phẩm các LDPlayer đang mở rồi xuất CSV ma trận."""
+        if getattr(self, "_scan_kho_tp_running", False):
+            self.status_label.config(text="Đang quét kho thành phẩm, vui lòng đợi...")
+            return
+
+        targets = []
+        for serial, card in list(self.device_cards.items()):
+            if card.get("thread") and card["thread"].is_alive():
+                continue
+            if not card.get("running", True):
+                continue
+            targets.append((serial, card.get("name") or serial))
+
+        if not targets:
+            messagebox.showwarning("Quét kho TP", "Không có LDPlayer đang mở để quét.")
+            return
+
+        self._scan_kho_tp_running = True
+        self.status_label.config(text=f"Đang quét kho thành phẩm {len(targets)} LDPlayer", bg="#8e44ad")
+
+        def worker():
+            results = {}
+            output_path = None
+            try:
+                from core.adb import ADBController
+                from core.kho_thanh_pham import scan_kho_thanh_pham, export_kho_thanh_pham_csv
+
+                for serial, name in targets:
+                    self._set_card_status(serial, "Quét kho thành phẩm...", "#8e44ad")
+                    adb_inst = ADBController(serial=serial)
+                    data = scan_kho_thanh_pham(adb_inst, device_name=name)
+                    results[name] = data
+                    self._set_card_status(serial, f"Đã quét kho TP: {len(data)} SP", "#27ae60")
+
+                output_path = export_kho_thanh_pham_csv(results)
+            except Exception as e:
+                logger.exception("Lỗi quét kho thành phẩm")
+                self._ui_safe(lambda: messagebox.showerror("Quét kho TP", f"Lỗi quét kho thành phẩm:\n{e}"))
+            finally:
+                self._scan_kho_tp_running = False
+                if output_path:
+                    self._ui_safe(lambda: self.status_label.config(
+                        text=f"Đã quét xong kho thành phẩm: {output_path}", bg="#27ae60"
+                    ))
+                    self._ui_safe(lambda: messagebox.showinfo(
+                        "Quét kho TP", f"Đã quét xong kho thành phẩm.\nCSV:\n{output_path}"
+                    ))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _download_kho_thanh_pham_csv(self):
+        """Copy file CSV kho thành phẩm của hôm nay ra vị trí người dùng chọn."""
+        try:
+            from core.kho_thanh_pham import get_today_kho_thanh_pham_csv_path
+
+            src = get_today_kho_thanh_pham_csv_path()
+            if not os.path.exists(src):
+                os.makedirs(os.path.dirname(src), exist_ok=True)
+                with open(src, "w", encoding="utf-8-sig", newline="") as f:
+                    f.write("item\n")
+
+            dst = filedialog.asksaveasfilename(
+                title="Tải CSV kho thành phẩm",
+                defaultextension=".csv",
+                initialfile=os.path.basename(src),
+                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+            )
+            if not dst:
+                return
+
+            shutil.copyfile(src, dst)
+            messagebox.showinfo("Tải CSV kho TP", f"Đã lưu CSV:\n{dst}")
+        except Exception as e:
+            messagebox.showerror("Tải CSV kho TP", f"Không tải được CSV:\n{e}")
 
     def _stop_all(self):
         """Dừng tất cả nick."""

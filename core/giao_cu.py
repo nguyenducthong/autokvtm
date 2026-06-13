@@ -123,7 +123,8 @@ def giao_cu(adb, serial: str = None, dsvp_bo_qua=None, force: bool = False, stop
                 _sleep(0.5, stop_event)
             else:
                 logger.info("[GIAO CÚ] Đợi nút giao đơn")
-                _tap_neu_thay(adb, GIAO_CU_GIAO_DON, timeout=20, stop_event=stop_event)
+                if _tap_neu_thay(adb, GIAO_CU_GIAO_DON, timeout=20, stop_event=stop_event):
+                    record_daily_stat(serial, "giao_cu")
                 _tap_neu_thay(adb, GIAO_CU_DONG_Y, timeout=1, stop_event=stop_event)
             _sleep(1.0, stop_event)
             continue
@@ -141,6 +142,4 @@ def giao_cu(adb, serial: str = None, dsvp_bo_qua=None, force: bool = False, stop
         break
 
     _thoat_popup(adb, stop_event=stop_event)
-    if handled:
-        record_daily_stat(serial, "giao_cu")
     return handled
