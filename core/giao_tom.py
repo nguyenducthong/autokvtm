@@ -32,7 +32,7 @@ DAY_DI_MA_TEMPLATE = "assets/items/day_di_ma.png"
 TOM_ROW_0_REGION = (82, 708, 205, 89)
 TOM_KHO_REGION = (7, 259, 469, 450)
 TOM_MUA_REGION = REGION_TOM_O_MUA
-TOM_FIND_TIMEOUT = 20
+TOM_FIND_TIMEOUT = 30
 
 
 def _sleep(seconds, stop_event=None):
@@ -113,7 +113,7 @@ def _tim_vp_trong_kho(adb, vp_path: str, stop_event=None):
         if pos:
             logger.info("[GIAO TÔM] Tìm thấy vật phẩm ở kho sau %s lần kéo", lan_keo)
             return pos
-        adb.swipe(240, 500, 249, 360, 300)
+        adb.swipe(240, 500, 249, 360, 500)
         _sleep(0.8, stop_event)
     return None
 
@@ -189,7 +189,7 @@ def _chon_quay_item_ben_phai_nhat(adb, stop_event=None):
     points = _tim_tat_ca_vi_tri(
         adb,
         QUAY_ITEMS_TOM_TEMPLATE,
-        threshold=0.78,
+        threshold=0.6,
         region=TOM_MUA_REGION,
     )
     if not points:
@@ -223,16 +223,47 @@ def _chon_o_mua_lon_nhat(vi_tri_vp=None):
     return None
 
 
-def _doc_o_mua_lon_nhat_bang_ocr(adb, region=TOM_MUA_REGION):
+def _cac_o_mua_bang_template(vi_tri_vp=None):
+    candidates = []
+    for idx, item in enumerate(INDEX_TOM_O_MUA):
+        if not isinstance(item, dict):
+            continue
+        quantity = item.get("quantity", item.get("qty", 0)) or 0
+        gold = item.get("gold", 0) or 0
+        name = item.get("name", f"Ô {idx + 1}")
+        tap = item.get("tap")
+        score = None
+
+        if vi_tri_vp and idx < len(vi_tri_vp):
+            x, y, score = vi_tri_vp[idx]
+            tap_pos = (int(x), int(y))
+        elif tap and tuple(tap) != (0, 0):
+            tap_pos = tuple(tap)
+        else:
+            continue
+
+        candidates.append({
+            "quantity": int(quantity),
+            "gold": int(gold),
+            "tap_pos": tap_pos,
+            "name": name,
+            "source": "template",
+            "raw": name,
+            "score": score,
+        })
+    return candidates
+
+
+def _doc_cac_o_mua_bang_ocr(adb, region=TOM_MUA_REGION):
     try:
         pytesseract.get_tesseract_version()
     except Exception as e:
         logger.warning("[GIAO TÔM] Không dùng OCR vì chưa cài Tesseract: %s", e)
-        return None
+        return []
 
     screen = adb.screenshot_full()
     if screen is None:
-        return None
+        return []
 
     rx, ry, rw, rh = region
     h_max, w_max = screen.shape[:2]
@@ -254,7 +285,7 @@ def _doc_o_mua_lon_nhat_bang_ocr(adb, region=TOM_MUA_REGION):
             data = pytesseract.image_to_data(ocr_img, config=config, output_type=pytesseract.Output.DICT)
         except Exception as e:
             logger.warning("[GIAO TÔM] OCR lỗi, chuyển sang fallback ảnh: %s", e)
-            return None
+            return []
         count = len(data.get("text", []))
         for i in range(count):
             raw = (data["text"][i] or "").strip()
@@ -285,45 +316,65 @@ def _doc_o_mua_lon_nhat_bang_ocr(adb, region=TOM_MUA_REGION):
             quantity = int(match.group(1))
             cx = rx + int((x + w / 2) / 3)
             cy = ry + int((y + h / 2) / 3)
-            candidates.append((quantity, cx, cy, raw))
+            candidates.append({
+                "quantity": quantity,
+                "gold": 0,
+                "tap_pos": (cx, cy),
+                "name": f"OCR x{quantity}",
+                "source": "ocr",
+                "raw": raw,
+                "score": None,
+            })
 
     if not candidates:
         logger.info("[GIAO TÔM] OCR không đọc được số lượng x... trong vùng %s", region)
+        return []
+
+    logger.info("[GIAO TÔM] OCR đọc được %s ô mua: %s", len(candidates),
+                [(c["quantity"], c["tap_pos"], c["raw"]) for c in candidates])
+    return candidates
+
+
+def _doc_o_mua_lon_nhat_bang_ocr(adb, region=TOM_MUA_REGION):
+    candidates = _doc_cac_o_mua_bang_ocr(adb, region=region)
+    if not candidates:
         return None
 
-    best = max(candidates, key=lambda item: item[0])
+    best = max(candidates, key=lambda item: item["quantity"])
     logger.info("[GIAO TÔM] OCR đọc ô lớn nhất: %s tại (%s,%s), text=%s",
-                best[0], best[1], best[2], best[3])
-    return best[0], (best[1], best[2]), best[3]
+                best["quantity"], best["tap_pos"][0], best["tap_pos"][1], best["raw"])
+    return best["quantity"], best["tap_pos"], best["raw"]
 
 
 def _mua_o_lon_nhat(adb, vp_path: str, stop_event=None):
-    o_ocr = _doc_o_mua_lon_nhat_bang_ocr(adb, region=TOM_MUA_REGION)
-    if o_ocr:
-        quantity, tap_pos, raw_text = o_ocr
-        logger.info("[GIAO TÔM] Mua ô lớn nhất bằng OCR: x%s text=%s vị trí=%s",
-                    quantity, raw_text, tap_pos)
-        adb.tap(*tap_pos)
-        _sleep(1.0, stop_event)
-        return True
-
-    fallback_tap = _chon_quay_item_ben_phai_nhat(adb, stop_event=stop_event)
-    if fallback_tap:
-        adb.tap(*fallback_tap)
-        _sleep(1.0, stop_event)
-        return True
+    candidates = []
+    ocr_candidates = _doc_cac_o_mua_bang_ocr(adb, region=TOM_MUA_REGION)
+    candidates.extend(ocr_candidates)
 
     vi_tri_vp = _tim_tat_ca_vi_tri(adb, vp_path, threshold=0.78, region=TOM_MUA_REGION)
-    logger.info("[GIAO TÔM] Tìm thấy %s ô mua theo ảnh vật phẩm", len(vi_tri_vp))
+    template_candidates = _cac_o_mua_bang_template(vi_tri_vp=vi_tri_vp)
+    candidates.extend(template_candidates)
 
-    best = _chon_o_mua_lon_nhat(vi_tri_vp=vi_tri_vp)
-    if not best:
-        logger.warning("[GIAO TÔM] Chưa tìm được vị trí ô mua hoặc chưa cấu hình INDEX_TOM_O_MUA")
+    logger.info("[GIAO TÔM] Tìm thấy %s ô mua theo ảnh vật phẩm, %s ô OCR, %s ô template",
+                len(vi_tri_vp), len(ocr_candidates), len(template_candidates))
+
+    if not candidates:
+        fallback_tap = _chon_quay_item_ben_phai_nhat(adb, stop_event=stop_event)
+        if fallback_tap:
+            logger.info("[GIAO TÔM] Không có số lượng, fallback mua item bên phải nhất: %s", fallback_tap)
+            adb.tap(*fallback_tap)
+            _sleep(1.0, stop_event)
+            return True
+        logger.warning("[GIAO TÔM] Chưa tìm được vị trí ô mua bằng OCR/template")
         return True
 
-    quantity, gold, tap_pos, name, score = best
-    logger.info("[GIAO TÔM] Mua ô lớn nhất: %s x%s gold=%s vị trí=%s score=%s",
-                name, quantity, gold, tap_pos, f"{score:.3f}" if score is not None else "config")
+    best = max(candidates, key=lambda item: (item["quantity"], item.get("gold", 0)))
+    score = best.get("score")
+    logger.info("[GIAO TÔM] Mua ô lớn nhất: %s source=%s x%s gold=%s vị trí=%s score=%s raw=%s",
+                best["name"], best["source"], best["quantity"], best.get("gold", 0),
+                best["tap_pos"], f"{score:.3f}" if score is not None else "n/a",
+                best.get("raw", ""))
+    tap_pos = best["tap_pos"]
     adb.tap(*tap_pos)
     _sleep(1.0, stop_event)
     return True
@@ -331,11 +382,8 @@ def _mua_o_lon_nhat(adb, vp_path: str, stop_event=None):
 
 def _doi_tim_hang_va_mua(adb, vp_path: str, stop_event=None):
     logger.info("[GIAO TÔM] Đợi tìm thấy hàng")
-    pos_thay_hang = _doi_anh(adb, TOM_THAY_HANG_TEMPLATE, timeout=20, interval=1,
-                             stop_event=stop_event)
-    if not pos_thay_hang:
-        pos_thay_hang = INDEX_TOM_MAC_DINH
-    adb.tap(*pos_thay_hang)
+    _sleep(35, stop_event)
+    adb.tap(*INDEX_TOM_MAC_DINH)
     _sleep(1.0, stop_event)
     return _mua_o_lon_nhat(adb, vp_path, stop_event=stop_event)
 

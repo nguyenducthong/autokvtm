@@ -1,0 +1,41 @@
+{
+  "GAME_PACKAGE_NAME": "vn.kvtm.js",
+  "GAME_ACTIVITY_NAME": "gsn.game.zingplaynew.AppActivity",
+  "AUTO_OPEN_GAME_AFTER_LD_START": true,
+  "REGION_PRESETS": {
+    "Toàn màn": null,
+    "Máy sản xuất": [110, 211, 510, 560],
+    "Kho vật phẩm": [0, 120, 800, 620]
+  },
+  "CONFIG_LOAI_KHO": [
+    {
+      "code": "KSK",
+      "name": "Kho Sự Kiện",
+      "path_warehouse_not_select": "assets/items/kho_event_0.png",
+      "path_warehouse_select": "assets/items/kho_event.png",
+      "position": [361, 530]
+    },
+    {
+      "code": "KNS",
+      "name": "Kho Nông Sản",
+      "path_warehouse_not_select": "assets/items/kho_nong_san_0.png",
+      "path_warehouse_select": "assets/items/kho_nong_san.png",
+      "position": [361, 296]
+    },
+    {
+      "code": "KTP",
+      "name": "Kho Thành Phẩm",
+      "path_warehouse_not_select": "assets/items/kho_thanh_pham_0.png",
+      "path_warehouse_select": "assets/items/kho_thanh_pham.png",
+      "position": [361, 353]
+    }
+  ],
+  "CONFIG_BAN_DO": {
+    "loai_kho": "KTP",
+    "so_lan_dat_vp": 4,
+    "dat_quang_cao": true,
+    "xoa_kc": true
+  },
+  "INDEX_TOM_MAC_DINH": [171, 768],
+  "REGION_TOM_O_MUA": [331, 381, 467, 188]
+}

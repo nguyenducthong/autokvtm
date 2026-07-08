@@ -210,6 +210,7 @@ DEFAULT_BAN_DO = {
     "data": [],
     "xoa_kc": True,
     "dat_quang_cao": True,
+    "check_stock": False,
     "qc_templates": [],
     "xoa_kc_templates": [],
     "dsvp_bo_qua": [],
@@ -765,6 +766,10 @@ class AutoConfigGUI:
 
         self.bd_dat_qc_var = tk.BooleanVar(value=True)
         tk.Checkbutton(bk3, text="Đặt quảng cáo", variable=self.bd_dat_qc_var,
+                        bg="#ecf0f1", font=("Arial", 9)).pack(side=tk.LEFT, padx=(20, 0))
+
+        self.bd_check_stock_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(bk3, text="Đọc stock", variable=self.bd_check_stock_var,
                        bg="#ecf0f1", font=("Arial", 9)).pack(side=tk.LEFT, padx=(20, 0))
 
         # Note: QC and xóa KC use list-based templates (managed below)
@@ -1749,6 +1754,14 @@ class AutoConfigGUI:
 
         threading.Thread(target=run, daemon=True).start()
 
+    def _reset_runtime_flags_for_start(self, serial):
+        try:
+            from core.mo_ruong import reset_day_kho
+            reset_day_kho(serial)
+            self._log(f"[{serial}] Reset cờ đầy kho")
+        except Exception as e:
+            self._log(f"[{serial}] Không reset được cờ đầy kho: {e}", "warning")
+
     def _refresh_configs(self):
         files = glob_mod.glob(os.path.join(CONFIG_DIR, "*.json"))
         names = [os.path.splitext(os.path.basename(f))[0] for f in files]
@@ -1896,6 +1909,7 @@ class AutoConfigGUI:
             return
 
         config_name = self.config_var.get()
+        self._reset_runtime_flags_for_start(serial)
 
         stop_ev = threading.Event()
         card["stop_event"] = stop_ev
@@ -2014,6 +2028,7 @@ class AutoConfigGUI:
                             "data": ban_do.get("data", []),
                             "xoa_kc": ban_do.get("xoa_kc", False),
                             "dat_quang_cao": ban_do.get("dat_quang_cao", True),
+                            "check_stock": ban_do.get("check_stock", False),
                             "debug": self.debug_mode_var.get(),
                             "threshold": ban_do.get("threshold") or settings.get("threshold"),
                             "color_threshold": ban_do.get("color_threshold", 0.6),
@@ -3188,6 +3203,7 @@ class AutoConfigGUI:
             "data": list(self.bd_vp_list),
             "xoa_kc": self.bd_xoa_kc_var.get(),
             "dat_quang_cao": self.bd_dat_qc_var.get(),
+            "check_stock": self.bd_check_stock_var.get(),
             "qc_templates": list(getattr(self, 'bd_qc_list', [])),
             "xoa_kc_templates": list(getattr(self, 'bd_xe_list', [])),
             "dsvp_bo_qua": list(getattr(self, 'gc_skip_list', [])),
@@ -3220,6 +3236,7 @@ class AutoConfigGUI:
         self.bd_so_lan_var.set(str(ban_do.get("so_lan_dat_vp", 4)))
         self.bd_xoa_kc_var.set(ban_do.get("xoa_kc", True))
         self.bd_dat_qc_var.set(ban_do.get("dat_quang_cao", True))
+        self.bd_check_stock_var.set(ban_do.get("check_stock", False))
         self._set_bd_region_to_ui(ban_do.get("region"))
         # Set QC/XE lists
         qc_list = ban_do.get("qc_templates", [])

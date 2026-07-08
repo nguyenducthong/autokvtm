@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 img = ImageProcessor()
 
 OUTPUT_DIR = os.path.join("data", "kho_thanh_pham")
-ITEM_REGION = (35, 213, 389, 383)
+ITEM_REGION = (10, 213, 410, 383)
 MAX_SCAN_PAGES = 8
 NO_NEW_PAGE_LIMIT = 2
 
@@ -162,7 +162,9 @@ def scan_kho_thanh_pham(adb: ADBController, device_name=None, stop_event=None,
             break
         page_results = _scan_visible_page(adb, templates)
         before = len(results)
-        results.update(page_results)
+        for k, v in page_results.items():
+            if k not in results:
+                results[k] = v
         new_count = len(results) - before
         logger.info("[KHO TP] Page %s: %s item moi", page + 1, new_count)
 

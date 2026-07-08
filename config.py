@@ -1,3 +1,6 @@
+import json as _json
+import os as _os
+
 # DEVICE_SERIAL sẽ được chọn từ GUI mỗi khi chạy
 # Không có giá trị mặc định - người dùng phải chọn thiết bị
 DEVICE_SERIAL = None  # Sẽ được set khi chọn thiết bị trong GUI
@@ -280,6 +283,7 @@ CONFIG_BAN_DO = {
     "data": "assets/items/kho_tra_hoa_hong.png, assets/items/kho_tinh_dau_tao.png, assets/items/kho_vai_vang.png",
     "xoa_kc": True, # có xóa kho không
     "dat_quang_cao": True, # có đặt quảng cáo không
+    "check_stock": False, # true mới đọc số lượng tồn kho để lập kế hoạch bán
     # New: lists of templates (thứ tự sẽ được thử từng cái)
     "qc_templates": ["assets/items/cua_hang_qc.png"],
     "xoa_kc_templates": ["assets/items/xoa_vp_kc.png"],
@@ -360,4 +364,52 @@ INDEX_TOM_O_MUA = [
     {"name": "Ô x1", "tap": (0, 0), "quantity": 1, "gold": 1},
     {"name": "Ô x2", "tap": (0, 0), "quantity": 2, "gold": 2},
 ]
+#ban do
+INDEX_CONG_1 = (681, 377)
+INDEX_TAT_QC = (628, 511)
+INDEX_DAT_BAN = (618, 550)
+
+
+def _deep_merge_config(default_value, override_value):
+    if isinstance(default_value, dict) and isinstance(override_value, dict):
+        merged = dict(default_value)
+        for key, value in override_value.items():
+            if key in merged:
+                merged[key] = _deep_merge_config(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+    return override_value
+
+
+def _external_config_candidates():
+    env_path = _os.environ.get("AUTOKVTM_APP_CONFIG")
+    if env_path:
+        return [env_path]
+    base_dir = _os.path.dirname(_os.path.abspath(__file__))
+    return [
+        _os.path.join(base_dir, "app_config.json"),
+        _os.path.join(base_dir, "configs", "app_config.json"),
+    ]
+
+
+def _load_external_config():
+    for path in _external_config_candidates():
+        if not path or not _os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            data = _json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError(f"External config phai la JSON object: {path}")
+        for key, value in data.items():
+            if key.startswith("_") or key not in globals():
+                continue
+            globals()[key] = _deep_merge_config(globals()[key], value)
+        globals()["EXTERNAL_CONFIG_PATH"] = path
+        return path
+    globals()["EXTERNAL_CONFIG_PATH"] = None
+    return None
+
+
+_load_external_config()
 

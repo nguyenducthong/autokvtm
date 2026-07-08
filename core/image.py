@@ -425,16 +425,33 @@ class ImageProcessor:
             rh = max(1, min(rh, h_max - ry))
             screen = screen[ry:ry+rh, rx:rx+rw]
 
+        th_orig, tw_orig = template.shape[:2]
+        template_name = os.path.basename(template_path).replace('.png', '')
+        template_name_lower = template_name.lower()
+        is_item_template = (
+            (template_name_lower.startswith("kho_") or template_name_lower.startswith("ch_")) and
+            not any(h in template_name_lower for h in ["_thanh_pham", "_nong_san", "_vat_dung", "_event"]) and
+            th_orig >= 40 and tw_orig >= 50
+        )
+
         alpha_mask = None
         if template.ndim == 3 and template.shape[2] == 4:
-            alpha_mask = template[:, :, 3]
+            alpha_mask = template[:, :, 3].copy()
             alpha_mask = (alpha_mask > 10).astype(np.uint8) * 255
             template_bgr = template[:, :, :3]
         else:
-            template_bgr = template
+            template_bgr = template.copy()
+            if is_item_template:
+                th, tw = template_bgr.shape[:2]
+                alpha_mask = np.ones((th, tw), dtype=np.uint8) * 255
+
+        if is_item_template and alpha_mask is not None:
+            th, tw = template_bgr.shape[:2]
+            x_start = int(tw * 0.55)
+            y_start = int(th * 0.60)
+            alpha_mask[y_start:, x_start:] = 0
 
         th, tw = template_bgr.shape[:2]
-        template_name = os.path.basename(template_path).replace('.png', '')
 
         if th > screen.shape[0] or tw > screen.shape[1]:
             return None
