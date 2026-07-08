@@ -201,7 +201,9 @@ DEFAULT_SETTINGS = {
     "bat_thu_hoach": True,
     "bat_mo_ruong": False,
     "bat_giao_cu": False,
-    "bat_giao_tom": False
+    "bat_giao_tom": False,
+    "bat_khoi_dong_lai_ld": False,
+    "thoi_gian_khoi_dong_lai": 5.0
 }
 
 DEFAULT_BAN_DO = {
@@ -540,6 +542,20 @@ class AutoConfigGUI:
                    font=("Arial", 10)).pack(side=tk.LEFT)
         tk.Label(th_row, text="(áp dụng cho tất cả nếu task không có riêng)",
                  bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=8)
+
+        # LDPlayer Auto-Restart settings
+        restart_row = tk.Frame(settings_frame, bg="#ecf0f1")
+        restart_row.pack(fill=tk.X, pady=3)
+        tk.Label(restart_row, text="Restart LDPlayer:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
+        self.bat_khoi_dong_lai_ld_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(restart_row, text="Tự động restart LD", variable=self.bat_khoi_dong_lai_ld_var, bg="#ecf0f1",
+                       font=("Arial", 9), activebackground="#ecf0f1").pack(side=tk.LEFT)
+        tk.Label(restart_row, text="Mỗi (giờ):", bg="#ecf0f1", padx=10).pack(side=tk.LEFT)
+        self.thoi_gian_khoi_dong_lai_var = tk.DoubleVar(value=5.0)
+        tk.Spinbox(restart_row, from_=0.01, to=999.0, increment=0.5,
+                   textvariable=self.thoi_gian_khoi_dong_lai_var, width=6,
+                   font=("Arial", 10)).pack(side=tk.LEFT)
+        tk.Label(restart_row, text="(vd: 5 hoặc 0.02 để test)", bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=8)
 
         # ===== SECTION 2: TASKS (TC + MAY) =====
         form_frame = tk.LabelFrame(pad, text="Thêm mục TC / MÁY", font=("Arial", 10, "bold"),
@@ -1349,7 +1365,7 @@ class AutoConfigGUI:
         except RuntimeError:
             pass
 
-    def _start_ldplayer(self, index, serial):
+    def _start_ldplayer(self, index, serial, silent=False):
         card = self.device_cards.get(serial)
         if card:
             card["btn_ld_start"].config(state=tk.DISABLED)
@@ -1956,7 +1972,68 @@ class AutoConfigGUI:
                     from core.giao_tom import giao_tom
 
                 tong_i = 0
+                last_ld_restart_time = time.time()
                 while not stop_ev.is_set():
+                    # Check restart LDPlayer
+                    elapsed_hours = (time.time() - last_ld_restart_time) / 3600.0
+                    if settings.get("bat_khoi_dong_lai_ld"):
+                        self._log(f"{dev_label} [DEBUG RESTART] Đã chạy: {elapsed_hours*60:.2f} phút / Yêu cầu: {settings.get('thoi_gian_khoi_dong_lai', 5.0)*60:.2f} phút")
+                    if settings.get("bat_khoi_dong_lai_ld") and elapsed_hours >= settings.get("thoi_gian_khoi_dong_lai", 5.0):
+                        restart_hours = settings.get("thoi_gian_khoi_dong_lai", 5.0)
+                        self._log(f"{dev_label} Đã chạy liên tục {restart_hours} giờ. Tiến hành restart LDPlayer...")
+                        
+                        ld_index = card.get("index")
+                        if ld_index is not None:
+                            restart_success = False
+                            for attempt in range(3):
+                                if stop_ev.is_set():
+                                    break
+                                self._log(f"{dev_label} Tiến hành khởi động lại LDPlayer (Lần thử {attempt+1}/3)...")
+                                self._set_card_status(serial, f"Restart LD (Lần {attempt+1})...", "#e74c3c")
+                                try:
+                                    self.adb_helper.stop_ldplayer(index=ld_index)
+                                except Exception as stop_err:
+                                    self._log(f"{dev_label} Lỗi khi dừng LDPlayer: {stop_err}", "warning")
+                                time.sleep(10)
+                                
+                                self._set_card_status(serial, "Đang mở LD...", "#f39c12")
+                                try:
+                                    self.adb_helper.start_ldplayer(index=ld_index)
+                                except Exception as start_err:
+                                    self._log(f"{dev_label} Lỗi khi khởi động LDPlayer: {start_err}", "error")
+                                
+                                self._log(f"{dev_label} Đang chờ LDPlayer khởi động và kết nối ADB...")
+                                adb_ready = False
+                                for _ in range(36): # 3 phút
+                                    if stop_ev.is_set():
+                                        break
+                                    if serial in self.adb_helper.get_devices():
+                                        adb_ready = True
+                                        break
+                                    time.sleep(5)
+                                
+                                if adb_ready and not stop_ev.is_set():
+                                    self._log(f"{dev_label} LDPlayer đã sẵn sàng. Mở game...")
+                                    self._set_card_status(serial, "Đang vào game...", "#f39c12")
+                                    try:
+                                        from core.vao_game import vao_game
+                                        if vao_game(serial):
+                                            self._log(f"{dev_label} Hoàn tất mở game sau khi restart LD.")
+                                            last_ld_restart_time = time.time()
+                                            restart_success = True
+                                            break
+                                        else:
+                                            self._log(f"{dev_label} Vào game lỗi (Chưa thấy log_game.png). Thử lại...", "warning")
+                                    except Exception as game_err:
+                                        self._log(f"{dev_label} Lỗi mở game sau khi restart: {game_err}", "error")
+                                else:
+                                    self._log(f"{dev_label} Lỗi: Quá thời gian chờ LDPlayer kết nối ADB!", "error")
+                            
+                            if not restart_success and not stop_ev.is_set():
+                                self._log(f"{dev_label} Đã thử khởi động lại 3 lần nhưng đều thất bại vào game!", "error")
+                        else:
+                            self._log(f"{dev_label} Không tìm thấy index của LDPlayer để restart!", "warning")
+
                     tong_i += 1
                     if loop_tong_mode != "forever" and tong_i > loop_tong_count:
                         break
@@ -3194,6 +3271,11 @@ class AutoConfigGUI:
             settings["threshold"] = 0.85
         for key, var in self.toggle_vars.items():
             settings[key] = var.get()
+        settings["bat_khoi_dong_lai_ld"] = self.bat_khoi_dong_lai_ld_var.get()
+        try:
+            settings["thoi_gian_khoi_dong_lai"] = float(self.thoi_gian_khoi_dong_lai_var.get())
+        except (ValueError, tk.TclError):
+            settings["thoi_gian_khoi_dong_lai"] = 5.0
         return settings
 
     def _get_ban_do_from_ui(self):
@@ -3230,6 +3312,8 @@ class AutoConfigGUI:
         self.global_threshold_var.set(settings.get("threshold", 0.85))
         for key, var in self.toggle_vars.items():
             var.set(settings.get(key, DEFAULT_SETTINGS.get(key, False)))
+        self.bat_khoi_dong_lai_ld_var.set(settings.get("bat_khoi_dong_lai_ld", False))
+        self.thoi_gian_khoi_dong_lai_var.set(float(settings.get("thoi_gian_khoi_dong_lai", 5.0)))
 
     def _set_ban_do_to_ui(self, ban_do):
         self.bd_loai_kho_var.set(ban_do.get("loai_kho", "KTP"))
