@@ -1,6 +1,6 @@
 {
   "settings": {
-    "loop_tong_mode": "count",
+    "loop_tong_mode": "forever",
     "loop_tong": 1,
     "loop": 1,
     "threshold": 0.85,
@@ -10,7 +10,9 @@
     "bat_thu_hoach": false,
     "bat_mo_ruong": false,
     "bat_giao_cu": false,
-    "bat_giao_tom": false
+    "bat_giao_tom": false,
+    "bat_khoi_dong_lai_ld": true,
+    "thoi_gian_khoi_dong_lai": 0.02
   },
   "tasks": [],
   "ban_do": {
@@ -29,7 +31,7 @@
     ],
     "xoa_kc": false,
     "dat_quang_cao": true,
-    "check_stock": true,
+    "check_stock": false,
     "qc_templates": [
       "assets/items/ch_tinh_dau_tao.png",
       "assets/items/ch_vai_vang.png",

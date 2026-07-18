@@ -1071,7 +1071,7 @@ def _thu_dat_ban_voi_fallback(adb, vp_list, path_kho_selected, path_kho_not_sele
     Return True nếu đặt thành công, False nếu tất cả SP đều fail."""
     if _should_stop():
         return False
-
+    logger.info(f"[STOCK] Thu SP voi danh sach: {vp_list}")
     # Chuẩn hóa vp_list thành list of dict
     normalized = _normalize_vp_list(vp_list, threshold, color_threshold, region)
 
@@ -1090,7 +1090,7 @@ def _thu_dat_ban_voi_fallback(adb, vp_list, path_kho_selected, path_kho_not_sele
             for vp in shuffled
         ]
         logger.info(f"[STOCK] Thu SP theo ton kho: {order}")
-
+    logger.info(f"[STOCK] Thu SP theo thu tu: {shuffled}")
     for vp_info in shuffled:
         if _should_stop():
             return False
@@ -1364,7 +1364,14 @@ def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
             if lan >= len(sale_plan):
                 logger.info("[BAN DO] Da ban het ke hoach, dung ban")
                 break
-            vp_list_lan = [sale_plan[lan]]
+            planned_item = sale_plan[lan]
+            planned_path = planned_item.get("path") if isinstance(planned_item, dict) else planned_item
+            remaining_items = []
+            for item in data_vp:
+                item_path = item.get("path") if isinstance(item, dict) else item
+                if item_path != planned_path:
+                    remaining_items.append(item)
+            vp_list_lan = [planned_item] + remaining_items
         else:
             vp_list_lan = data_vp
 

@@ -297,6 +297,22 @@ class ADBHelper:
                          **self._hidden_subprocess_kwargs())
         return True
 
+    def stop_ldplayer(self, index: int = None, name: str = None) -> bool:
+        """Stop LDPlayer instance bang ldconsole/dnconsole."""
+        console_path = self._find_ldconsole_path()
+        if not console_path:
+            raise FileNotFoundError("Khong tim thay ldconsole.exe/dnconsole.exe")
+        if index is not None:
+            args = [console_path, "quit", "--index", str(index)]
+        elif name:
+            args = [console_path, "quit", "--name", name]
+        else:
+            raise ValueError("Can index hoac name de stop LDPlayer")
+
+        subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         **self._hidden_subprocess_kwargs())
+        return True
+
     def connect_emulator(self, port: int = 5554) -> bool:
         """Kết nối với emulator"""
         try:

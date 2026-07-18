@@ -12,7 +12,7 @@ img = ImageProcessor()
 TAI_KHOAN_TEMPLATE = "assets/items/tai_khoan.png"
 TAI_KHOAN_ON_TEMPLATE = "assets/items/tai_khoan_on.png"
 ICON_GAME_TEMPLATE = "assets/items/icon_game.png"
-
+CHECK_LOG_GAME_TEMPLATE = "assets/items/check_log_game.png"
 
 def doi_thiet_bi_adb(serial: str, timeout: int = 75, interval: float = 2.0) -> bool:
     """Doi LDPlayer xuat hien trong adb devices."""
@@ -48,6 +48,7 @@ def vao_game(
     logger.info("[VAO_GAME] Mo game %s tren %s", package_name, serial)
     adb = ADBController(serial=serial)
     adb.open_app(package_name, activity)
+    time.sleep(10)
     return xu_ly_man_hinh_vao_game(adb)
 
 
@@ -119,5 +120,11 @@ def xu_ly_man_hinh_vao_game(adb: ADBController) -> bool:
 
     logger.info("[VAO_GAME] Doi game load 40s")
     time.sleep(40)
-    _dong_popup_quang_cao(adb, count=5, interval=2)
-    return True
+    pos_log_game, _ = _tim_anh(adb, CHECK_LOG_GAME_TEMPLATE, threshold=0.82)
+    if pos_log_game:
+        logger.info("[VAO_GAME] Da thay log game tai %s", pos_log_game)
+        _dong_popup_quang_cao(adb, count=5, interval=2)
+        return True
+    else:
+        logger.warning("[VAO_GAME] Chua thay log_game.png")
+        return False
