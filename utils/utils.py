@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from core.adb import ADBController
 from core.image import ImageProcessor
-from config import DEVICE_SERIAL, INDEX_HANG, CONFIG_TEMP_TC, INDEX_XUONG_NHA_MAC_DINH
+from config import DEVICE_SERIAL, INDEX_HANG, INDEX_XUONG_NHA_MAC_DINH, TAB_LEN_2_HANG, INDEX_THOAT_SAN_XUAT_MAC_DINH
 import time
 import logging
 import threading
@@ -177,6 +177,7 @@ def _detect_current_row(take_screenshot=True, threshold=None):
             if screen is None:
                 screen = adb.screenshot_full()
         else:
+            adb.tap(*INDEX_THOAT_SAN_XUAT_MAC_DINH)
             if attempt > 0:
                 _sleep(0.3)
                 logger.info("Lần 1 không nhận diện được hàng, chụp lại...")
@@ -248,8 +249,8 @@ def tim_may_v2(template_path, config_row, max_retry=2):
     level_diff = target_level - current_level  # dương = lên, âm = xuống
     abs_diff = abs(level_diff)
 
-    # Nếu quá xa (>4 level) → về nhà trước cho chắc
-    if abs_diff > 4:
+    # nếu xuống nhà >= 3 level → ưu tiên về nhà trước rồi scroll lên, tránh lỗi nhận diện hàng do bóng/lag khi scroll nhiều
+    if level_diff < 0 and abs_diff >= 3:
         logger.info(f"Khoảng cách xa ({abs_diff} level), về nhà trước")
         xuong_nha()
         if _should_stop():
@@ -310,23 +311,41 @@ def lay_toa_do_tu_indexs(indexs_list):
     return [INDEX_HANG[idx] for idx in indexs_list if idx in INDEX_HANG]
 
 
-def len_may(count: int=1, duration: int=50, sleep: float=0.7):
+def _len_1_may(duration: int=50):
+    adb = _get_adb()
+    adb.drag_smooth([(70, 450), (70, 500)], total_duration_ms=duration)
+
+
+def len_2_may(count: int=1, duration: int=70, sleep: float=0.5):
     adb = _get_adb()
     set_state(PlayerState.DANG_SCROLL)
     for _ in range(count):
         if _should_stop():
             return
-        adb.scroll_up(450, 500, 70, duration)
+        adb.tap(*TAB_LEN_2_HANG)
         _sleep(sleep)
 
+def len_may(count: int=1, duration: int=50, sleep: float=0.5): 
+    set_state(PlayerState.DANG_SCROLL)
+    len_2_count = count // 2
+    len_1_count = count % 2
 
-def xuong_may(count: int=1, duration: int=50, sleep: float=0.7):
+    if len_2_count:
+        len_2_may(len_2_count, sleep=sleep)
+
+    for _ in range(len_1_count):
+        if _should_stop():
+            return
+        _len_1_may(duration=duration)
+        _sleep(sleep)
+
+def xuong_may(count: int=1, duration: int=50, sleep: float=0.5):
     adb = _get_adb()
     set_state(PlayerState.DANG_SCROLL)
     for _ in range(count):
         if _should_stop():
             return
-        adb.scroll_down(500, 450, 70, duration)
+        adb.drag_smooth([(70, 500), (70, 450)], total_duration_ms=duration)
         _sleep(sleep)
 
 

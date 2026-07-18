@@ -8,6 +8,7 @@ dist/
 build/
 cache/
 debug/
+data/
 *.egg
 
 # Virtual environment (nếu có)

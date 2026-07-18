@@ -8,18 +8,67 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import json
 import os
+import shutil
 import threading
 import time
 import logging
 import glob as glob_mod
+import zipfile
+from datetime import date
 import cv2
 
 from core.adb_helper import get_adb_helper, ADBHelper
 from core.adb import ADBController
 from core.trong_cay import main_tc
 from config import CONFIG_LOAI_KHO, REGION_PRESETS, REGION_FROM_CROP
+from utils.daily_stats import format_daily_counts
 
 logger = logging.getLogger(__name__)
+GUI_LOG_MAX_LINES = 1000
+
+
+class DeviceButtonState:
+    def __init__(self, owner, serial, state_key):
+        self.owner = owner
+        self.serial = serial
+        self.state_key = state_key
+
+    def config(self, **kwargs):
+        if "state" in kwargs:
+            card = self.owner.device_cards.get(self.serial)
+            if card:
+                card[self.state_key] = kwargs["state"]
+                self.owner._update_device_row(self.serial)
+                self.owner._refresh_device_action_buttons()
+
+
+class TreeTooltip:
+    def __init__(self, widget):
+        self.widget = widget
+        self.tip = None
+        self.text = None
+
+    def show(self, text, x, y):
+        if self.text == text and self.tip:
+            self.tip.geometry(f"+{x + 14}+{y + 14}")
+            return
+        self.hide()
+        self.text = text
+        self.tip = tk.Toplevel(self.widget)
+        self.tip.wm_overrideredirect(True)
+        self.tip.geometry(f"+{x + 14}+{y + 14}")
+        label = tk.Label(self.tip, text=text, bg="#2c3e50", fg="white",
+                         font=("Arial", 8), padx=6, pady=3, relief=tk.SOLID, bd=1)
+        label.pack()
+
+    def hide(self):
+        if self.tip:
+            try:
+                self.tip.destroy()
+            except tk.TclError:
+                pass
+        self.tip = None
+        self.text = None
 
 
 class AutocompleteCombobox(ttk.Combobox):
@@ -154,7 +203,10 @@ DEFAULT_SETTINGS = {
     "bat_ban_vp": False,
     "bat_thu_hoach": True,
     "bat_mo_ruong": False,
-    "bat_giao_cu": False
+    "bat_giao_cu": False,
+    "bat_giao_tom": False,
+    "bat_khoi_dong_lai_ld": False,
+    "thoi_gian_khoi_dong_lai": 5.0
 }
 
 DEFAULT_BAN_DO = {
@@ -163,8 +215,12 @@ DEFAULT_BAN_DO = {
     "data": [],
     "xoa_kc": True,
     "dat_quang_cao": True,
+    "check_stock": False,
     "qc_templates": [],
     "xoa_kc_templates": [],
+    "dsvp_bo_qua": [],
+    "tom_vp": "",
+    "tom_kho": "KTP",
     "threshold": 0.85,
     "color_threshold": 0.6
 }
@@ -225,6 +281,7 @@ class AutoConfigGUI:
         self._refresh_devices()
         self._refresh_configs()
         self._ss_refresh_devices()
+        self._schedule_device_auto_refresh()
 
     # ================================================================
     # UI
@@ -312,32 +369,73 @@ class AutoConfigGUI:
         tk.Button(dev_toolbar, text="Dừng tất cả", command=self._stop_all,
                   bg="#c0392b", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=10, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        tk.Button(dev_toolbar, text="Quét kho TP", command=self._scan_kho_thanh_pham_all,
+                  bg="#8e44ad", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=10, font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=4)
+        tk.Button(dev_toolbar, text="Tải CSV kho TP", command=self._download_kho_thanh_pham_csv,
+                  bg="#16a085", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=10, font=("Arial", 9)).pack(side=tk.LEFT, padx=4)
 
         # Debug mode checkbox
         self.debug_mode_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(dev_toolbar, text="Debug (luu anh)", variable=self.debug_mode_var,
+        tk.Checkbutton(dev_toolbar, text="Gỡ lỗi (lưu ảnh)", variable=self.debug_mode_var,
                        bg="#ecf0f1", font=("Arial", 8),
                        command=self._toggle_debug_mode).pack(side=tk.LEFT, padx=(12, 0))
-        tk.Button(dev_toolbar, text="Mở debug/", command=self._open_debug_folder,
+        tk.Button(dev_toolbar, text="Mở thư mục gỡ lỗi", command=self._open_debug_folder,
                   bg="#7f8c8d", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=4)
 
-        # Scrollable device list
-        dev_canvas = tk.Canvas(dev_frame, bg="#ecf0f1", highlightthickness=0)
-        dev_scrollbar = tk.Scrollbar(dev_frame, orient=tk.VERTICAL, command=dev_canvas.yview)
-        self.dev_list_frame = tk.Frame(dev_canvas, bg="#ecf0f1")
-        self.dev_list_frame.bind("<Configure>",
-            lambda e: dev_canvas.configure(scrollregion=dev_canvas.bbox("all")))
-        dev_canvas.create_window((0, 0), window=self.dev_list_frame, anchor=tk.NW)
-        dev_canvas.configure(yscrollcommand=dev_scrollbar.set)
-        dev_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        dev_canvas.pack(fill=tk.BOTH, expand=True)
+        action_bar = tk.Frame(dev_frame, bg="#ecf0f1")
+        self.btn_selected_start_ld = tk.Button(action_bar, text="Mở LD", command=self._start_selected_ldplayer,
+                                              bg="#2980b9", fg="white", relief=tk.FLAT, cursor="hand2",
+                                              padx=10, font=("Arial", 9, "bold"), state=tk.DISABLED)
+        self.btn_selected_start_ld.pack(side=tk.LEFT)
+        self.btn_selected_start = tk.Button(action_bar, text="Chạy", command=self._start_selected_device,
+                                            bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
+                                            padx=10, font=("Arial", 9, "bold"), state=tk.DISABLED)
+        self.btn_selected_start.pack(side=tk.LEFT, padx=4)
+        self.btn_selected_stop = tk.Button(action_bar, text="Dừng", command=self._stop_selected_device,
+                                           bg="#c0392b", fg="white", relief=tk.FLAT, cursor="hand2",
+                                           padx=10, font=("Arial", 9, "bold"), state=tk.DISABLED)
+        self.btn_selected_stop.pack(side=tk.LEFT)
+
+        # Device table
+        self.device_table = tk.Frame(dev_frame, bg="#cfd8df", bd=1, relief=tk.SOLID)
+        self.device_table.pack(fill=tk.BOTH, expand=True)
+        self.device_table_tooltip = TreeTooltip(self.device_table)
+
+        header = tk.Frame(self.device_table, bg="#e9eef2")
+        header.pack(fill=tk.X)
+        self.device_col_widths = (55, 220, 90, 315, 50, 50, 50)
+        self.device_col_weights = (0, 1, 0, 1, 0, 0, 0)
+        headers = [
+            ("STT", tk.CENTER),
+            ("Tên LDPlayer", tk.W),
+            ("LD", tk.CENTER),
+            ("Trạng thái tác vụ", tk.W),
+            ("Mở", tk.CENTER),
+            ("Chạy", tk.CENTER),
+            ("Dừng", tk.CENTER),
+        ]
+        for col, (text, anchor) in enumerate(headers):
+            lbl = tk.Label(header, text=text, bg="#e9eef2", fg="#111111",
+                           font=("Arial", 10, "bold"), anchor=anchor,
+                           padx=6, pady=6, bd=0, relief=tk.FLAT)
+            lbl.grid(row=0, column=col, sticky="nsew", padx=(0, 1), pady=(0, 1))
+            header.grid_columnconfigure(col, weight=self.device_col_weights[col],
+                                        minsize=self.device_col_widths[col])
+
+        self.device_rows_frame = tk.Frame(self.device_table, bg="#cfd8df")
+        self.device_rows_frame.pack(fill=tk.BOTH, expand=True)
+        for col in range(len(self.device_col_widths)):
+            self.device_rows_frame.grid_columnconfigure(col, weight=self.device_col_weights[col],
+                                                       minsize=self.device_col_widths[col])
 
         self.devices_list = []
-        self.device_cards = {}  # serial -> {frame, status_label, btn_start, btn_stop, stop_event, thread}
+        self.device_cards = {}  # serial -> state row cua LDPlayer
 
         # --- Mini log (5 dong gan nhat) ---
-        mini_log_frame = tk.LabelFrame(pad, text="Log gần đây (xem đầy đủ ở tab Nhật Ký)",
+        mini_log_frame = tk.LabelFrame(pad, text="Nhật ký gần đây (xem đầy đủ ở tab Nhật Ký)",
                                         font=("Arial", 9), bg="#ecf0f1", padx=6, pady=4)
         mini_log_frame.pack(fill=tk.X, pady=(4, 0))
         self.mini_log_text = tk.Text(mini_log_frame, font=("Consolas", 8), bg="#2c3e50",
@@ -372,7 +470,7 @@ class AutoConfigGUI:
 
         tk.Button(top, text="Lưu", command=self._save_config, bg="#27ae60", fg="white",
                   relief=tk.FLAT, cursor="hand2", padx=12, font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=4)
-        tk.Button(top, text="Load cấu hình", command=self._load_config_to_editor, bg="#3498db", fg="white",
+        tk.Button(top, text="Tải cấu hình", command=self._load_config_to_editor, bg="#3498db", fg="white",
                   relief=tk.FLAT, cursor="hand2", padx=12, font=("Arial", 10)).pack(side=tk.LEFT, padx=4)
         tk.Button(top, text="Xóa file", command=self._delete_config_file, bg="#e74c3c", fg="white",
                   relief=tk.FLAT, cursor="hand2", padx=12, font=("Arial", 10)).pack(side=tk.LEFT, padx=4)
@@ -381,7 +479,7 @@ class AutoConfigGUI:
         self.cfg_load_combo = ttk.Combobox(top, textvariable=self.cfg_load_var, state="readonly",
                                             width=20, font=("Arial", 9))
         self.cfg_load_combo.pack(side=tk.RIGHT)
-        tk.Label(top, text="File:", bg="#ecf0f1", font=("Arial", 9)).pack(side=tk.RIGHT, padx=(0, 4))
+        tk.Label(top, text="Tệp:", bg="#ecf0f1", font=("Arial", 9)).pack(side=tk.RIGHT, padx=(0, 4))
         self._refresh_cfg_load_combo()
 
         # ===== SECTION 1: SETTINGS (toggles + loop) =====
@@ -389,10 +487,10 @@ class AutoConfigGUI:
                                         bg="#ecf0f1", padx=10, pady=8)
         settings_frame.pack(fill=tk.X, pady=(0, 8))
 
-        # Loop tong
+        # Lặp tong
         loop_tong_row = tk.Frame(settings_frame, bg="#ecf0f1")
         loop_tong_row.pack(fill=tk.X, pady=3)
-        tk.Label(loop_tong_row, text="Loop tổng:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(loop_tong_row, text="Lặp tổng:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
         self.loop_tong_mode_var = tk.StringVar(value="count")
         tk.Radiobutton(loop_tong_row, text="Số lần:", variable=self.loop_tong_mode_var,
                        value="count", bg="#ecf0f1", font=("Arial", 9)).pack(side=tk.LEFT)
@@ -404,10 +502,10 @@ class AutoConfigGUI:
         tk.Radiobutton(loop_tong_row, text="Chạy mãi", variable=self.loop_tong_mode_var,
                        value="forever", bg="#ecf0f1", font=("Arial", 9)).pack(side=tk.LEFT)
 
-        # Loop TC+MAY
+        # Lặp TC+MAY
         loop_row = tk.Frame(settings_frame, bg="#ecf0f1")
         loop_row.pack(fill=tk.X, pady=3)
-        tk.Label(loop_row, text="Loop TC+MAY:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(loop_row, text="Lặp TC+MÁY:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
         self.loop_var = tk.StringVar(value="1")
         tk.Spinbox(loop_row, from_=1, to=999, textvariable=self.loop_var, width=6,
                    font=("Arial", 10)).pack(side=tk.LEFT)
@@ -426,6 +524,7 @@ class AutoConfigGUI:
             ("bat_thu_hoach", "Thu hoạch", True),
             ("bat_mo_ruong", "Mở rương", False),
             ("bat_giao_cu", "Giao cú", False),
+            ("bat_giao_tom", "Giao tôm", False),
         ]
         for i, (key, label, default) in enumerate(toggles):
             var = tk.BooleanVar(value=default)
@@ -439,13 +538,27 @@ class AutoConfigGUI:
         # Global threshold
         th_row = tk.Frame(settings_frame, bg="#ecf0f1")
         th_row.pack(fill=tk.X, pady=3)
-        tk.Label(th_row, text="Threshold mặc định:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(th_row, text="Ngưỡng mặc định:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
         self.global_threshold_var = tk.DoubleVar(value=0.85)
         tk.Spinbox(th_row, from_=0.5, to=1.0, increment=0.05,
                    textvariable=self.global_threshold_var, width=6,
                    font=("Arial", 10)).pack(side=tk.LEFT)
         tk.Label(th_row, text="(áp dụng cho tất cả nếu task không có riêng)",
                  bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=8)
+
+        # LDPlayer Auto-Restart settings
+        restart_row = tk.Frame(settings_frame, bg="#ecf0f1")
+        restart_row.pack(fill=tk.X, pady=3)
+        tk.Label(restart_row, text="Restart LDPlayer:", bg="#ecf0f1", width=18, anchor=tk.W).pack(side=tk.LEFT)
+        self.bat_khoi_dong_lai_ld_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(restart_row, text="Tự động restart LD", variable=self.bat_khoi_dong_lai_ld_var, bg="#ecf0f1",
+                       font=("Arial", 9), activebackground="#ecf0f1").pack(side=tk.LEFT)
+        tk.Label(restart_row, text="Mỗi (giờ):", bg="#ecf0f1", padx=10).pack(side=tk.LEFT)
+        self.thoi_gian_khoi_dong_lai_var = tk.DoubleVar(value=5.0)
+        tk.Spinbox(restart_row, from_=0.01, to=999.0, increment=0.5,
+                   textvariable=self.thoi_gian_khoi_dong_lai_var, width=6,
+                   font=("Arial", 10)).pack(side=tk.LEFT)
+        tk.Label(restart_row, text="(vd: 5 hoặc 0.02 để test)", bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=8)
 
         # ===== SECTION 2: TASKS (TC + MAY) =====
         form_frame = tk.LabelFrame(pad, text="Thêm mục TC / MÁY", font=("Arial", 10, "bold"),
@@ -455,7 +568,7 @@ class AutoConfigGUI:
         # Type
         r1 = tk.Frame(form_frame, bg="#ecf0f1")
         r1.pack(fill=tk.X, pady=3)
-        tk.Label(r1, text="Loai:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r1, text="Loại:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.type_var = tk.StringVar(value="TC")
         ttk.Combobox(r1, textvariable=self.type_var, values=["TC", "MAY"], state="readonly",
                      width=10).pack(side=tk.LEFT)
@@ -463,7 +576,7 @@ class AutoConfigGUI:
         # Row
         r2 = tk.Frame(form_frame, bg="#ecf0f1")
         r2.pack(fill=tk.X, pady=3)
-        tk.Label(r2, text="Hang (row):", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r2, text="Hàng:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.row_var = tk.StringVar(value="1")
         row_nums = [str(i) for i in range(1, 11)]
         ttk.Combobox(r2, textvariable=self.row_var, values=row_nums, state="readonly",
@@ -472,18 +585,19 @@ class AutoConfigGUI:
         # path_row
         r3 = tk.Frame(form_frame, bg="#ecf0f1")
         r3.pack(fill=tk.X, pady=3)
-        tk.Label(r3, text="path_row:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r3, text="Ảnh hàng:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.path_row_var = tk.StringVar()
         row_templates = scan_row_templates()
-        AutocompleteCombobox(r3, textvariable=self.path_row_var, values=row_templates,
-                             width=30).pack(side=tk.LEFT)
+        self.row_template_combo = AutocompleteCombobox(r3, textvariable=self.path_row_var,
+                                                       values=row_templates, width=30)
+        self.row_template_combo.pack(side=tk.LEFT)
         if row_templates:
             self.path_row_var.set(row_templates[0])
 
         # indexs (for TC) - grid picker
         r4 = tk.Frame(form_frame, bg="#ecf0f1")
         r4.pack(fill=tk.X, pady=3)
-        tk.Label(r4, text="indexs:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r4, text="Vị trí:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.indexs_display = tk.Label(r4, text="(Chưa chọn)", bg="white", fg="#2c3e50",
                                         font=("Consolas", 9), relief=tk.SUNKEN, anchor=tk.W,
                                         padx=6, width=45)
@@ -496,7 +610,7 @@ class AutoConfigGUI:
         # path_item (cay) + preview
         r5 = tk.Frame(form_frame, bg="#ecf0f1")
         r5.pack(fill=tk.X, pady=3)
-        tk.Label(r5, text="path_item:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r5, text="Ảnh vật phẩm:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.path_item_var = tk.StringVar()
         all_templates = scan_all_templates()
         self.cay_combo = AutocompleteCombobox(r5, textvariable=self.path_item_var,
@@ -517,7 +631,7 @@ class AutoConfigGUI:
         # path_item_default (for TC) + preview
         r6 = tk.Frame(form_frame, bg="#ecf0f1")
         r6.pack(fill=tk.X, pady=3)
-        tk.Label(r6, text="path_item_default:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r6, text="Ảnh mặc định:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.path_item_default_var = tk.StringVar()
         self.default_combo = AutocompleteCombobox(r6, textvariable=self.path_item_default_var,
                                                   values=all_templates, width=30)
@@ -537,17 +651,17 @@ class AutoConfigGUI:
         # Threshold (cho TC)
         r_th = tk.Frame(form_frame, bg="#ecf0f1")
         r_th.pack(fill=tk.X, pady=3)
-        tk.Label(r_th, text="Threshold:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r_th, text="Ngưỡng:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.threshold_var = tk.DoubleVar(value=0.85)
         tk.Spinbox(r_th, from_=0.5, to=1.0, increment=0.05, textvariable=self.threshold_var,
                    width=6, font=("Arial", 9)).pack(side=tk.LEFT)
         tk.Label(r_th, text="Độ chính xác tìm ảnh (0.5-1.0)",
                  bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=4)
 
-        # Region optional: x,y,w,h
+        # Vùng optional: x,y,w,h
         r_region = tk.Frame(form_frame, bg="#ecf0f1")
         r_region.pack(fill=tk.X, pady=3)
-        tk.Label(r_region, text="Region:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r_region, text="Vùng:", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.region_preset_var = tk.StringVar(value=self._default_region_preset())
         self.region_x_var = tk.StringVar()
         self.region_y_var = tk.StringVar()
@@ -563,16 +677,16 @@ class AutoConfigGUI:
         )
         self.region_preset_combo.pack(side=tk.LEFT)
         self.region_preset_combo.bind("<<ComboboxSelected>>", lambda e: self._auto_update_selected_task_region())
-        tk.Button(r_region, text="Xoa", command=self._clear_task_region,
+        tk.Button(r_region, text="Xóa", command=self._clear_task_region,
                   bg="#95a5a6", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=(4, 0))
-        tk.Label(r_region, text="(co the lay tu vung crop hien tai)",
+        tk.Label(r_region, text="(có thể lấy từ vùng cắt hiện tại)",
                  bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=4)
 
         # MAY: data (total)
         r7 = tk.Frame(form_frame, bg="#ecf0f1")
         r7.pack(fill=tk.X, pady=3)
-        tk.Label(r7, text="Total (MAY):", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(r7, text="Tổng (MÁY):", bg="#ecf0f1", width=14, anchor=tk.W).pack(side=tk.LEFT)
         self.total_entry = tk.Entry(r7, font=("Arial", 9), width=10)
         self.total_entry.pack(side=tk.LEFT)
         self.total_entry.insert(0, "4")
@@ -597,7 +711,7 @@ class AutoConfigGUI:
         self._editing_index = None
 
         # --- Tasks list ---
-        list_frame = tk.LabelFrame(pad, text="Danh sách tasks (TC + MAY)", font=("Arial", 10, "bold"),
+        list_frame = tk.LabelFrame(pad, text="Danh sách công việc (TC + MÁY)", font=("Arial", 10, "bold"),
                                    bg="#ecf0f1", padx=10, pady=8)
         list_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -606,9 +720,9 @@ class AutoConfigGUI:
         self.cfg_tree.heading("stt", text="#")
         self.cfg_tree.heading("type", text="Loại")
         self.cfg_tree.heading("row", text="Hàng")
-        self.cfg_tree.heading("path_item", text="Item")
-        self.cfg_tree.heading("indexs_or_data", text="Indexs / Data")
-        self.cfg_tree.heading("region", text="Region")
+        self.cfg_tree.heading("path_item", text="Vật phẩm")
+        self.cfg_tree.heading("indexs_or_data", text="Vị trí / Dữ liệu")
+        self.cfg_tree.heading("region", text="Vùng")
 
         self.cfg_tree.column("stt", width=35, anchor=tk.CENTER)
         self.cfg_tree.column("type", width=50, anchor=tk.CENTER)
@@ -639,8 +753,8 @@ class AutoConfigGUI:
         # Double-click de sua
         self.cfg_tree.bind("<Double-1>", lambda e: self._edit_selected())
 
-        # ===== SECTION 3: BAN DO (Ban vat pham) =====
-        bando_frame = tk.LabelFrame(pad, text="Cấu hình bản vật phẩm", font=("Arial", 10, "bold"),
+        # ===== SECTION 3: BAN DO (Bán vật phẩm) =====
+        bando_frame = tk.LabelFrame(pad, text="Cấu hình bán vật phẩm", font=("Arial", 10, "bold"),
                                      bg="#ecf0f1", padx=10, pady=8)
         bando_frame.pack(fill=tk.X, pady=(8, 0))
 
@@ -662,7 +776,7 @@ class AutoConfigGUI:
         tk.Spinbox(bk2, from_=1, to=99, textvariable=self.bd_so_lan_var, width=6,
                    font=("Arial", 10)).pack(side=tk.LEFT)
 
-        # Xoa kim cuong + Dat quang cao
+        # Xóa kim cuong + Dat quang cao
         bk3 = tk.Frame(bando_frame, bg="#ecf0f1")
         bk3.pack(fill=tk.X, pady=3)
         self.bd_xoa_kc_var = tk.BooleanVar(value=True)
@@ -671,6 +785,10 @@ class AutoConfigGUI:
 
         self.bd_dat_qc_var = tk.BooleanVar(value=True)
         tk.Checkbutton(bk3, text="Đặt quảng cáo", variable=self.bd_dat_qc_var,
+                        bg="#ecf0f1", font=("Arial", 9)).pack(side=tk.LEFT, padx=(20, 0))
+
+        self.bd_check_stock_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(bk3, text="Đọc stock", variable=self.bd_check_stock_var,
                        bg="#ecf0f1", font=("Arial", 9)).pack(side=tk.LEFT, padx=(20, 0))
 
         # Note: QC and xóa KC use list-based templates (managed below)
@@ -678,12 +796,12 @@ class AutoConfigGUI:
         # Threshold + Color threshold cho ban do
         bk3b = tk.Frame(bando_frame, bg="#ecf0f1")
         bk3b.pack(fill=tk.X, pady=3)
-        tk.Label(bk3b, text="Threshold:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(bk3b, text="Ngưỡng:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT)
         self.bd_threshold_var = tk.DoubleVar(value=0.85)
         tk.Spinbox(bk3b, from_=0.5, to=1.0, increment=0.05,
                    textvariable=self.bd_threshold_var, width=5,
                    font=("Arial", 10)).pack(side=tk.LEFT)
-        tk.Label(bk3b, text="  Color:", bg="#ecf0f1", anchor=tk.W).pack(side=tk.LEFT, padx=(8, 0))
+        tk.Label(bk3b, text="  Màu:", bg="#ecf0f1", anchor=tk.W).pack(side=tk.LEFT, padx=(8, 0))
         self.bd_color_threshold_var = tk.DoubleVar(value=0.6)
         tk.Spinbox(bk3b, from_=0.3, to=1.0, increment=0.05,
                    textvariable=self.bd_color_threshold_var, width=5,
@@ -691,10 +809,10 @@ class AutoConfigGUI:
         tk.Label(bk3b, text="(Mặc định, VP có thể ghi đè)", bg="#ecf0f1",
                  fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=8)
 
-        # Region mac dinh cho ban do
+        # Vùng mac dinh cho ban do
         bk3c = tk.Frame(bando_frame, bg="#ecf0f1")
         bk3c.pack(fill=tk.X, pady=3)
-        tk.Label(bk3c, text="Region ban do:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT)
+        tk.Label(bk3c, text="Vùng bán đồ:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT)
         self.bd_region_preset_var = tk.StringVar(value=self._default_region_preset())
         self.bd_region_x_var = tk.StringVar()
         self.bd_region_y_var = tk.StringVar()
@@ -709,10 +827,10 @@ class AutoConfigGUI:
             font=("Arial", 9)
         )
         self.bd_region_preset_combo.pack(side=tk.LEFT)
-        tk.Button(bk3c, text="Xoa", command=self._clear_bd_region,
+        tk.Button(bk3c, text="Xóa", command=self._clear_bd_region,
                   bg="#95a5a6", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=(4, 0))
-        tk.Label(bk3c, text="(ap dung cho VP khong co Region VP rieng)",
+        tk.Label(bk3c, text="(áp dụng cho VP không có vùng VP riêng)",
                  bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=4)
 
         # Danh sach VP can ban
@@ -753,13 +871,13 @@ class AutoConfigGUI:
         tk.Entry(bk4_add, textvariable=self.bd_vp_color_var, width=4,
                  font=("Arial", 9)).pack(side=tk.LEFT)
 
-        tk.Button(bk4_add, text="+ Them", command=self._bd_add_vp,
+        tk.Button(bk4_add, text="+ Thêm", command=self._bd_add_vp,
                   bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=8).pack(side=tk.LEFT, padx=4)
 
         bk4_region = tk.Frame(bk4_right, bg="#ecf0f1")
         bk4_region.pack(fill=tk.X, pady=2)
-        tk.Label(bk4_region, text="Region VP:", bg="#ecf0f1", font=("Arial", 8)).pack(side=tk.LEFT)
+        tk.Label(bk4_region, text="Vùng VP:", bg="#ecf0f1", font=("Arial", 8)).pack(side=tk.LEFT)
         self.bd_vp_region_preset_var = tk.StringVar(value=self._default_region_preset())
         self.bd_vp_region_x_var = tk.StringVar()
         self.bd_vp_region_y_var = tk.StringVar()
@@ -775,29 +893,27 @@ class AutoConfigGUI:
         )
         self.bd_vp_region_preset_combo.pack(side=tk.LEFT, padx=(6, 0))
         self.bd_vp_region_preset_combo.bind("<<ComboboxSelected>>", lambda e: self._auto_update_selected_vp_region())
-        tk.Button(bk4_region, text="Xoa", command=self._clear_bd_vp_region,
+        tk.Button(bk4_region, text="Xóa", command=self._clear_bd_vp_region,
                   bg="#95a5a6", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=6)
 
         # VP list
-        self.bd_vp_listbox = tk.Listbox(bk4_right, font=("Consolas", 9), height=4,
-                                         selectmode=tk.SINGLE, bg="white")
-        self.bd_vp_listbox.pack(fill=tk.X, pady=4)
+        self.bd_vp_listbox = self._create_scrolled_listbox(bk4_right, height=4)
         self.bd_vp_listbox.bind("<<ListboxSelect>>", lambda e: self._bd_load_selected_vp())
 
         bk4_btns = tk.Frame(bk4_right, bg="#ecf0f1")
         bk4_btns.pack(fill=tk.X)
-        tk.Button(bk4_btns, text="Cap nhat VP", command=self._bd_update_selected_vp,
+        tk.Button(bk4_btns, text="Cập nhật VP", command=self._bd_update_selected_vp,
                   bg="#f39c12", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=8).pack(side=tk.LEFT)
-        tk.Button(bk4_btns, text="Xoa", command=self._bd_remove_vp,
+        tk.Button(bk4_btns, text="Xóa", command=self._bd_remove_vp,
                   bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=8).pack(side=tk.LEFT, padx=4)
-        tk.Button(bk4_btns, text="Xoa tat ca", command=self._bd_clear_vp,
+        tk.Button(bk4_btns, text="Xóa tất cả", command=self._bd_clear_vp,
                   bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=8).pack(side=tk.LEFT, padx=4)
 
-        # --- Mẫu QC (list giống VP) ---
+
         bk_qc = tk.Frame(bando_frame, bg="#ecf0f1")
         bk_qc.pack(fill=tk.X, pady=6)
         tk.Label(bk_qc, text="DS quảng cáo:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT, anchor=tk.N)
@@ -823,9 +939,7 @@ class AutoConfigGUI:
               bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
               padx=8).pack(side=tk.LEFT, padx=6)
 
-        self.bd_qc_listbox = tk.Listbox(bk_qc_r, font=("Consolas", 9), height=3,
-                        selectmode=tk.SINGLE, bg="white")
-        self.bd_qc_listbox.pack(fill=tk.X, pady=4)
+        self.bd_qc_listbox = self._create_scrolled_listbox(bk_qc_r, height=4)
         bk_qc_btns = tk.Frame(bk_qc_r, bg="#ecf0f1")
         bk_qc_btns.pack(fill=tk.X)
         tk.Button(bk_qc_btns, text="Xóa", command=self._bd_qc_remove,
@@ -860,9 +974,7 @@ class AutoConfigGUI:
               bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
               padx=8).pack(side=tk.LEFT, padx=6)
 
-        self.bd_xe_listbox = tk.Listbox(bk_xe_r, font=("Consolas", 9), height=3,
-                        selectmode=tk.SINGLE, bg="white")
-        self.bd_xe_listbox.pack(fill=tk.X, pady=4)
+        self.bd_xe_listbox = self._create_scrolled_listbox(bk_xe_r, height=4)
         bk_xe_btns = tk.Frame(bk_xe_r, bg="#ecf0f1")
         bk_xe_btns.pack(fill=tk.X)
         tk.Button(bk_xe_btns, text="Xóa", command=self._bd_xe_remove,
@@ -872,9 +984,137 @@ class AutoConfigGUI:
               bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
               padx=8).pack(side=tk.LEFT, padx=4)
 
+        # --- Cấu hình giao cú ---
+        giao_cu_frame = tk.LabelFrame(pad, text="Cấu hình giao cú", font=("Arial", 10, "bold"),
+                                      bg="#ecf0f1", padx=10, pady=8)
+        giao_cu_frame.pack(fill=tk.X, pady=(8, 0))
+
+        bk_gc_skip = tk.Frame(giao_cu_frame, bg="#ecf0f1")
+        bk_gc_skip.pack(fill=tk.X, pady=3)
+        tk.Label(bk_gc_skip, text="Giao cú bỏ qua:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT, anchor=tk.N)
+        bk_gc_skip_r = tk.Frame(bk_gc_skip, bg="#ecf0f1")
+        bk_gc_skip_r.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        bk_gc_skip_add = tk.Frame(bk_gc_skip_r, bg="#ecf0f1")
+        bk_gc_skip_add.pack(fill=tk.X, pady=2)
+        self.gc_skip_var = tk.StringVar()
+        all_templates = scan_all_templates()
+        self.gc_skip_combo = AutocompleteCombobox(bk_gc_skip_add, textvariable=self.gc_skip_var,
+                                                  values=all_templates, width=20)
+        self.gc_skip_combo.pack(side=tk.LEFT)
+        self._gc_skip_preview_photo = None
+        gc_skip_pf = tk.Frame(bk_gc_skip_add, width=44, height=44, bg="white", relief=tk.SUNKEN, bd=1)
+        gc_skip_pf.pack_propagate(False)
+        gc_skip_pf.pack(side=tk.LEFT, padx=(4, 0))
+        self.gc_skip_preview_label = tk.Label(gc_skip_pf, bg="white")
+        self.gc_skip_preview_label.pack(expand=True)
+        self.gc_skip_var.trace_add("write", lambda *_: self._update_gc_skip_preview())
+        self.gc_skip_combo.bind("<<ComboboxSelected>>", lambda e: self._update_gc_skip_preview())
+        tk.Button(bk_gc_skip_add, text="+ Thêm", command=self._gc_skip_add,
+                  bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=8).pack(side=tk.LEFT, padx=6)
+
+        self.gc_skip_listbox = self._create_scrolled_listbox(bk_gc_skip_r, height=4)
+        bk_gc_skip_btns = tk.Frame(bk_gc_skip_r, bg="#ecf0f1")
+        bk_gc_skip_btns.pack(fill=tk.X)
+        tk.Button(bk_gc_skip_btns, text="Xóa", command=self._gc_skip_remove,
+                  bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=8).pack(side=tk.LEFT)
+        tk.Button(bk_gc_skip_btns, text="Xóa tất cả", command=self._gc_skip_clear,
+                  bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=8).pack(side=tk.LEFT, padx=4)
+
+        giao_tom_frame = tk.LabelFrame(pad, text="Cấu hình giao tôm", font=("Arial", 10, "bold"),
+                                       bg="#ecf0f1", padx=10, pady=8)
+        giao_tom_frame.pack(fill=tk.X, pady=(8, 0))
+
+        tom_row = tk.Frame(giao_tom_frame, bg="#ecf0f1")
+        tom_row.pack(fill=tk.X, pady=3)
+        tk.Label(tom_row, text="VP tôm cần lấy:", bg="#ecf0f1", width=16, anchor=tk.W).pack(side=tk.LEFT)
+        self.tom_vp_var = tk.StringVar()
+        all_templates = scan_all_templates()
+        self.tom_vp_combo = AutocompleteCombobox(tom_row, textvariable=self.tom_vp_var,
+                                                 values=all_templates, width=20)
+        self.tom_vp_combo.pack(side=tk.LEFT)
+        self._tom_vp_preview_photo = None
+        tom_vp_pf = tk.Frame(tom_row, width=44, height=44, bg="white", relief=tk.SUNKEN, bd=1)
+        tom_vp_pf.pack_propagate(False)
+        tom_vp_pf.pack(side=tk.LEFT, padx=(4, 0))
+        self.tom_vp_preview_label = tk.Label(tom_vp_pf, bg="white")
+        self.tom_vp_preview_label.pack(expand=True)
+        self.tom_vp_var.trace_add("write", lambda *_: self._update_tom_vp_preview())
+        self.tom_vp_combo.bind("<<ComboboxSelected>>", lambda e: self._update_tom_vp_preview())
+
+        tk.Label(tom_row, text="Kho:", bg="#ecf0f1", padx=8).pack(side=tk.LEFT)
+        self.tom_kho_var = tk.StringVar(value="KTP")
+        ttk.Combobox(tom_row, textvariable=self.tom_kho_var,
+                     values=["KTP", "KNS"], state="readonly", width=8).pack(side=tk.LEFT)
         # Internal data
         self.config_items = []
         self.bd_vp_list = []  # list of dict: {"path", "threshold", "color_threshold"}
+        self.bd_qc_list = []
+        self.bd_xe_list = []
+        self.gc_skip_list = []
+        self._bind_template_refresh_events()
+
+    def _create_scrolled_listbox(self, parent, height=4):
+        frame = tk.Frame(parent, bg="#ecf0f1")
+        frame.pack(fill=tk.X, pady=4)
+        scrollbar = tk.Scrollbar(frame, orient=tk.VERTICAL)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        listbox = tk.Listbox(
+            frame,
+            font=("Consolas", 9),
+            height=height,
+            selectmode=tk.SINGLE,
+            bg="white",
+            yscrollcommand=scrollbar.set
+        )
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=listbox.yview)
+        return listbox
+
+    def _bind_template_refresh_events(self):
+        for combo in self._template_combos():
+            combo.bind("<ButtonPress-1>", lambda e: self._refresh_template_combos(), add="+")
+            combo.bind("<FocusIn>", lambda e: self._refresh_template_combos(), add="+")
+
+    def _template_combos(self):
+        names = (
+            "row_template_combo",
+            "cay_combo",
+            "default_combo",
+            "bd_vp_combo",
+            "bd_qc_combo",
+            "bd_xe_combo",
+            "gc_skip_combo",
+            "tom_vp_combo",
+        )
+        return [getattr(self, name) for name in names if hasattr(self, name)]
+
+    def _refresh_template_combos(self):
+        all_templates = scan_all_templates()
+        kho_templates = scan_kho_templates()
+        row_templates = scan_row_templates()
+        values_by_name = {
+            "row_template_combo": row_templates,
+            "cay_combo": all_templates,
+            "default_combo": all_templates,
+            "bd_vp_combo": kho_templates,
+            "bd_qc_combo": all_templates,
+            "bd_xe_combo": all_templates,
+            "gc_skip_combo": all_templates,
+            "tom_vp_combo": all_templates,
+        }
+        for name, values in values_by_name.items():
+            combo = getattr(self, name, None)
+            if combo is not None and hasattr(combo, "set_values"):
+                combo.set_values(values)
+
+    def _template_path_from_name(self, name):
+        if not name:
+            return ""
+        return name if name.startswith("assets/") or os.path.isabs(name) else f"assets/items/{name}"
 
     def _choose_adb_path(self) -> bool:
         """Cho phép người dùng chọn thư mục LDPlayer chứa adb.exe."""
@@ -923,25 +1163,65 @@ class AutoConfigGUI:
     # ================================================================
     # TAB AUTO: LOGIC
     # ================================================================
-    def _refresh_devices(self):
+    def _schedule_device_auto_refresh(self):
         try:
-            serials = self.adb_helper.get_devices()
+            if not getattr(self, "_device_refresh_busy", False):
+                self._refresh_devices(silent=True)
+        finally:
+            self.root.after(10000, self._schedule_device_auto_refresh)
+
+    def _refresh_devices(self, silent=False):
+        try:
+            self._device_refresh_busy = True
+            players = self.adb_helper.get_ldplayers()
             self.devices_list = []
+            old_states = {}
+            for old_serial, old_card in self.device_cards.items():
+                key = old_card.get("index") if old_card.get("index") is not None else old_serial
+                thread = old_card.get("thread")
+                try:
+                    status_text = old_card["status_label"].cget("text")
+                    status_fg = old_card["status_label"].cget("fg")
+                    dot_fg = old_card["status_dot"].cget("fg")
+                except tk.TclError:
+                    status_text = None
+                    status_fg = None
+                    dot_fg = None
+                old_states[key] = {
+                    "thread": thread,
+                    "stop_event": old_card.get("stop_event"),
+                    "status_text": status_text,
+                    "status_fg": status_fg,
+                    "dot_fg": dot_fg,
+                }
             # Xóa cards cũ
             for w in self.dev_list_frame.winfo_children():
                 w.destroy()
             self.device_cards = {}
 
-            for s in serials:
-                name = self.adb_helper.get_device_name(s)
-                self.devices_list.append({"serial": s, "name": name})
-                self._create_device_card(s, name)
+            for player in players:
+                self.devices_list.append(player)
+                self._create_device_card(
+                    player["serial"],
+                    player["name"],
+                    index=player.get("index"),
+                    running=player.get("running", False),
+                    adb_port=player.get("adb_port"),
+                )
+                key = player.get("index") if player.get("index") is not None else player["serial"]
+                old_state = old_states.get(key)
+                if old_state:
+                    self._restore_card_state(player["serial"], old_state)
 
-            if not serials:
+            if not players:
                 tk.Label(self.dev_list_frame, text="Không tìm thấy thiết bị. Bấm 'Làm mới'.",
                          bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 10)).pack(pady=10)
-            self.status_label.config(text=f"Tim thay {len(serials)} thiet bi")
+            running_count = sum(1 for p in players if p.get("running"))
+            if not silent:
+                self.status_label.config(text=f"Tìm thấy {len(players)} LDPlayer | Đang chạy {running_count}")
         except (FileNotFoundError, OSError) as e:
+            if silent:
+                return
             self.status_label.config(text="✗ Lỗi: Không tìm thấy ADB")
             if messagebox.askyesno(
                 "Lỗi ADB",
@@ -969,31 +1249,85 @@ class AutoConfigGUI:
             else:
                 self.status_label.config(text=f"Lỗi quét thiết bị: {e}")
             messagebox.showerror("Lỗi", f"Có lỗi xảy ra: {e}")
+        finally:
+            self._device_refresh_busy = False
 
-    def _create_device_card(self, serial, name):
+    def _restore_card_state(self, serial, old_state):
+        card = self.device_cards.get(serial)
+        if not card:
+            return
+
+        thread = old_state.get("thread")
+        is_job_running = bool(thread and thread.is_alive())
+        card["thread"] = thread
+        card["stop_event"] = old_state.get("stop_event")
+
+        if not is_job_running and not card.get("running", False):
+            card["status_label"].config(text="Chưa chạy", fg="#7f8c8d")
+            card["status_dot"].config(fg="#95a5a6")
+            card["btn_start"].config(state=tk.DISABLED)
+            card["btn_stop"].config(state=tk.DISABLED)
+            card["btn_ld_start"].config(state=tk.NORMAL)
+            return
+
+        if not is_job_running:
+            return
+
+        if old_state.get("status_text"):
+            card["status_label"].config(
+                text=old_state["status_text"],
+                fg=old_state.get("status_fg") or card["status_label"].cget("fg")
+            )
+        if old_state.get("dot_fg"):
+            card["status_dot"].config(fg=old_state["dot_fg"])
+
+        card["btn_start"].config(state=tk.DISABLED)
+        card["btn_stop"].config(state=tk.NORMAL)
+        card["btn_ld_start"].config(state=tk.DISABLED)
+
+    def _config_current_card(self, serial, widget_key, **kwargs):
+        card = self.device_cards.get(serial)
+        if not card:
+            return
+        widget = card.get(widget_key)
+        if not widget:
+            return
+        try:
+            widget.config(**kwargs)
+        except tk.TclError:
+            pass
+
+    def _create_device_card(self, serial, name, index=None, running=True, adb_port=None):
         """Tạo 1 card cho 1 thiết bị."""
         card = tk.Frame(self.dev_list_frame, bg="white", relief=tk.RIDGE, bd=1, padx=10, pady=6)
         card.pack(fill=tk.X, pady=2)
 
         # Đèn trạng thái
-        status_dot = tk.Label(card, text="●", font=("Arial", 14), fg="#95a5a6", bg="white")
+        status_dot = tk.Label(card, text="●", font=("Arial", 14), fg="#27ae60" if running else "#95a5a6", bg="white")
         status_dot.pack(side=tk.LEFT, padx=(0, 8))
 
         # Tên + serial
         info = tk.Frame(card, bg="white")
         info.pack(side=tk.LEFT, fill=tk.X, expand=True)
         tk.Label(info, text=name, font=("Arial", 11, "bold"), bg="white", anchor=tk.W).pack(anchor=tk.W)
-        tk.Label(info, text=serial, font=("Arial", 8), fg="#7f8c8d", bg="white", anchor=tk.W).pack(anchor=tk.W)
+        meta = f"index={index} | {serial}" if index is not None else serial
+        tk.Label(info, text=meta, font=("Arial", 8), fg="#7f8c8d", bg="white", anchor=tk.W).pack(anchor=tk.W)
 
         # Trạng thái text
-        status_label = tk.Label(card, text="Sẵn sàng", font=("Arial", 9), fg="#7f8c8d",
+        status_label = tk.Label(card, text="Sẵn sàng" if running else "Chưa chạy", font=("Arial", 9), fg="#27ae60" if running else "#7f8c8d",
                                  bg="white", width=18, anchor=tk.W)
         status_label.pack(side=tk.LEFT, padx=8)
 
         # Nút Chạy
+        btn_ld_start = tk.Button(card, text="Mở LD", font=("Arial", 9, "bold"),
+                                 bg="#2980b9", fg="white", relief=tk.FLAT, cursor="hand2",
+                                 padx=10, state=tk.DISABLED if running else tk.NORMAL,
+                                 command=lambda i=index, s=serial: self._start_ldplayer(i, s))
+        btn_ld_start.pack(side=tk.RIGHT, padx=2)
+
         btn_start = tk.Button(card, text="Chạy", font=("Arial", 9, "bold"),
                                bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
-                               padx=12, command=lambda s=serial: self._start_one(s))
+                               padx=12, state=tk.NORMAL if running else tk.DISABLED, command=lambda s=serial: self._start_one(s))
         btn_start.pack(side=tk.RIGHT, padx=2)
 
         # Nút Dừng
@@ -1009,9 +1343,13 @@ class AutoConfigGUI:
             "status_label": status_label,
             "btn_start": btn_start,
             "btn_stop": btn_stop,
+            "btn_ld_start": btn_ld_start,
             "stop_event": None,
             "thread": None,
             "name": name,
+            "index": index,
+            "running": running,
+            "adb_port": adb_port,
         }
 
     def _set_card_status(self, serial, status, color):
@@ -1029,6 +1367,419 @@ class AutoConfigGUI:
             self.root.after(0, _update)
         except RuntimeError:
             pass
+
+    def _start_ldplayer(self, index, serial, silent=False):
+        card = self.device_cards.get(serial)
+        if card:
+            card["btn_ld_start"].config(state=tk.DISABLED)
+            card["status_label"].config(text="Đang mở...", fg="#2980b9")
+        try:
+            self.adb_helper.start_ldplayer(index=index)
+            self.status_label.config(text=f"Đang mở LDPlayer index={index}", bg="#2980b9")
+            self._open_game_after_ld_start(serial)
+            self.root.after(3000, self._refresh_devices)
+            self.root.after(8000, self._refresh_devices)
+            self.root.after(14000, self._refresh_devices)
+            self.root.after(22000, self._refresh_devices)
+        except Exception as e:
+            if silent:
+                return
+            if card:
+                card["btn_ld_start"].config(state=tk.NORMAL)
+                card["status_label"].config(text="Mở lỗi", fg="#e74c3c")
+            messagebox.showerror("Lỗi mở LDPlayer", str(e))
+
+    def _refresh_devices(self, silent=False):
+        try:
+            self._device_refresh_busy = True
+            if not getattr(self.adb_helper, "adb_path", None):
+                raise FileNotFoundError("Không tìm thấy ADB")
+            players = self.adb_helper.get_ldplayers()
+            self._sync_device_rows(players)
+            running_count = sum(1 for p in players if p.get("running"))
+            if not silent:
+                self.status_label.config(text=f"Tìm thấy {len(players)} LDPlayer | Đang chạy {running_count}")
+            self._refresh_device_action_buttons()
+        except (FileNotFoundError, OSError) as e:
+            if silent:
+                return
+            self.status_label.config(text="Lỗi: Không tìm thấy ADB")
+            if messagebox.askyesno(
+                "Lỗi ADB",
+                "Không tìm thấy ADB!\n\nBạn có muốn chọn thư mục LDPlayer thủ công không?"
+            ):
+                if self._choose_adb_path():
+                    self._refresh_devices()
+                    return
+            messagebox.showerror("Lỗi ADB", f"Không tìm thấy ADB!\n\n{e}")
+        except Exception as e:
+            if silent:
+                return
+            self.status_label.config(text=f"Lỗi quét thiết bị: {e}")
+            messagebox.showerror("Lỗi", f"Có lỗi xảy ra: {e}")
+        finally:
+            self._device_refresh_busy = False
+
+    def _sync_device_rows(self, players):
+        self.devices_list = list(players)
+        old_states = {
+            (card.get("index") if card.get("index") is not None else serial): card
+            for serial, card in self.device_cards.items()
+        }
+        seen_serials = set()
+
+        for pos, player in enumerate(players):
+            key = player.get("index") if player.get("index") is not None else player["serial"]
+            card = self._upsert_device_row(
+                player["serial"],
+                player["name"],
+                index=player.get("index"),
+                running=player.get("running", False),
+                adb_port=player.get("adb_port"),
+                old_state=old_states.get(key),
+            )
+            seen_serials.add(player["serial"])
+            card["row"].pack_forget()
+            card["row"].pack(fill=tk.X)
+            self._update_device_row(player["serial"])
+
+        for serial, card in list(self.device_cards.items()):
+            if serial not in seen_serials:
+                try:
+                    card["row"].destroy()
+                except tk.TclError:
+                    pass
+                self.device_cards.pop(serial, None)
+
+    def _upsert_device_row(self, serial, name, index=None, running=True, adb_port=None, old_state=None):
+        old_state = old_state or {}
+        old_serial = old_state.get("serial")
+        if old_serial and old_serial != serial and old_serial in self.device_cards:
+            self.device_cards.pop(old_serial, None)
+
+        row = old_state.get("row")
+        widgets = old_state.get("widgets")
+        if not row or not row.winfo_exists():
+            row = tk.Frame(self.device_rows_frame, bg="#cfd8df", bd=0, relief=tk.FLAT)
+            widgets = self._create_device_row_widgets(row, serial)
+
+        thread = old_state.get("thread")
+        is_job_running = bool(thread and thread.is_alive())
+        if is_job_running:
+            job_status = old_state.get("status", "Đang chạy")
+            tag = old_state.get("tag", "working")
+            start_state = tk.DISABLED
+            stop_state = tk.NORMAL
+            ld_start_state = tk.DISABLED
+        else:
+            job_status = "Sẵn sàng" if running else "Chưa chạy"
+            tag = "running" if running else "stopped"
+            start_state = tk.NORMAL if running else tk.DISABLED
+            stop_state = tk.DISABLED
+            ld_start_state = tk.DISABLED if running else tk.NORMAL
+
+        card = {
+            "row": row,
+            "widgets": widgets,
+            "serial": serial,
+            "name": name,
+            "index": index,
+            "running": running,
+            "adb_port": adb_port,
+            "thread": thread,
+            "stop_event": old_state.get("stop_event"),
+            "status": job_status,
+            "tag": tag,
+            "start_state": old_state.get("start_state", start_state) if is_job_running else start_state,
+            "stop_state": old_state.get("stop_state", stop_state) if is_job_running else stop_state,
+            "ld_start_state": old_state.get("ld_start_state", ld_start_state) if is_job_running else ld_start_state,
+        }
+        card["btn_start"] = DeviceButtonState(self, serial, "start_state")
+        card["btn_stop"] = DeviceButtonState(self, serial, "stop_state")
+        card["btn_ld_start"] = DeviceButtonState(self, serial, "ld_start_state")
+        self.device_cards[serial] = card
+        self._bind_device_row_actions(serial)
+        self._update_device_row(serial)
+        return card
+
+    def _create_device_row_widgets(self, row, serial):
+        anchors = (tk.CENTER, tk.W, tk.CENTER, tk.W, tk.CENTER, tk.CENTER, tk.CENTER)
+        keys = ("index", "name", "ld_status", "job_status")
+        widgets = {}
+
+        for col, key in enumerate(keys):
+            lbl = tk.Label(row, bg="white", fg="#111111", font=("Arial", 10),
+                           anchor=anchors[col], padx=6, pady=5,
+                           bd=0, relief=tk.FLAT)
+            lbl.grid(row=0, column=col, sticky="nsew", padx=(0, 1), pady=(0, 1))
+            row.grid_columnconfigure(col, weight=self.device_col_weights[col],
+                                     minsize=self.device_col_widths[col])
+            widgets[key] = lbl
+
+        button_specs = [
+            ("btn_ld", 4, "⏻", "#2980b9", "Mở LDPlayer này"),
+            ("btn_run", 5, "▶", "#27ae60", "Chạy auto cho LDPlayer này"),
+            ("btn_stop", 6, "■", "#c0392b", "Dừng auto của LDPlayer này"),
+        ]
+        for key, col, text, color, tooltip in button_specs:
+            btn = tk.Label(row, text=text, bg="white", fg=color,
+                           font=("Segoe UI Symbol", 14, "bold"),
+                           anchor=tk.CENTER, padx=0, pady=0, bd=0, relief=tk.FLAT)
+            btn.grid(row=0, column=col, sticky="nsew", padx=(0, 1), pady=(0, 1))
+            row.grid_columnconfigure(col, weight=self.device_col_weights[col],
+                                     minsize=self.device_col_widths[col])
+            btn.bind("<Enter>", lambda e, b=btn, t=tooltip: self._show_device_action_tooltip(e, b, t))
+            btn.bind("<Leave>", lambda e: self.device_table_tooltip.hide())
+            widgets[key] = btn
+
+        return widgets
+
+    def _show_device_action_tooltip(self, event, button, text):
+        if button.cget("text"):
+            self.device_table_tooltip.show(text, event.x_root, event.y_root)
+        else:
+            self.device_table_tooltip.hide()
+
+    def _bind_device_row_actions(self, serial):
+        card = self.device_cards.get(serial)
+        if not card:
+            return
+        widgets = card.get("widgets", {})
+        widgets["btn_ld"].bind("<Button-1>", lambda e, s=serial: self._start_row_ldplayer(s))
+        widgets["btn_run"].bind("<Button-1>", lambda e, s=serial: self._start_row_device(s))
+        widgets["btn_stop"].bind("<Button-1>", lambda e, s=serial: self._stop_row_device(s))
+
+    def _start_row_ldplayer(self, serial):
+        card = self.device_cards.get(serial)
+        if card and card.get("ld_start_state") == tk.NORMAL:
+            self._start_ldplayer(card.get("index"), serial)
+
+    def _start_row_device(self, serial):
+        card = self.device_cards.get(serial)
+        if card and card.get("start_state") == tk.NORMAL:
+            self._start_one(serial)
+
+    def _stop_row_device(self, serial):
+        card = self.device_cards.get(serial)
+        if card and card.get("stop_state") == tk.NORMAL:
+            self._stop_one(serial)
+
+    def _update_device_row(self, serial):
+        card = self.device_cards.get(serial)
+        if not card:
+            return
+        ld_status = "Đang chạy" if card.get("running") else "Tắt"
+        index_text = "" if card.get("index") is None else str(card.get("index"))
+        row_bg = "#f4f7f9" if list(self.device_cards).index(serial) % 2 else "#ffffff"
+        widgets = card.get("widgets", {})
+        widgets["index"].config(text=index_text, bg=row_bg)
+        widgets["name"].config(text=card.get("name", ""), bg=row_bg)
+        widgets["ld_status"].config(text=ld_status, bg=row_bg)
+        status_text = card.get("status", "")
+        stats_text = format_daily_counts(serial)
+        widgets["job_status"].config(text=f"{status_text}\n{stats_text}", bg=row_bg, justify=tk.LEFT)
+        action_state = [
+            ("btn_ld", card.get("ld_start_state", tk.DISABLED), "⏻", "#2980b9"),
+            ("btn_run", card.get("start_state", tk.DISABLED), "▶", "#27ae60"),
+            ("btn_stop", card.get("stop_state", tk.DISABLED), "■", "#c0392b"),
+        ]
+        for key, state, text, color in action_state:
+            enabled = state == tk.NORMAL
+            widgets[key].config(
+                text=text if enabled else "",
+                bg=row_bg,
+                fg=color,
+                cursor="hand2" if enabled else "",
+            )
+
+    def _get_selected_serial(self):
+        selected = self.device_tree.selection()
+        if not selected:
+            return None
+        item = selected[0]
+        return self._get_serial_by_item(item)
+
+    def _get_serial_by_item(self, item):
+        for serial, card in self.device_cards.items():
+            if card.get("item") == item:
+                return serial
+        return None
+
+    def _device_tree_action_at_event(self, event):
+        item = self.device_tree.identify_row(event.y)
+        col = self.device_tree.identify_column(event.x)
+        if not item or col not in ("#6", "#7", "#8"):
+            return None, None
+        serial = self._get_serial_by_item(item)
+        if not serial:
+            return None, None
+        action = {"#6": "start_ld", "#7": "run", "#8": "stop"}[col]
+        return serial, action
+
+    def _on_device_tree_click(self, event):
+        serial, action = self._device_tree_action_at_event(event)
+        if not serial:
+            return
+        card = self.device_cards.get(serial)
+        if not card:
+            return
+        self.device_tree.selection_set(card["item"])
+        if action == "start_ld" and card.get("ld_start_state") == tk.NORMAL:
+            self._start_ldplayer(card.get("index"), serial)
+            return "break"
+        if action == "run" and card.get("start_state") == tk.NORMAL:
+            self._start_one(serial)
+            return "break"
+        if action == "stop" and card.get("stop_state") == tk.NORMAL:
+            self._stop_one(serial)
+            return "break"
+
+    def _on_device_tree_motion(self, event):
+        serial, action = self._device_tree_action_at_event(event)
+        card = self.device_cards.get(serial) if serial else None
+        if not card:
+            self.device_tree.configure(cursor="")
+            self.device_tree_tooltip.hide()
+            return
+        labels = {
+            "start_ld": ("Mở LDPlayer này", card.get("ld_start_state") == tk.NORMAL),
+            "run": ("Chạy auto cho LDPlayer này", card.get("start_state") == tk.NORMAL),
+            "stop": ("Dừng auto của LDPlayer này", card.get("stop_state") == tk.NORMAL),
+        }
+        text, enabled = labels.get(action, ("", False))
+        if not enabled:
+            text = {
+                "start_ld": "LDPlayer đang chạy hoặc đang mở",
+                "run": "Chỉ chạy khi LDPlayer đang mở và tác vụ đang dừng",
+                "stop": "Chỉ dừng khi tác vụ đang chạy",
+            }.get(action, "")
+        self.device_tree.configure(cursor="hand2" if enabled else "")
+        if text:
+            self.device_tree_tooltip.show(text, event.x_root, event.y_root)
+        else:
+            self.device_tree_tooltip.hide()
+
+    def _refresh_device_action_buttons(self):
+        if not hasattr(self, "device_tree"):
+            return
+        serial = self._get_selected_serial()
+        card = self.device_cards.get(serial) if serial else None
+        if not card:
+            self.btn_selected_start_ld.config(state=tk.DISABLED)
+            self.btn_selected_start.config(state=tk.DISABLED)
+            self.btn_selected_stop.config(state=tk.DISABLED)
+            return
+        self.btn_selected_start_ld.config(state=card.get("ld_start_state", tk.DISABLED))
+        self.btn_selected_start.config(state=card.get("start_state", tk.DISABLED))
+        self.btn_selected_stop.config(state=card.get("stop_state", tk.DISABLED))
+
+    def _start_selected_ldplayer(self):
+        serial = self._get_selected_serial()
+        card = self.device_cards.get(serial) if serial else None
+        if card:
+            self._start_ldplayer(card.get("index"), serial)
+
+    def _start_selected_device(self):
+        serial = self._get_selected_serial()
+        if serial:
+            self._start_one(serial)
+
+    def _stop_selected_device(self):
+        serial = self._get_selected_serial()
+        if serial:
+            self._stop_one(serial)
+
+    def _set_card_status(self, serial, status, color):
+        def _update():
+            card = self.device_cards.get(serial)
+            if not card:
+                return
+            card["status"] = status
+            if color == "#e74c3c":
+                card["tag"] = "error"
+            elif color in ("#f39c12", "#e67e22"):
+                card["tag"] = "working"
+            elif color == "#27ae60":
+                card["tag"] = "running"
+            elif color == "#c0392b":
+                card["tag"] = "error"
+            else:
+                card["tag"] = "stopped"
+            self._update_device_row(serial)
+            self._refresh_device_action_buttons()
+
+        self._ui_safe(_update)
+
+    def _config_current_card(self, serial, widget_key, **kwargs):
+        card = self.device_cards.get(serial)
+        if not card:
+            return
+        if widget_key == "btn_start" and "state" in kwargs:
+            card["start_state"] = kwargs["state"]
+        elif widget_key == "btn_stop" and "state" in kwargs:
+            card["stop_state"] = kwargs["state"]
+        elif widget_key == "btn_ld_start" and "state" in kwargs:
+            card["ld_start_state"] = kwargs["state"]
+        self._update_device_row(serial)
+        self._refresh_device_action_buttons()
+
+    def _start_ldplayer(self, index, serial):
+        card = self.device_cards.get(serial)
+        if card:
+            card["ld_start_state"] = tk.DISABLED
+            card["status"] = "Đang mở..."
+            card["tag"] = "working"
+            self._update_device_row(serial)
+            self._refresh_device_action_buttons()
+        try:
+            self.adb_helper.start_ldplayer(index=index)
+            self.status_label.config(text=f"Đang mở LDPlayer index={index}", bg="#2980b9")
+            self._open_game_after_ld_start(serial)
+            self.root.after(3000, self._refresh_devices)
+            self.root.after(8000, self._refresh_devices)
+            self.root.after(14000, self._refresh_devices)
+            self.root.after(22000, self._refresh_devices)
+        except Exception as e:
+            if card:
+                card["ld_start_state"] = tk.NORMAL
+                card["status"] = "Mở lỗi"
+                card["tag"] = "error"
+                self._update_device_row(serial)
+                self._refresh_device_action_buttons()
+            messagebox.showerror("Lỗi mở LDPlayer", str(e))
+
+    def _open_game_after_ld_start(self, serial):
+        try:
+            from config import AUTO_OPEN_GAME_AFTER_LD_START
+        except Exception:
+            AUTO_OPEN_GAME_AFTER_LD_START = True
+        if not AUTO_OPEN_GAME_AFTER_LD_START:
+            return
+
+        def run():
+            try:
+                self._set_card_status(serial, "Đợi LD sẵn sàng...", "#f39c12")
+                from core.vao_game import vao_game_sau_khi_start_ld
+                ok = vao_game_sau_khi_start_ld(serial)
+                if ok:
+                    self._set_card_status(serial, "Đã vào game", "#27ae60")
+                    self._ui_safe(lambda: self.status_label.config(text=f"Đã vào game: {serial}", bg="#27ae60"))
+                else:
+                    self._set_card_status(serial, "Không vào được game", "#e74c3c")
+                    self._ui_safe(lambda: self.status_label.config(text=f"Không vào được game: {serial}", bg="#e74c3c"))
+            except Exception as e:
+                self._set_card_status(serial, "Lỗi vào game", "#e74c3c")
+                self._log(f"[{serial}] Lỗi vào game: {e}", "error")
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _reset_runtime_flags_for_start(self, serial):
+        try:
+            from core.mo_ruong import reset_day_kho
+            reset_day_kho(serial)
+            self._log(f"[{serial}] Reset cờ đầy kho")
+        except Exception as e:
+            self._log(f"[{serial}] Không reset được cờ đầy kho: {e}", "warning")
 
     def _refresh_configs(self):
         files = glob_mod.glob(os.path.join(CONFIG_DIR, "*.json"))
@@ -1081,15 +1832,15 @@ class AutoConfigGUI:
                     pi = os.path.basename(item.get("path_item", ""))
                     idxs = item.get("indexs", [])
                     th_txt = f"  th={item['threshold']}" if 'threshold' in item else ""
-                    rg_txt = f"  region={format_region(item.get('region'))}" if item.get('region') else ""
+                    rg_txt = f"  vùng={format_region(item.get('region'))}" if item.get('region') else ""
                     self.preview_text.insert(tk.END,
-                        f"#{i}  [{t}]  Hang {row}  |  {pi}  |  {len(idxs)} vi tri{th_txt}{rg_txt}\n")
+                        f"#{i}  [{t}]  Hàng {row}  |  {pi}  |  {len(idxs)} vị trí{th_txt}{rg_txt}\n")
                 elif t == "MAY":
                     data_items = item.get("data", [])
                     parts = [f"{os.path.basename(d['path_item'])} x{d.get('total',1)}" for d in data_items]
-                    rg_txt = f"  region={format_region(item.get('region'))}" if item.get('region') else ""
+                    rg_txt = f"  vùng={format_region(item.get('region'))}" if item.get('region') else ""
                     self.preview_text.insert(tk.END,
-                        f"#{i}  [{t}]  Hang {row}  |  {', '.join(parts)}{rg_txt}\n")
+                        f"#{i}  [{t}]  Hàng {row}  |  {', '.join(parts)}{rg_txt}\n")
 
             # Ban do summary
             if ban_do.get("data"):
@@ -1156,12 +1907,12 @@ class AutoConfigGUI:
             return raw.get("settings", DEFAULT_SETTINGS), raw.get("tasks", []), raw.get("ban_do", DEFAULT_BAN_DO)
         elif isinstance(raw, list):
             return DEFAULT_SETTINGS, raw, DEFAULT_BAN_DO
-        messagebox.showerror("Lỗi", "Format config không hợp lệ!")
+        messagebox.showerror("Lỗi", "Định dạng cấu hình không hợp lệ!")
         return None
 
-    def _start_one(self, serial):
+    def _start_one(self, serial, cfg=None):
         """Chạy auto cho 1 nick."""
-        cfg = self._load_config()
+        cfg = cfg or self._load_config()
         if not cfg:
             return
         settings, tasks, ban_do = cfg
@@ -1170,17 +1921,21 @@ class AutoConfigGUI:
         if not card:
             return
         # Đang chạy rồi thì bỏ qua
+        if not card.get("running", True):
+            self._set_card_status(serial, "Chưa mở LD", "#7f8c8d")
+            return
         if card["thread"] and card["thread"].is_alive():
             return
 
         config_name = self.config_var.get()
+        self._reset_runtime_flags_for_start(serial)
 
         stop_ev = threading.Event()
         card["stop_event"] = stop_ev
         card["btn_start"].config(state=tk.DISABLED)
         card["btn_stop"].config(state=tk.NORMAL)
         self._set_card_status(serial, f"Đang chạy: {config_name}", "#f39c12")
-        card["status_dot"].config(fg="#27ae60")
+        self._config_current_card(serial, "status_dot", fg="#27ae60")
 
         loop_tc_may = settings.get("loop", 1)
         loop_tong_mode = settings.get("loop_tong_mode", "count")
@@ -1207,20 +1962,121 @@ class AutoConfigGUI:
                 from utils.utils import setup_thread
                 setup_thread(adb_inst, stop_ev, device_name=dev_name)
 
-                self._log(f"{dev_label} Kết nối OK | Config: {config_name}")
+                self._log(f"{dev_label} Kết nối thành công | Config: {config_name}")
 
                 tc_tasks = [t for t in tasks if
                             (t.get("type") == "TC" and settings.get("bat_trong_cay")) or
                             (t.get("type") == "MAY" and settings.get("bat_may"))]
+                if settings.get("bat_mo_ruong"):
+                    from core.mo_ruong import can_mo_ruong, da_day_kho, mo_ruong
+                if settings.get("bat_giao_cu"):
+                    from core.giao_cu import can_giao_cu, giao_cu
+                if settings.get("bat_giao_tom"):
+                    from core.giao_tom import giao_tom
 
                 tong_i = 0
+                last_ld_restart_time = time.time()
                 while not stop_ev.is_set():
+                    # Check restart LDPlayer
+                    elapsed_hours = (time.time() - last_ld_restart_time) / 3600.0
+                    if settings.get("bat_khoi_dong_lai_ld"):
+                        self._log(f"{dev_label} [DEBUG RESTART] Đã chạy: {elapsed_hours*60:.2f} phút / Yêu cầu: {settings.get('thoi_gian_khoi_dong_lai', 5.0)*60:.2f} phút")
+                    if settings.get("bat_khoi_dong_lai_ld") and elapsed_hours >= settings.get("thoi_gian_khoi_dong_lai", 5.0):
+                        restart_hours = settings.get("thoi_gian_khoi_dong_lai", 5.0)
+                        self._log(f"{dev_label} Đã chạy liên tục {restart_hours} giờ. Tiến hành restart LDPlayer...")
+                        
+                        ld_index = card.get("index")
+                        if ld_index is not None:
+                            restart_success = False
+                            for attempt in range(3):
+                                if stop_ev.is_set():
+                                    break
+                                self._log(f"{dev_label} Tiến hành khởi động lại LDPlayer (Lần thử {attempt+1}/3)...")
+                                self._set_card_status(serial, f"Restart LD (Lần {attempt+1})...", "#e74c3c")
+                                try:
+                                    self.adb_helper.stop_ldplayer(index=ld_index)
+                                except Exception as stop_err:
+                                    self._log(f"{dev_label} Lỗi khi dừng LDPlayer: {stop_err}", "warning")
+                                time.sleep(10)
+                                
+                                self._set_card_status(serial, "Đang mở LD...", "#f39c12")
+                                try:
+                                    self.adb_helper.start_ldplayer(index=ld_index)
+                                except Exception as start_err:
+                                    self._log(f"{dev_label} Lỗi khi khởi động LDPlayer: {start_err}", "error")
+                                
+                                self._log(f"{dev_label} Đang chờ LDPlayer khởi động và kết nối ADB...")
+                                adb_ready = False
+                                for _ in range(36): # 3 phút
+                                    if stop_ev.is_set():
+                                        break
+                                    if serial in self.adb_helper.get_devices():
+                                        adb_ready = True
+                                        break
+                                    time.sleep(5)
+                                
+                                if adb_ready and not stop_ev.is_set():
+                                    self._log(f"{dev_label} LDPlayer đã sẵn sàng. Mở game...")
+                                    self._set_card_status(serial, "Đang vào game...", "#f39c12")
+                                    try:
+                                        from core.vao_game import vao_game
+                                        if vao_game(serial):
+                                            self._log(f"{dev_label} Hoàn tất mở game sau khi restart LD.")
+                                            last_ld_restart_time = time.time()
+                                            restart_success = True
+                                            break
+                                        else:
+                                            self._log(f"{dev_label} Vào game lỗi (Chưa thấy log_game.png). Thử lại...", "warning")
+                                    except Exception as game_err:
+                                        self._log(f"{dev_label} Lỗi mở game sau khi restart: {game_err}", "error")
+                                else:
+                                    self._log(f"{dev_label} Lỗi: Quá thời gian chờ LDPlayer kết nối ADB!", "error")
+                            
+                            if not restart_success and not stop_ev.is_set():
+                                self._log(f"{dev_label} Đã thử khởi động lại 3 lần nhưng đều thất bại vào game!", "error")
+                        else:
+                            self._log(f"{dev_label} Không tìm thấy index của LDPlayer để restart!", "warning")
+
                     tong_i += 1
                     if loop_tong_mode != "forever" and tong_i > loop_tong_count:
                         break
                     lbl = f"{tong_i}{'/' + str(loop_tong_count) if loop_tong_mode != 'forever' else ''}"
-                    self._log(f"{dev_label} [{config_name}] LOOP {lbl}")
-                    self._set_card_status(serial, f"{config_name} | Loop {lbl}", "#f39c12")
+                    self._log(f"{dev_label} [{config_name}] LẶP {lbl}")
+                    self._set_card_status(serial, f"{config_name} | Lặp {lbl}", "#f39c12")
+
+                    if settings.get("bat_mo_ruong"):
+                        if da_day_kho(serial):
+                            self._log(f"{dev_label} [{config_name}] Bỏ qua mở rương vì kho đã đầy")
+                        elif can_mo_ruong(serial):
+                            self._set_card_status(serial, f"{config_name} | Kiểm tra rương...", "#e67e22")
+                            opened = mo_ruong(adb_inst, serial=serial, stop_event=stop_ev)
+                            if opened:
+                                self._log(f"{dev_label} [{config_name}] Đã mở rương")
+                                self._set_card_status(serial, f"{config_name} | Đã mở rương", "#27ae60")
+
+                    if settings.get("bat_giao_cu") and can_giao_cu(serial):
+                        self._set_card_status(serial, f"{config_name} | Giao cú...", "#e67e22")
+                        handled_gc = giao_cu(
+                            adb_inst,
+                            serial=serial,
+                            dsvp_bo_qua=ban_do.get("dsvp_bo_qua", []),
+                            stop_event=stop_ev
+                        )
+                        if handled_gc:
+                            self._log(f"{dev_label} [{config_name}] Đã xử lý giao cú")
+                            self._set_card_status(serial, f"{config_name} | Đã giao cú", "#27ae60")
+
+                    if settings.get("bat_giao_tom") and ban_do.get("tom_vp"):
+                        self._set_card_status(serial, f"{config_name} | Giao tôm...", "#e67e22")
+                        handled_tom = giao_tom(
+                            adb_inst,
+                            vp_path=ban_do.get("tom_vp"),
+                            kho=ban_do.get("tom_kho", "KTP"),
+                            stop_event=stop_ev
+                        )
+                        if handled_tom:
+                            self._log(f"{dev_label} [{config_name}] Đã xử lý giao tôm")
+                            self._set_card_status(serial, f"{config_name} | Đã giao tôm", "#27ae60")
 
                     if tc_tasks:
                         start_time = time.time()
@@ -1243,8 +2099,8 @@ class AutoConfigGUI:
                         break
 
                     if settings.get("bat_ban_vp") and ban_do.get("data"):
-                        self._log(f"{dev_label} [{config_name}] Ban vat pham")
-                        self._set_card_status(serial, f"{config_name} | Ban VP...", "#e67e22")
+                        self._log(f"{dev_label} [{config_name}] Bán vật phẩm")
+                        self._set_card_status(serial, f"{config_name} | Bán VP...", "#e67e22")
                         from core.ban_do import main_ban_hang
                         ban_do_cfg = {
                             "loai_kho": ban_do.get("loai_kho", "KTP"),
@@ -1252,9 +2108,11 @@ class AutoConfigGUI:
                             "data": ban_do.get("data", []),
                             "xoa_kc": ban_do.get("xoa_kc", False),
                             "dat_quang_cao": ban_do.get("dat_quang_cao", True),
+                            "check_stock": ban_do.get("check_stock", False),
                             "debug": self.debug_mode_var.get(),
                             "threshold": ban_do.get("threshold") or settings.get("threshold"),
                             "color_threshold": ban_do.get("color_threshold", 0.6),
+                            "region": ban_do.get("region"),
                             "qc_templates": ban_do.get("qc_templates", []),
                             "xoa_kc_templates": ban_do.get("xoa_kc_templates", [])
                         }
@@ -1263,18 +2121,18 @@ class AutoConfigGUI:
                 if not stop_ev.is_set():
                     self._log(f"{dev_label} [{config_name}] Hoàn thành!")
                     self._set_card_status(serial, f"{config_name} | Hoàn thành", "#27ae60")
-                    self._ui_safe(lambda: card["status_dot"].config(fg="#3498db"))
+                    self._ui_safe(lambda: self._config_current_card(serial, "status_dot", fg="#3498db"))
                 else:
                     self._log(f"{dev_label} [{config_name}] Đã dừng.")
                     self._set_card_status(serial, f"{config_name} | Đã dừng", "#c0392b")
-                    self._ui_safe(lambda: card["status_dot"].config(fg="#c0392b"))
+                    self._ui_safe(lambda: self._config_current_card(serial, "status_dot", fg="#c0392b"))
             except Exception as e:
                 self._log(f"{dev_label} [{config_name}] Lỗi: {e}", "error")
                 self._set_card_status(serial, f"{config_name} | Lỗi!", "#e74c3c")
-                self._ui_safe(lambda: card["status_dot"].config(fg="#e74c3c"))
+                self._ui_safe(lambda: self._config_current_card(serial, "status_dot", fg="#e74c3c"))
             finally:
-                self._ui_safe(lambda: card["btn_start"].config(state=tk.NORMAL))
-                self._ui_safe(lambda: card["btn_stop"].config(state=tk.DISABLED))
+                self._ui_safe(lambda: self._config_current_card(serial, "btn_start", state=tk.NORMAL))
+                self._ui_safe(lambda: self._config_current_card(serial, "btn_stop", state=tk.DISABLED))
 
         t = threading.Thread(target=run, daemon=True)
         card["thread"] = t
@@ -1290,14 +2148,128 @@ class AutoConfigGUI:
 
     def _start_all(self):
         """Chạy tất cả nick."""
-        for serial in self.device_cards:
-            card = self.device_cards[serial]
-            if not card["thread"] or not card["thread"].is_alive():
-                self._start_one(serial)
+        if getattr(self, "_start_all_queue_running", False):
+            self.status_label.config(text="Đang chạy tất cả, vui lòng đợi...")
+            return
+
+        cfg = self._load_config()
+        if not cfg:
+            return
+
+        targets = []
+        skipped_not_running = 0
+        for serial, card in list(self.device_cards.items()):
+            if card["thread"] and card["thread"].is_alive():
+                continue
+            if not card.get("running", True):
+                skipped_not_running += 1
+                self._set_card_status(serial, "Chưa mở LD", "#7f8c8d")
+                continue
+            targets.append(serial)
+
+        if not targets:
+            self.status_label.config(text="Không có LDPlayer nào sẵn sàng để chạy")
+            return
+
+        self.status_label.config(text=f"Đang xếp lịch chạy {len(targets)} LDPlayer")
+        self._start_all_queue_running = True
+
+        def start_next(pos=0):
+            if not getattr(self, "_start_all_queue_running", False):
+                self.status_label.config(text="Đã hủy xếp lịch chạy tất cả")
+                return
+            if pos >= len(targets):
+                self._start_all_queue_running = False
+                if skipped_not_running:
+                    self.status_label.config(text=f"Đã chạy {len(targets)} tác vụ | Bỏ qua {skipped_not_running} LD chưa mở")
+                else:
+                    self.status_label.config(text=f"Đã chạy {len(targets)} tác vụ")
+                return
+            self._start_one(targets[pos], cfg=cfg)
+            self.root.after(700, lambda: start_next(pos + 1))
+
+        self.root.after(0, start_next)
+
+    def _scan_kho_thanh_pham_all(self):
+        """Quét kho thành phẩm các LDPlayer đang mở rồi xuất CSV ma trận."""
+        if getattr(self, "_scan_kho_tp_running", False):
+            self.status_label.config(text="Đang quét kho thành phẩm, vui lòng đợi...")
+            return
+
+        targets = []
+        for serial, card in list(self.device_cards.items()):
+            if card.get("thread") and card["thread"].is_alive():
+                continue
+            if not card.get("running", True):
+                continue
+            targets.append((serial, card.get("name") or serial))
+
+        if not targets:
+            messagebox.showwarning("Quét kho TP", "Không có LDPlayer đang mở để quét.")
+            return
+
+        self._scan_kho_tp_running = True
+        self.status_label.config(text=f"Đang quét kho thành phẩm {len(targets)} LDPlayer", bg="#8e44ad")
+
+        def worker():
+            results = {}
+            output_path = None
+            try:
+                from core.adb import ADBController
+                from core.kho_thanh_pham import scan_kho_thanh_pham, export_kho_thanh_pham_csv
+
+                for serial, name in targets:
+                    self._set_card_status(serial, "Quét kho thành phẩm...", "#8e44ad")
+                    adb_inst = ADBController(serial=serial)
+                    data = scan_kho_thanh_pham(adb_inst, device_name=name)
+                    results[name] = data
+                    self._set_card_status(serial, f"Đã quét kho TP: {len(data)} SP", "#27ae60")
+
+                output_path = export_kho_thanh_pham_csv(results)
+            except Exception as e:
+                logger.exception("Lỗi quét kho thành phẩm")
+                self._ui_safe(lambda: messagebox.showerror("Quét kho TP", f"Lỗi quét kho thành phẩm:\n{e}"))
+            finally:
+                self._scan_kho_tp_running = False
+                if output_path:
+                    self._ui_safe(lambda: self.status_label.config(
+                        text=f"Đã quét xong kho thành phẩm: {output_path}", bg="#27ae60"
+                    ))
+                    self._ui_safe(lambda: messagebox.showinfo(
+                        "Quét kho TP", f"Đã quét xong kho thành phẩm.\nCSV:\n{output_path}"
+                    ))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _download_kho_thanh_pham_csv(self):
+        """Copy file CSV kho thành phẩm của hôm nay ra vị trí người dùng chọn."""
+        try:
+            from core.kho_thanh_pham import get_today_kho_thanh_pham_csv_path
+
+            src = get_today_kho_thanh_pham_csv_path()
+            if not os.path.exists(src):
+                os.makedirs(os.path.dirname(src), exist_ok=True)
+                with open(src, "w", encoding="utf-8-sig", newline="") as f:
+                    f.write("item\n")
+
+            dst = filedialog.asksaveasfilename(
+                title="Tải CSV kho thành phẩm",
+                defaultextension=".csv",
+                initialfile=os.path.basename(src),
+                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+            )
+            if not dst:
+                return
+
+            shutil.copyfile(src, dst)
+            messagebox.showinfo("Tải CSV kho TP", f"Đã lưu CSV:\n{dst}")
+        except Exception as e:
+            messagebox.showerror("Tải CSV kho TP", f"Không tải được CSV:\n{e}")
 
     def _stop_all(self):
         """Dừng tất cả nick."""
-        for serial in self.device_cards:
+        self._start_all_queue_running = False
+        for serial in list(self.device_cards):
             self._stop_one(serial)
 
     def _toggle_debug_mode(self):
@@ -1306,7 +2278,7 @@ class AutoConfigGUI:
         from utils.utils import set_debug_mode as utils_debug
         ban_do_debug(enabled)
         utils_debug(enabled)
-        self._log(f"Debug mode: {'ON' if enabled else 'OFF'}")
+        self._log(f"Gỡ lỗi: {'Bật' if enabled else 'Tắt'}")
 
     def _open_debug_folder(self):
         debug_dir = os.path.abspath("debug")
@@ -1328,8 +2300,8 @@ class AutoConfigGUI:
         tk.Label(toolbar, text="Lọc:", bg="#2d2d2d", fg="#cccccc",
                  font=("Arial", 9)).pack(side=tk.LEFT)
         self.log_filter_var = tk.StringVar(value="TAT CA")
-        for lvl in ["TAT CA", "INFO", "WARNING", "ERROR"]:
-            tk.Radiobutton(toolbar, text=lvl, variable=self.log_filter_var, value=lvl,
+        for lvl, label in [("TAT CA", "TẤT CẢ"), ("INFO", "THÔNG TIN"), ("WARNING", "CẢNH BÁO"), ("ERROR", "LỖI")]:
+            tk.Radiobutton(toolbar, text=label, variable=self.log_filter_var, value=lvl,
                            bg="#2d2d2d", fg="#cccccc", selectcolor="#3c3c3c",
                            activebackground="#3c3c3c", activeforeground="white",
                            font=("Arial", 8), command=self._filter_log
@@ -1353,10 +2325,10 @@ class AutoConfigGUI:
                        font=("Arial", 8)).pack(side=tk.LEFT, padx=(12, 4))
 
         # Buttons
-        tk.Button(toolbar, text="Xóa log", command=self._clear_log,
+        tk.Button(toolbar, text="Xóa nhật ký", command=self._clear_log,
                   bg="#c0392b", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8, "bold"), padx=8).pack(side=tk.RIGHT)
-        tk.Button(toolbar, text="Mở file log", command=self._open_log_file,
+        tk.Button(toolbar, text="Mở tệp nhật ký", command=self._open_log_file,
                   bg="#2980b9", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8, "bold"), padx=8).pack(side=tk.RIGHT, padx=4)
 
@@ -1391,6 +2363,7 @@ class AutoConfigGUI:
 
         # Luu tat ca log lines de filter
         self._all_log_lines = []
+        self._max_gui_log_lines = GUI_LOG_MAX_LINES
 
         # Cai dat GUI logging handler
         self._setup_gui_log_handler()
@@ -1425,6 +2398,8 @@ class AutoConfigGUI:
     def _append_log_line(self, line, level="INFO"):
         """Them 1 dong log — thread-safe, co mau theo level."""
         self._all_log_lines.append((line, level))
+        if len(self._all_log_lines) > self._max_gui_log_lines:
+            del self._all_log_lines[:len(self._all_log_lines) - self._max_gui_log_lines]
 
         # Check filter
         if not self._should_show_line(line, level):
@@ -1434,6 +2409,7 @@ class AutoConfigGUI:
             try:
                 self.log_text.config(state=tk.NORMAL)
                 self.log_text.insert(tk.END, line + "\n", level)
+                self._trim_log_text_widget()
                 if self.log_autoscroll_var.get():
                     self.log_text.see(tk.END)
                 self.log_text.config(state=tk.DISABLED)
@@ -1448,6 +2424,12 @@ class AutoConfigGUI:
             self.root.after(0, _write)
         except RuntimeError:
             pass
+
+    def _trim_log_text_widget(self):
+        """Giu Text widget khong vuot qua gioi han dong hien thi."""
+        line_count = int(self.log_text.index("end-1c").split(".")[0])
+        if line_count > self._max_gui_log_lines:
+            self.log_text.delete("1.0", f"{line_count - self._max_gui_log_lines + 1}.0")
 
     def _update_mini_log(self, line):
         """Cap nhat mini log o tab Auto — chi hien 4 dong gan nhat."""
@@ -1524,13 +2506,13 @@ class AutoConfigGUI:
             start = end
 
     def _clear_log(self):
-        """Xoa tat ca log."""
+        """Xóa tat ca log."""
         self._all_log_lines.clear()
         self.log_text.config(state=tk.NORMAL)
         self.log_text.delete("1.0", tk.END)
         self.log_text.config(state=tk.DISABLED)
         self.log_count_label.config(text="0 dòng")
-        # Xoa mini log
+        # Xóa mini log
         self.mini_log_text.config(state=tk.NORMAL)
         self.mini_log_text.delete("1.0", tk.END)
         self.mini_log_text.config(state=tk.DISABLED)
@@ -1541,7 +2523,7 @@ class AutoConfigGUI:
         if os.path.exists(log_path):
             os.startfile(log_path)
         else:
-            messagebox.showinfo("Thông báo", "Chưa có file log!")
+            messagebox.showinfo("Thông báo", "Chưa có tệp nhật ký!")
 
     # ----------------------------------------------------------------
     # TAB 3: SCREENSHOT & CROP
@@ -1571,10 +2553,10 @@ class AutoConfigGUI:
         tk.Button(toolbar, text="Lưu ảnh gốc", command=self._ss_save_original,
                   bg="#27ae60", fg="white", relief=tk.FLAT, padx=10,
                   font=("Arial", 9), cursor="hand2").pack(side=tk.RIGHT, padx=4, pady=6)
-        tk.Button(toolbar, text="Lưu vùng crop", command=self._ss_save_cropped,
+        tk.Button(toolbar, text="Lưu vùng cắt", command=self._ss_save_cropped,
                   bg="#e67e22", fg="white", relief=tk.FLAT, padx=10,
                   font=("Arial", 9), cursor="hand2").pack(side=tk.RIGHT, padx=4, pady=6)
-        tk.Button(toolbar, text="Reset crop", command=self._ss_reset_crop,
+        tk.Button(toolbar, text="Đặt lại vùng cắt", command=self._ss_reset_crop,
                   bg="#95a5a6", fg="white", relief=tk.FLAT, padx=10,
                   font=("Arial", 9), cursor="hand2").pack(side=tk.RIGHT, padx=4, pady=6)
 
@@ -1588,7 +2570,7 @@ class AutoConfigGUI:
         left = tk.Frame(content, bg="#2c3e50")
         left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        tk.Label(left, text="Click và kéo để crop vùng ảnh", bg="#2c3e50", fg="white",
+        tk.Label(left, text="Nhấn và kéo để chọn vùng ảnh", bg="#2c3e50", fg="white",
                  font=("Arial", 9), pady=4).pack()
 
         canvas_frame = tk.Frame(left)
@@ -1615,7 +2597,7 @@ class AutoConfigGUI:
         right.pack_propagate(False)
 
         # Info
-        info_frame = tk.LabelFrame(right, text="Thong tin", font=("Arial", 10, "bold"),
+        info_frame = tk.LabelFrame(right, text="Thông tin", font=("Arial", 10, "bold"),
                                    bg="#ecf0f1", padx=8, pady=8)
         info_frame.pack(fill=tk.X, padx=8, pady=8)
         self.ss_info = tk.Text(info_frame, font=("Consolas", 9), height=6, bg="white", wrap=tk.WORD)
@@ -1623,7 +2605,7 @@ class AutoConfigGUI:
         self._ss_set_info("Chưa có ảnh. Ấn Chụp (F2).")
 
         # Crop coords
-        crop_frame = tk.LabelFrame(right, text="Toạ độ Crop", font=("Arial", 10, "bold"),
+        crop_frame = tk.LabelFrame(right, text="Tọa độ vùng cắt", font=("Arial", 10, "bold"),
                                    bg="#ecf0f1", padx=8, pady=8)
         crop_frame.pack(fill=tk.X, padx=8, pady=4)
 
@@ -1634,7 +2616,7 @@ class AutoConfigGUI:
         self.ss_crop_w = tk.Entry(crop_frame, width=8); self.ss_crop_w.grid(row=1, column=1, padx=4, pady=4)
         self.ss_crop_h = tk.Entry(crop_frame, width=8); self.ss_crop_h.grid(row=1, column=3, padx=4, pady=4)
 
-        tk.Button(crop_frame, text="Áp dụng toạ độ", command=self._ss_apply_manual_crop,
+        tk.Button(crop_frame, text="Áp dụng tọa độ", command=self._ss_apply_manual_crop,
                   bg="#3498db", fg="white", relief=tk.FLAT, cursor="hand2"
                   ).grid(row=2, column=0, columnspan=4, pady=4, sticky=tk.EW)
 
@@ -1659,11 +2641,11 @@ class AutoConfigGUI:
 
         tk.Button(save_frame, text="Lưu ảnh gốc", command=self._ss_quick_save_original,
                   bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2").pack(fill=tk.X, pady=2)
-        tk.Button(save_frame, text="Lưu ảnh crop", command=self._ss_quick_save_cropped,
+        tk.Button(save_frame, text="Lưu ảnh đã cắt", command=self._ss_quick_save_cropped,
                   bg="#e67e22", fg="white", relief=tk.FLAT, cursor="hand2").pack(fill=tk.X, pady=2)
 
         # Crop preview
-        preview_frame = tk.LabelFrame(right, text="Preview crop", font=("Arial", 10, "bold"),
+        preview_frame = tk.LabelFrame(right, text="Xem trước vùng cắt", font=("Arial", 10, "bold"),
                                       bg="#ecf0f1", padx=8, pady=8)
         preview_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
         self.ss_preview_label = tk.Label(preview_frame, bg="white", relief=tk.SUNKEN, bd=1)
@@ -1682,6 +2664,8 @@ class AutoConfigGUI:
     # --- Screenshot tab logic ---
     def _ss_refresh_devices(self):
         try:
+            if not getattr(self.adb_helper, "adb_path", None):
+                raise FileNotFoundError("Không tìm thấy ADB")
             serials = self.adb_helper.get_devices()
             self.ss_devices_list = []
             names = []
@@ -1696,6 +2680,13 @@ class AutoConfigGUI:
         except Exception as e:
             self.ss_device_combo["values"] = []
             self.ss_devices_list = []
+            if isinstance(e, (FileNotFoundError, OSError)):
+                if messagebox.askyesno(
+                    "Lỗi ADB",
+                    "Không tìm thấy ADB!\n\nBạn có muốn chọn thư mục LDPlayer thủ công không?"
+                ):
+                    if self._choose_adb_path():
+                        self._ss_refresh_devices()
 
     def _ss_set_info(self, text):
         self.ss_info.delete("1.0", tk.END)
@@ -1709,7 +2700,7 @@ class AutoConfigGUI:
             if self.ss_adb is None or self.ss_adb.serial != dev["serial"]:
                 self.ss_adb = ADBController(serial=dev["serial"])
             return self.ss_adb
-        messagebox.showwarning("Loi", "Chon thiet bi truoc!")
+        messagebox.showwarning("Lỗi", "Chọn thiết bị trước!")
         return None
 
     def _ss_take(self):
@@ -1729,8 +2720,8 @@ class AutoConfigGUI:
             self._ss_set_info(f"Chụp thành công!\ních thước: {w}x{h}")
             self.status_label.config(text="Đã chụp màn hình", bg="#27ae60")
         except Exception as e:
-            self._ss_set_info(f"Loi: {e}")
-            messagebox.showerror("Loi", f"Không chup được:\n{e}")
+            self._ss_set_info(f"Lỗi: {e}")
+            messagebox.showerror("Lỗi", f"Không chụp được:\n{e}")
             self.status_label.config(text="Lỗi chụp", bg="#e74c3c")
 
     def _ss_display(self, img_bgr):
@@ -1757,7 +2748,7 @@ class AutoConfigGUI:
             self.ss_crop_rect = self.ss_canvas.create_rectangle(
                 x1, y1, x2, y2, outline="red", width=2, dash=(5, 5))
             w, h = abs(x2 - x1), abs(y2 - y1)
-            self._ss_set_info(f"Crop: ({int(min(x1,x2))},{int(min(y1,y2))}) {int(w)}x{int(h)}")
+            self._ss_set_info(f"Vùng cắt: ({int(min(x1,x2))},{int(min(y1,y2))}) {int(w)}x{int(h)}")
 
     def _ss_mouse_up(self, event):
         if self.ss_crop_start:
@@ -1771,7 +2762,7 @@ class AutoConfigGUI:
                                (self.ss_crop_w, w), (self.ss_crop_h, h)]:
                 entry.delete(0, tk.END)
                 entry.insert(0, str(val))
-            self._ss_set_info(f"Crop: X={x} Y={y}\nW={w} H={h}")
+            self._ss_set_info(f"Vùng cắt: X={x} Y={y}\nW={w} H={h}")
             self._ss_update_preview()
 
     def _ss_reset_crop(self):
@@ -1843,12 +2834,13 @@ class AutoConfigGUI:
             initialfile=f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
         if path:
             cv2.imwrite(path, self.ss_screenshot)
-            messagebox.showinfo("OK", f"Đã lưu:\n{path}")
+            self._refresh_template_combos()
+            messagebox.showinfo("Xong", f"Đã lưu:\n{path}")
 
     def _ss_save_cropped(self):
         cropped = self._ss_get_cropped()
         if cropped is None:
-            messagebox.showwarning("Chưa crop", "Chọn vùng crop trước!")
+            messagebox.showwarning("Chưa chọn vùng cắt", "Chọn vùng cắt trước!")
             return
         from tkinter import filedialog
         from datetime import datetime
@@ -1857,7 +2849,8 @@ class AutoConfigGUI:
             initialfile=f"cropped_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
         if path:
             cv2.imwrite(path, cropped)
-            messagebox.showinfo("OK", f"Đã lưu crop:\n{path}")
+            self._refresh_template_combos()
+            messagebox.showinfo("Xong", f"Đã lưu ảnh cắt:\n{path}")
 
     def _ss_quick_save_original(self):
         if self.ss_screenshot is None:
@@ -1871,13 +2864,14 @@ class AutoConfigGUI:
         os.makedirs(folder, exist_ok=True)
         path = os.path.join(folder, f"{name}.png")
         cv2.imwrite(path, self.ss_screenshot)
-        messagebox.showinfo("OK", f"Đã lưu:\n{path}")
+        self._refresh_template_combos()
+        messagebox.showinfo("Xong", f"Đã lưu:\n{path}")
         self.status_label.config(text=f"Đã lưu: {name}.png", bg="#27ae60")
 
     def _ss_quick_save_cropped(self):
         cropped = self._ss_get_cropped()
         if cropped is None:
-            messagebox.showwarning("Chưa crop", "Chọn vùng crop trước!")
+            messagebox.showwarning("Chưa chọn vùng cắt", "Chọn vùng cắt trước!")
             return
         folder = self.ss_folder.get()
         name = self.ss_filename.get().strip()
@@ -1887,8 +2881,9 @@ class AutoConfigGUI:
         os.makedirs(folder, exist_ok=True)
         path = os.path.join(folder, f"{name}.png")
         cv2.imwrite(path, cropped)
-        messagebox.showinfo("OK", f"Đã lưu crop:\n{path}")
-        self.status_label.config(text=f"Đã lưu crop: {name}.png", bg="#27ae60")
+        self._refresh_template_combos()
+        messagebox.showinfo("Xong", f"Đã lưu ảnh cắt:\n{path}")
+        self.status_label.config(text=f"Đã lưu ảnh cắt: {name}.png", bg="#27ae60")
 
     # ================================================================
     # TAB CONFIG: LOGIC
@@ -1921,9 +2916,9 @@ class AutoConfigGUI:
         if selected == REGION_FROM_CROP:
             region = self._get_current_crop_region()
             if region is None:
-                messagebox.showwarning("Loi", "Chua co vung crop hien tai. Vao tab Chup & Cat anh de keo chon vung truoc.")
+                messagebox.showwarning("Lỗi", "Chưa có vùng cắt hiện tại. Vào tab Chụp & Cắt ảnh để kéo chọn vùng trước.")
             return region
-        if selected.startswith("Da luu:"):
+        if selected.startswith("Đã lưu:"):
             return normalize_region(selected.split(":", 1)[1].strip())
         return self._get_region_from_vars(x_var, y_var, w_var, h_var)
 
@@ -1939,10 +2934,10 @@ class AutoConfigGUI:
                     preset = name
                     break
             if preset is None:
-                preset = f"Da luu: {format_region(normalized)}"
+                preset = f"Đã lưu: {format_region(normalized)}"
         preset_var.set(preset)
         if combo is not None:
-            combo["values"] = self._region_combo_values(preset if preset.startswith("Da luu:") else None)
+            combo["values"] = self._region_combo_values(preset if preset.startswith("Đã lưu:") else None)
 
     def _get_region_from_vars(self, x_var, y_var, w_var, h_var):
         raw = [x_var.get().strip(), y_var.get().strip(),
@@ -1951,7 +2946,7 @@ class AutoConfigGUI:
             return None
         region = normalize_region(raw)
         if region is None:
-            messagebox.showwarning("Loi", "Region phai co dang X, Y, W, H va W/H > 0")
+            messagebox.showwarning("Lỗi", "Vùng phải có dạng X, Y, W, H và W/H > 0")
         return region
 
     def _set_region_vars(self, region, x_var, y_var, w_var, h_var):
@@ -2143,7 +3138,7 @@ class AutoConfigGUI:
     def _bd_update_selected_vp(self):
         sel = self.bd_vp_listbox.curselection()
         if not sel:
-            messagebox.showinfo("Thong bao", "Chon 1 VP trong danh sach de cap nhat!")
+            messagebox.showinfo("Thông báo", "Chọn 1 VP trong danh sách để cập nhật!")
             return
         idx = sel[0]
         vp = self.bd_vp_var.get().strip()
@@ -2172,7 +3167,7 @@ class AutoConfigGUI:
                 continue
             existing_path = item["path"] if isinstance(item, dict) else item
             if existing_path == new_path:
-                messagebox.showwarning("Loi", "VP nay da co trong danh sach!")
+                messagebox.showwarning("Lỗi", "VP này đã có trong danh sách!")
                 return
 
         self.bd_vp_list[idx] = vp_info
@@ -2247,6 +3242,31 @@ class AutoConfigGUI:
         self.bd_xe_list = []
         self.bd_xe_listbox.delete(0, tk.END)
 
+    def _gc_skip_add(self):
+        sel = self.gc_skip_var.get().strip()
+        if not sel:
+            return
+        path = f"assets/items/{sel}" if not sel.startswith("assets/") else sel
+        if not hasattr(self, 'gc_skip_list'):
+            self.gc_skip_list = []
+        if path in self.gc_skip_list:
+            return
+        self.gc_skip_list.append(path)
+        self.gc_skip_listbox.insert(tk.END, os.path.basename(path))
+
+    def _gc_skip_remove(self):
+        sel = self.gc_skip_listbox.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        if hasattr(self, 'gc_skip_list'):
+            self.gc_skip_list.pop(idx)
+        self.gc_skip_listbox.delete(idx)
+
+    def _gc_skip_clear(self):
+        self.gc_skip_list = []
+        self.gc_skip_listbox.delete(0, tk.END)
+
     def _get_settings_from_ui(self):
         settings = {}
         settings["loop_tong_mode"] = self.loop_tong_mode_var.get()
@@ -2264,6 +3284,11 @@ class AutoConfigGUI:
             settings["threshold"] = 0.85
         for key, var in self.toggle_vars.items():
             settings[key] = var.get()
+        settings["bat_khoi_dong_lai_ld"] = self.bat_khoi_dong_lai_ld_var.get()
+        try:
+            settings["thoi_gian_khoi_dong_lai"] = float(self.thoi_gian_khoi_dong_lai_var.get())
+        except (ValueError, tk.TclError):
+            settings["thoi_gian_khoi_dong_lai"] = 5.0
         return settings
 
     def _get_ban_do_from_ui(self):
@@ -2273,8 +3298,12 @@ class AutoConfigGUI:
             "data": list(self.bd_vp_list),
             "xoa_kc": self.bd_xoa_kc_var.get(),
             "dat_quang_cao": self.bd_dat_qc_var.get(),
+            "check_stock": self.bd_check_stock_var.get(),
             "qc_templates": list(getattr(self, 'bd_qc_list', [])),
             "xoa_kc_templates": list(getattr(self, 'bd_xe_list', [])),
+            "dsvp_bo_qua": list(getattr(self, 'gc_skip_list', [])),
+            "tom_vp": self._template_path_from_name(self.tom_vp_var.get().strip()),
+            "tom_kho": self.tom_kho_var.get(),
         }
         try:
             ban_do["threshold"] = self.bd_threshold_var.get()
@@ -2296,21 +3325,37 @@ class AutoConfigGUI:
         self.global_threshold_var.set(settings.get("threshold", 0.85))
         for key, var in self.toggle_vars.items():
             var.set(settings.get(key, DEFAULT_SETTINGS.get(key, False)))
+        self.bat_khoi_dong_lai_ld_var.set(settings.get("bat_khoi_dong_lai_ld", False))
+        self.thoi_gian_khoi_dong_lai_var.set(float(settings.get("thoi_gian_khoi_dong_lai", 5.0)))
 
     def _set_ban_do_to_ui(self, ban_do):
         self.bd_loai_kho_var.set(ban_do.get("loai_kho", "KTP"))
         self.bd_so_lan_var.set(str(ban_do.get("so_lan_dat_vp", 4)))
         self.bd_xoa_kc_var.set(ban_do.get("xoa_kc", True))
         self.bd_dat_qc_var.set(ban_do.get("dat_quang_cao", True))
+        self.bd_check_stock_var.set(ban_do.get("check_stock", False))
         self._set_bd_region_to_ui(ban_do.get("region"))
         # Set QC/XE lists
         qc_list = ban_do.get("qc_templates", [])
         xe_list = ban_do.get("xoa_kc_templates", [])
+        gc_skip_list = ban_do.get("dsvp_bo_qua", [])
+        tom_vp = ban_do.get("tom_vp", "")
+        self.tom_kho_var.set(ban_do.get("tom_kho", "KTP"))
         # Set first item into the small selector vars (for quick add preview)
         if qc_list:
             self.bd_qc_var.set(os.path.basename(qc_list[0]))
         if xe_list:
             self.bd_xe_var.set(os.path.basename(xe_list[0]))
+        if gc_skip_list:
+            first_gc_skip = gc_skip_list[0].get("path") if isinstance(gc_skip_list[0], dict) else gc_skip_list[0]
+            if first_gc_skip:
+                self.gc_skip_var.set(os.path.basename(first_gc_skip))
+        if tom_vp:
+            self.tom_vp_var.set(os.path.basename(tom_vp))
+        self.gc_skip_list = list(gc_skip_list)
+        self.gc_skip_listbox.delete(0, tk.END)
+        for path in self.gc_skip_list:
+            self.gc_skip_listbox.insert(tk.END, os.path.basename(path))
         self.bd_threshold_var.set(ban_do.get("threshold", 0.85))
         self.bd_color_threshold_var.set(ban_do.get("color_threshold", 0.6))
 
@@ -2406,10 +3451,20 @@ class AutoConfigGUI:
         self._bd_xoa_kc_preview_photo = photo
         self.bd_xoa_kc_preview_label.config(image=photo if photo else "", text="")
 
+    def _update_gc_skip_preview(self):
+        photo = self._load_preview(self.gc_skip_var.get())
+        self._gc_skip_preview_photo = photo
+        self.gc_skip_preview_label.config(image=photo if photo else "", text="")
+
+    def _update_tom_vp_preview(self):
+        photo = self._load_preview(self.tom_vp_var.get())
+        self._tom_vp_preview_photo = photo
+        self.tom_vp_preview_label.config(image=photo if photo else "", text="")
+
     def _open_index_picker(self):
         """Mo popup grid 4x6 de chon vi tri indexs."""
         popup = tk.Toplevel(self.root)
-        popup.title("Chon vi tri")
+        popup.title("Chọn vị trí")
         popup.geometry("420x320")
         popup.resizable(False, False)
         popup.transient(self.root)
@@ -2457,14 +3512,14 @@ class AutoConfigGUI:
                 var.set(False)
 
         for r in range(1, 5):
-            tk.Button(quick_frame, text=f"Hang {r}", command=lambda r=r: select_row(r),
+            tk.Button(quick_frame, text=f"Hàng {r}", command=lambda r=r: select_row(r),
                       bg="#3498db", fg="white", relief=tk.FLAT, padx=6,
                       font=("Arial", 8), cursor="hand2").pack(side=tk.LEFT, padx=3)
 
-        tk.Button(quick_frame, text="Tat ca", command=select_all,
+        tk.Button(quick_frame, text="Tất cả", command=select_all,
                   bg="#27ae60", fg="white", relief=tk.FLAT, padx=8,
                   font=("Arial", 8), cursor="hand2").pack(side=tk.LEFT, padx=3)
-        tk.Button(quick_frame, text="Bo chon", command=clear_all,
+        tk.Button(quick_frame, text="Bỏ chọn", command=clear_all,
                   bg="#e74c3c", fg="white", relief=tk.FLAT, padx=8,
                   font=("Arial", 8), cursor="hand2").pack(side=tk.LEFT, padx=3)
 
@@ -2479,13 +3534,13 @@ class AutoConfigGUI:
             if self.selected_indexs:
                 self.indexs_display.config(text=", ".join(self.selected_indexs))
             else:
-                self.indexs_display.config(text="(chua chon)")
+                self.indexs_display.config(text="(chưa chọn)")
             popup.destroy()
 
-        tk.Button(btn_frame, text="Xac nhan", command=on_ok,
+        tk.Button(btn_frame, text="Xác nhận", command=on_ok,
                   bg="#27ae60", fg="white", relief=tk.FLAT, padx=20, pady=5,
                   font=("Arial", 10, "bold"), cursor="hand2").pack(side=tk.LEFT, padx=8)
-        tk.Button(btn_frame, text="Huy", command=popup.destroy,
+        tk.Button(btn_frame, text="Hủy", command=popup.destroy,
                   bg="#95a5a6", fg="white", relief=tk.FLAT, padx=20, pady=5,
                   font=("Arial", 10), cursor="hand2").pack(side=tk.LEFT, padx=8)
 
@@ -2500,7 +3555,7 @@ class AutoConfigGUI:
         if t == "TC":
             indexs = list(self.selected_indexs)
             if not indexs:
-                messagebox.showwarning("Lỗi", "Vui lòng chọn vị trí indexs!")
+                messagebox.showwarning("Lỗi", "Vui lòng chọn vị trí!")
                 return
 
             path_item_file = self.path_item_var.get()
@@ -2625,7 +3680,7 @@ class AutoConfigGUI:
             if self.selected_indexs:
                 self.indexs_display.config(text=", ".join(self.selected_indexs))
             else:
-                self.indexs_display.config(text="(chua chon)")
+                self.indexs_display.config(text="(chưa chọn)")
 
             th = item.get("threshold", 0.85)
             self.threshold_var.set(th)
@@ -2665,7 +3720,7 @@ class AutoConfigGUI:
         if t == "TC":
             indexs = list(self.selected_indexs)
             if not indexs:
-                messagebox.showwarning("Lỗi", "Vui lòng chọn vị trí indexs!")
+                messagebox.showwarning("Lỗi", "Vui lòng chọn vị trí!")
                 return
 
             path_item_file = self.path_item_var.get()
@@ -2729,7 +3784,7 @@ class AutoConfigGUI:
 
         path = os.path.join(CONFIG_DIR, f"{safe_name}.json")
         if os.path.exists(path):
-            if not messagebox.askyesno("Xac nhan", f"File '{safe_name}.json' da ton tai. Ghi de?"):
+            if not messagebox.askyesno("Xác nhận", f"File '{safe_name}.json' đã tồn tại. Ghi đè?"):
                 return
 
         config_data = {
@@ -2741,11 +3796,11 @@ class AutoConfigGUI:
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(config_data, f, ensure_ascii=False, indent=2)
-            messagebox.showinfo("Thanh cong", f"Da luu: {path}")
+            messagebox.showinfo("Thành công", f"Đã lưu: {path}")
             self._refresh_configs()
             self._refresh_cfg_load_combo()
         except Exception as e:
-            messagebox.showerror("Loi", f"Khong luu duoc: {e}")
+            messagebox.showerror("Lỗi", f"Không lưu được: {e}")
 
     def _refresh_cfg_load_combo(self):
         files = glob_mod.glob(os.path.join(CONFIG_DIR, "*.json"))
@@ -2757,11 +3812,11 @@ class AutoConfigGUI:
     def _load_config_to_editor(self):
         name = self.cfg_load_var.get()
         if not name:
-            messagebox.showwarning("Loi", "Chon file cau hinh can tai!")
+            messagebox.showwarning("Lỗi", "Chọn file cấu hình cần tải!")
             return
         path = os.path.join(CONFIG_DIR, f"{name}.json")
         if not os.path.exists(path):
-            messagebox.showerror("Loi", f"File khong ton tai: {path}")
+            messagebox.showerror("Lỗi", f"File không tồn tại: {path}")
             return
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -2815,20 +3870,93 @@ class DeviceNameFilter(logging.Filter):
         return True
 
 
+class DailySizeZipFileHandler(logging.FileHandler):
+    """Write to one active log file, then zip old chunks by date and size."""
+
+    def __init__(self, filename, max_bytes=10 * 1024 * 1024, encoding=None):
+        super().__init__(filename, mode="a", encoding=encoding, delay=True)
+        self.max_bytes = max_bytes
+        if os.path.exists(filename) and os.path.getsize(filename) > 0:
+            self.current_date = date.fromtimestamp(os.path.getmtime(filename)).isoformat()
+        else:
+            self.current_date = date.today().isoformat()
+        self.archive_dir = os.path.join(os.path.dirname(os.path.abspath(filename)), "archive")
+        os.makedirs(self.archive_dir, exist_ok=True)
+
+    def emit(self, record):
+        try:
+            if self._should_rollover():
+                self._rollover()
+            super().emit(record)
+            if self._should_rollover(size_only=True):
+                self._rollover()
+        except Exception:
+            self.handleError(record)
+
+    def _should_rollover(self, size_only=False):
+        if not os.path.exists(self.baseFilename):
+            return False
+
+        if os.path.getsize(self.baseFilename) <= 0:
+            if not size_only:
+                self.current_date = date.today().isoformat()
+            return False
+
+        if os.path.getsize(self.baseFilename) >= self.max_bytes:
+            return True
+
+        if not size_only and date.today().isoformat() != self.current_date:
+            return True
+
+        return False
+
+    def _next_archive_paths(self, archive_date):
+        idx = 1
+        while True:
+            stem = f"auto_config_{archive_date}_{idx:03d}"
+            zip_path = os.path.join(self.archive_dir, f"{stem}.zip")
+            log_name = f"{stem}.log"
+            if not os.path.exists(zip_path):
+                return zip_path, log_name
+            idx += 1
+
+    def _rollover(self):
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+
+        if not os.path.exists(self.baseFilename) or os.path.getsize(self.baseFilename) <= 0:
+            self.current_date = date.today().isoformat()
+            return
+
+        archive_date = self.current_date
+        zip_path, log_name = self._next_archive_paths(archive_date)
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.write(self.baseFilename, arcname=log_name)
+        os.remove(self.baseFilename)
+        self.current_date = date.today().isoformat()
+
+
 if __name__ == "__main__":
     os.makedirs("logs", exist_ok=True)
 
-    # Thêm filter vào root logger → mọi module đều có %(device)s
+    # Thêm filter vào handler để mọi module đều có %(device)s khi ghi file.
     device_filter = DeviceNameFilter()
     root_logger = logging.getLogger()
-    root_logger.addFilter(device_filter)
+    root_logger.setLevel(logging.INFO)
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(device)s %(name)s: %(message)s",
-        handlers=[
-            logging.FileHandler("logs/auto_config.log", encoding="utf-8"),
-        ]
-    )
+    # core.adb có thể đã gọi basicConfig() lúc import, nên cần thay handler
+    # ở đây để logs/auto_config.log luôn được ghi đúng.
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+        handler.close()
+
+    file_handler = DailySizeZipFileHandler("logs/auto_config.log", max_bytes=10 * 1024 * 1024, encoding="utf-8")
+    file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(device)s %(name)s: %(message)s"
+    ))
+    file_handler.addFilter(device_filter)
+    root_logger.addHandler(file_handler)
+
     app = AutoConfigGUI()
     app.run()

@@ -253,17 +253,6 @@ class ADBController:
         self.swipe(x, start_y, x, end_y, duration)
         logger.info(f"[SCROLL UP] từ y={start_y} → y={end_y}")
 
-    # def scroll_to_bottom(self, screen_height: int = 2400, x: int = 540, duration: int = 1200):
-    #     """
-    #     Cuộn nhanh xuống đáy màn hình (dùng khi vườn dài)
-    #     """
-    #     self.scroll_down(400, screen_height - 400, x, duration)
-
-    # def scroll_to_top(self, screen_height: int = 2400, x: int = 540, duration: int = 1200):
-    #     """
-    #     Cuộn nhanh lên đầu màn hình
-    #     """
-    #     self.scroll_up(screen_height - 400, 400, x, duration)
     def scroll_right(self, start_x: int, end_x: int, y: int, duration: int = 600):
    
         self.swipe(start_x, y, end_x, y, duration)
@@ -273,42 +262,8 @@ class ADBController:
    
         self.swipe(start_x, y, end_x, y, duration)
         logger.info(f"[SCROLL trai] từ x={start_x} → y={end_x}")
-        # =============================================================
-    # 9. GỬI PHÍM ẢO (KEY EVENT) – MŨI TÊN, BACK, HOME...
-    # =============================================================
-    def press_key(self, keycode: int, long_press: bool = False):
-        """
-        Gửi phím ảo theo keycode Android
-        :param keycode: Mã phím (xem bảng dưới)
-        :param long_press: Giữ phím lâu (thêm --longpress)
-        """
-        cmd = f"input keyevent {keycode}"
-        if long_press:
-            cmd += " --longpress"
-        self.device.shell(cmd)
-        logger.info(f"[KEY] {self._keycode_to_name(keycode)} (code: {keycode})" + (" [LONG]" if long_press else ""))
-    
-    def _keycode_to_name(self, code: int) -> str:
-        """Chuyển keycode → tên dễ đọc"""
-        names = {
-            19: "UP", 20: "DOWN", 21: "LEFT", 22: "RIGHT",
-            4: "BACK", 3: "HOME", 82: "MENU", 66: "ENTER"
-        }
-        return names.get(code, f"KEY_{code}")
 
  
-
-    def swipe_path(self, points: List[Tuple[int, int]], duration_per_segment: int = 200):
-        """Kéo theo danh sách điểm liên tiếp (đường xanh)"""
-        if len(points) < 2:
-            logger.warning("[SWIPE PATH] Danh sách điểm quá ngắn")
-            return
-
-        for i in range(1, len(points)):
-            sx, sy = points[i-1]
-            ex, ey = points[i]
-            self.swipe(sx, sy, ex, ey, duration_per_segment)
-            time.sleep(0.1)  
     def drag_smooth(self, points: list, total_duration_ms: int = 1200):
         """
         Kéo mượt qua nhiều điểm - sử dụng send_touch_sendevent để giữ touch liên tục
