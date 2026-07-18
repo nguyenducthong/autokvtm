@@ -13,6 +13,8 @@ import threading
 import time
 import logging
 import glob as glob_mod
+import zipfile
+from datetime import date
 import cv2
 
 from core.adb_helper import get_adb_helper, ADBHelper
@@ -22,6 +24,7 @@ from config import CONFIG_LOAI_KHO, REGION_PRESETS, REGION_FROM_CROP
 from utils.daily_stats import format_daily_counts
 
 logger = logging.getLogger(__name__)
+GUI_LOG_MAX_LINES = 1000
 
 
 class DeviceButtonState:
@@ -2283,6 +2286,7 @@ class AutoConfigGUI:
 
         # Luu tat ca log lines de filter
         self._all_log_lines = []
+        self._max_gui_log_lines = GUI_LOG_MAX_LINES
 
         # Cai dat GUI logging handler
         self._setup_gui_log_handler()
@@ -2317,6 +2321,8 @@ class AutoConfigGUI:
     def _append_log_line(self, line, level="INFO"):
         """Them 1 dong log — thread-safe, co mau theo level."""
         self._all_log_lines.append((line, level))
+        if len(self._all_log_lines) > self._max_gui_log_lines:
+            del self._all_log_lines[:len(self._all_log_lines) - self._max_gui_log_lines]
 
         # Check filter
         if not self._should_show_line(line, level):
@@ -2326,6 +2332,7 @@ class AutoConfigGUI:
             try:
                 self.log_text.config(state=tk.NORMAL)
                 self.log_text.insert(tk.END, line + "\n", level)
+                self._trim_log_text_widget()
                 if self.log_autoscroll_var.get():
                     self.log_text.see(tk.END)
                 self.log_text.config(state=tk.DISABLED)
@@ -2340,6 +2347,12 @@ class AutoConfigGUI:
             self.root.after(0, _write)
         except RuntimeError:
             pass
+
+    def _trim_log_text_widget(self):
+        """Giu Text widget khong vuot qua gioi han dong hien thi."""
+        line_count = int(self.log_text.index("end-1c").split(".")[0])
+        if line_count > self._max_gui_log_lines:
+            self.log_text.delete("1.0", f"{line_count - self._max_gui_log_lines + 1}.0")
 
     def _update_mini_log(self, line):
         """Cap nhat mini log o tab Auto — chi hien 4 dong gan nhat."""
@@ -3773,20 +3786,93 @@ class DeviceNameFilter(logging.Filter):
         return True
 
 
+class DailySizeZipFileHandler(logging.FileHandler):
+    """Write to one active log file, then zip old chunks by date and size."""
+
+    def __init__(self, filename, max_bytes=10 * 1024 * 1024, encoding=None):
+        super().__init__(filename, mode="a", encoding=encoding, delay=True)
+        self.max_bytes = max_bytes
+        if os.path.exists(filename) and os.path.getsize(filename) > 0:
+            self.current_date = date.fromtimestamp(os.path.getmtime(filename)).isoformat()
+        else:
+            self.current_date = date.today().isoformat()
+        self.archive_dir = os.path.join(os.path.dirname(os.path.abspath(filename)), "archive")
+        os.makedirs(self.archive_dir, exist_ok=True)
+
+    def emit(self, record):
+        try:
+            if self._should_rollover():
+                self._rollover()
+            super().emit(record)
+            if self._should_rollover(size_only=True):
+                self._rollover()
+        except Exception:
+            self.handleError(record)
+
+    def _should_rollover(self, size_only=False):
+        if not os.path.exists(self.baseFilename):
+            return False
+
+        if os.path.getsize(self.baseFilename) <= 0:
+            if not size_only:
+                self.current_date = date.today().isoformat()
+            return False
+
+        if os.path.getsize(self.baseFilename) >= self.max_bytes:
+            return True
+
+        if not size_only and date.today().isoformat() != self.current_date:
+            return True
+
+        return False
+
+    def _next_archive_paths(self, archive_date):
+        idx = 1
+        while True:
+            stem = f"auto_config_{archive_date}_{idx:03d}"
+            zip_path = os.path.join(self.archive_dir, f"{stem}.zip")
+            log_name = f"{stem}.log"
+            if not os.path.exists(zip_path):
+                return zip_path, log_name
+            idx += 1
+
+    def _rollover(self):
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+
+        if not os.path.exists(self.baseFilename) or os.path.getsize(self.baseFilename) <= 0:
+            self.current_date = date.today().isoformat()
+            return
+
+        archive_date = self.current_date
+        zip_path, log_name = self._next_archive_paths(archive_date)
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.write(self.baseFilename, arcname=log_name)
+        os.remove(self.baseFilename)
+        self.current_date = date.today().isoformat()
+
+
 if __name__ == "__main__":
     os.makedirs("logs", exist_ok=True)
 
-    # Thêm filter vào root logger → mọi module đều có %(device)s
+    # Thêm filter vào handler để mọi module đều có %(device)s khi ghi file.
     device_filter = DeviceNameFilter()
     root_logger = logging.getLogger()
-    root_logger.addFilter(device_filter)
+    root_logger.setLevel(logging.INFO)
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(device)s %(name)s: %(message)s",
-        handlers=[
-            logging.FileHandler("logs/auto_config.log", encoding="utf-8"),
-        ]
-    )
+    # core.adb có thể đã gọi basicConfig() lúc import, nên cần thay handler
+    # ở đây để logs/auto_config.log luôn được ghi đúng.
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+        handler.close()
+
+    file_handler = DailySizeZipFileHandler("logs/auto_config.log", max_bytes=10 * 1024 * 1024, encoding="utf-8")
+    file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(device)s %(name)s: %(message)s"
+    ))
+    file_handler.addFilter(device_filter)
+    root_logger.addHandler(file_handler)
+
     app = AutoConfigGUI()
     app.run()
