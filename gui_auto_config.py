@@ -4100,6 +4100,7 @@ class AutoConfigGUI:
             
             # Script batch để đợi ứng dụng chính đóng hẳn, xoá exe cũ, đổi tên file mới và chạy lại
             bat_content = f"""@echo off
+set _MEIPASS=
 taskkill /f /im "{current_exe_name}" >nul 2>&1
 timeout /t 2 /nobreak >nul
 del /f /q "{current_exe}"
