@@ -209,6 +209,7 @@ DEFAULT_SETTINGS = {
     "bat_mo_ruong": False,
     "bat_giao_cu": False,
     "bat_giao_tom": False,
+    "bat_sxcam": False,
     "bat_khoi_dong_lai_ld": False,
     "thoi_gian_khoi_dong_lai": 5.0
 }
@@ -542,6 +543,7 @@ class AutoConfigGUI:
             ("bat_mo_ruong", "Mở rương", False),
             ("bat_giao_cu", "Giao cú", False),
             ("bat_giao_tom", "Giao tôm", False),
+            ("bat_sxcam", "Sản xuất cám", False),
         ]
         for i, (key, label, default) in enumerate(toggles):
             var = tk.BooleanVar(value=default)
@@ -1990,6 +1992,8 @@ class AutoConfigGUI:
                     from core.giao_cu import can_giao_cu, giao_cu
                 if settings.get("bat_giao_tom"):
                     from core.giao_tom import giao_tom
+                if settings.get("bat_sxcam"):
+                    from core.sxcam import can_sxcam, run_sxcam
 
                 tong_i = 0
                 last_ld_restart_time = time.time()
@@ -2094,6 +2098,13 @@ class AutoConfigGUI:
                         if handled_tom:
                             self._log(f"{dev_label} [{config_name}] Đã xử lý giao tôm")
                             self._set_card_status(serial, f"{config_name} | Đã giao tôm", "#27ae60")
+
+                    if settings.get("bat_sxcam") and can_sxcam(serial):
+                        self._set_card_status(serial, f"{config_name} | SX Cám...", "#e67e22")
+                        handled_sxcam = run_sxcam(adb_inst, serial=serial, stop_event=stop_ev)
+                        if handled_sxcam:
+                            self._log(f"{dev_label} [{config_name}] Đã xử lý sản xuất cám")
+                            self._set_card_status(serial, f"{config_name} | Đã SX Cám", "#27ae60")
 
                     if tc_tasks:
                         start_time = time.time()
@@ -3920,10 +3931,15 @@ class AutoConfigGUI:
 
             if parse_version(latest_version) > parse_version(CURRENT_VERSION):
                 # Có phiên bản mới! Gọi hàm hiển thị thông báo trên luồng UI chính
-                self.root.after(
-                    0,
-                    lambda: self._prompt_update(latest_version, download_url, html_url, changelog)
-                )
+                if silent:
+                    # Chạy ngầm: tự động tải xuống luôn
+                    if download_url:
+                        self._download_update(download_url, latest_version, changelog, silent=True)
+                else:
+                    self.root.after(
+                        0,
+                        lambda: self._prompt_update(latest_version, download_url, html_url, changelog)
+                    )
             else:
                 if not silent:
                     self.root.after(
@@ -3977,20 +3993,29 @@ class AutoConfigGUI:
                     )
                     webbrowser.open(html_url)
 
-    def _download_update(self, download_url):
+    def _download_update(self, download_url, latest_version=None, changelog=None, silent=False):
         # Tạo cửa sổ con hiển thị tiến trình tải
         progress_win = tk.Toplevel(self.root)
-        progress_win.title("Đang tải bản cập nhật...")
-        progress_win.geometry("400x120")
+        if silent:
+            progress_win.title("Cập nhật chạy ngầm...")
+        else:
+            progress_win.title("Đang tải bản cập nhật...")
+        progress_win.geometry("400x140")
         progress_win.resizable(False, False)
-        progress_win.grab_set()  # Chặn tương tác với cửa sổ chính
         
+        # Chỉ chặn tương tác với cửa sổ chính khi người dùng nhấn nút cập nhật thủ công
+        if not silent:
+            progress_win.grab_set()
+            
         # Căn giữa cửa sổ con theo cửa sổ chính
         x = self.root.winfo_x() + (self.root.winfo_width() - 400) // 2
-        y = self.root.winfo_y() + (self.root.winfo_height() - 120) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - 140) // 2
         progress_win.geometry(f"+{x}+{y}")
 
-        lbl = tk.Label(progress_win, text="Đang tải về bản cập nhật, vui lòng đợi...", font=("Arial", 10))
+        if silent:
+            lbl = tk.Label(progress_win, text="Đang tải bản cập nhật mới trong nền...\n(Bạn vẫn có thể tương tác với ứng dụng chính bình thường)", font=("Arial", 10), justify=tk.CENTER)
+        else:
+            lbl = tk.Label(progress_win, text="Đang tải về bản cập nhật, vui lòng đợi...", font=("Arial", 10))
         lbl.pack(pady=15)
         
         progress = ttk.Progressbar(progress_win, orient=tk.HORIZONTAL, length=320, mode='determinate')
@@ -3998,12 +4023,17 @@ class AutoConfigGUI:
         
         def _download_thread():
             try:
-                current_exe = os.path.abspath(sys.argv[0]) if not getattr(sys, 'frozen', False) else sys.executable
+                is_frozen = getattr(sys, 'frozen', False)
+                current_exe = sys.executable if is_frozen else os.path.abspath(sys.argv[0])
                 dir_name = os.path.dirname(current_exe)
                 filename = os.path.basename(current_exe)
                 
-                base, ext = os.path.splitext(filename)
-                new_exe_name = f"{base}_new{ext}"
+                if is_frozen:
+                    base, ext = os.path.splitext(filename)
+                    new_exe_name = f"{base}_new{ext}"
+                else:
+                    new_exe_name = "gui_auto_config_new.exe"
+                
                 new_exe_path = os.path.join(dir_name, new_exe_name)
                 
                 req = urllib.request.Request(
@@ -4020,25 +4050,46 @@ class AutoConfigGUI:
                             break
                         out_file.write(data)
                         read_size += len(data)
-                        if total_size > 0:
+                        if total_size > 0 and progress_win and progress:
                             percent = (read_size / total_size) * 100
                             progress_win.after(0, lambda p=percent: progress.config(value=p))
                 
                 # Tắt cửa sổ tiến trình tải
                 progress_win.after(0, progress_win.destroy)
                 
-                # Thực hiện cập nhật thay thế exe trên Windows
-                self.root.after(100, lambda: self._apply_update_windows(current_exe, new_exe_path))
+                if not is_frozen:
+                    # Nếu chạy từ source code, báo hoàn tất tải về thử nghiệm
+                    def prompt_source_complete():
+                        messagebox.showinfo(
+                            "Đã tải xong cập nhật",
+                            f"Đã tải bản cập nhật mới (phiên bản {latest_version}) trong nền thành công!\n\n"
+                            f"Đường dẫn file: {new_exe_name}\n"
+                            f"(Do chạy từ mã nguồn .py nên ứng dụng không tự khởi động lại)",
+                            parent=self.root
+                        )
+                    self.root.after(0, prompt_source_complete)
+                    return
+                
+                if silent:
+                    def prompt_apply():
+                        msg = f"Đã tự động tải xong bản cập nhật mới (phiên bản {latest_version}) trong nền.\n\n" \
+                              f"Nội dung thay đổi:\n{changelog}\n\n" \
+                              f"Bạn có muốn khởi động lại phần mềm để áp dụng cập nhật ngay bây giờ không?"
+                        if messagebox.askyesno("Đã tải xong bản cập nhật", msg, parent=self.root):
+                            self._apply_update_windows(current_exe, new_exe_path)
+                    self.root.after(0, prompt_apply)
+                else:
+                    # Thực hiện cập nhật thay thế exe trên Windows
+                    self.root.after(100, lambda: self._apply_update_windows(current_exe, new_exe_path))
                 
             except Exception as e:
                 logger.error(f"Lỗi tải file cập nhật: {e}")
                 progress_win.after(0, progress_win.destroy)
-                self.root.after(0, lambda: messagebox.showerror(
-                    "Lỗi tải xuống",
-                    f"Có lỗi xảy ra khi đang tải cập nhật:\n{e}"
-                ))
-
-        threading.Thread(target=_download_thread, daemon=True).start()
+                if not silent:
+                    self.root.after(0, lambda: messagebox.showerror(
+                        "Lỗi tải xuống",
+                        f"Có lỗi xảy ra khi đang tải cập nhật:\n{e}"
+                    ))
 
     def _apply_update_windows(self, current_exe, new_exe_path):
         try:

@@ -9,7 +9,7 @@ GAME_ACTIVITY_NAME = "gsn.game.zingplaynew.AppActivity"
 AUTO_OPEN_GAME_AFTER_LD_START = True
 
 # Cấu hình phiên bản và tự động cập nhật
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "1.0.2"
 GITHUB_API_URL = "https://api.github.com/repos/nguyenducthong/autokvtm/releases/latest"
 
 GARDEN_REGION = (100, 380, 880, 1100)
@@ -372,7 +372,8 @@ INDEX_TOM_O_MUA = [
 INDEX_CONG_1 = (681, 377)
 INDEX_TAT_QC = (628, 511)
 INDEX_DAT_BAN = (618, 550)
-
+#sxcam
+INDEX_SXCAM = (178, 471)
 
 def _deep_merge_config(default_value, override_value):
     if isinstance(default_value, dict) and isinstance(override_value, dict):
