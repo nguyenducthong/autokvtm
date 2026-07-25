@@ -4041,7 +4041,7 @@ class AutoConfigGUI:
                     download_url,
                     headers={"User-Agent": "AutoKVTM-Updater"}
                 )
-                with urllib.request.urlopen(req) as response, open(new_exe_path, 'wb') as out_file:
+                with urllib.request.urlopen(req, timeout=30) as response, open(new_exe_path, 'wb') as out_file:
                     total_size = int(response.headers.get('content-length', 0))
                     block_size = 16384
                     read_size = 0
