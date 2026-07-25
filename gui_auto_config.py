@@ -2042,7 +2042,8 @@ class AutoConfigGUI:
                                     try:
                                         from core.vao_game import vao_game
                                         if vao_game(serial):
-                                            self._log(f"{dev_label} Hoàn tất mở game sau khi restart LD.")
+                                            self._log(f"{dev_label} Hoàn tất mở game sau khi restart LD. Đợi 10 giây để game ổn định...")
+                                            time.sleep(10)
                                             last_ld_restart_time = time.time()
                                             restart_success = True
                                             break

@@ -9,7 +9,7 @@ GAME_ACTIVITY_NAME = "gsn.game.zingplaynew.AppActivity"
 AUTO_OPEN_GAME_AFTER_LD_START = True
 
 # Cấu hình phiên bản và tự động cập nhật
-CURRENT_VERSION = "1.0.3"
+CURRENT_VERSION = "1.0.4"
 GITHUB_API_URL = "https://api.github.com/repos/nguyenducthong/autokvtm/releases/latest"
 
 GARDEN_REGION = (100, 380, 880, 1100)
