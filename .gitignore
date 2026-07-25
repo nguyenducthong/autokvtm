@@ -9,6 +9,7 @@ build/
 cache/
 debug/
 data/
+logs/
 *.egg
 
 # Virtual environment (nếu có)

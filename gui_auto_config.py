@@ -16,11 +16,15 @@ import glob as glob_mod
 import zipfile
 from datetime import date
 import cv2
+import urllib.request
+import subprocess
+import webbrowser
+import sys
 
 from core.adb_helper import get_adb_helper, ADBHelper
 from core.adb import ADBController
 from core.trong_cay import main_tc
-from config import CONFIG_LOAI_KHO, REGION_PRESETS, REGION_FROM_CROP
+from config import CONFIG_LOAI_KHO, REGION_PRESETS, REGION_FROM_CROP, CURRENT_VERSION, GITHUB_API_URL
 from utils.daily_stats import format_daily_counts
 
 logger = logging.getLogger(__name__)
@@ -282,6 +286,7 @@ class AutoConfigGUI:
         self._refresh_configs()
         self._ss_refresh_devices()
         self._schedule_device_auto_refresh()
+        self.check_update_action(silent=True)
 
     # ================================================================
     # UI
@@ -292,7 +297,19 @@ class AutoConfigGUI:
         header.pack(fill=tk.X)
         header.pack_propagate(False)
         tk.Label(header, text="AUTO KHU VƯỜN TRÊN MÂY",
-                 font=("Arial", 14, "bold"), fg="white", bg="#2c3e50").pack(pady=12)
+                 font=("Arial", 14, "bold"), fg="white", bg="#2c3e50").pack(side=tk.LEFT, padx=15, pady=12)
+
+        # Version & Update button on the right side of header
+        version_frame = tk.Frame(header, bg="#2c3e50")
+        version_frame.pack(side=tk.RIGHT, padx=15, pady=10)
+        
+        tk.Label(version_frame, text=f"v{CURRENT_VERSION}",
+                 font=("Arial", 9, "bold"), fg="#bdc3c7", bg="#2c3e50").pack(side=tk.LEFT, padx=(0, 8))
+                 
+        self.update_btn = tk.Button(version_frame, text="Cập nhật", command=self.check_update_action,
+                                    bg="#e74c3c", fg="white", font=("Arial", 9, "bold"),
+                                    relief=tk.FLAT, cursor="hand2", padx=10, pady=1)
+        self.update_btn.pack(side=tk.LEFT)
 
         # Notebook (tabs)
         self.notebook = ttk.Notebook(self.root)
@@ -3859,6 +3876,201 @@ class AutoConfigGUI:
     # ================================================================
     def run(self):
         self.root.mainloop()
+
+    # ================================================================
+    # AUTO UPDATE
+    # ================================================================
+    def check_update_action(self, silent=False):
+        """Khởi chạy luồng kiểm tra cập nhật để tránh đơ giao diện chính."""
+        threading.Thread(
+            target=self._check_for_updates_thread,
+            args=(silent,),
+            daemon=True
+        ).start()
+
+    def _check_for_updates_thread(self, silent):
+        try:
+            # Gửi request lên GitHub Releases API với User-Agent để tránh bị 403
+            req = urllib.request.Request(
+                GITHUB_API_URL,
+                headers={"User-Agent": "AutoKVTM-Updater"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode("utf-8"))
+
+            latest_tag = data.get("tag_name", "").strip()
+            # Bỏ ký tự 'v' ở đầu phiên bản nếu có (ví dụ 'v1.0.1' -> '1.0.1')
+            latest_version = latest_tag[1:] if latest_tag.lower().startswith('v') else latest_tag
+            changelog = data.get("body", "Không có thông tin thay đổi.")
+            html_url = data.get("html_url", "https://github.com/nguyenducthong/autokvtm/releases")
+
+            # Tìm file .exe trong danh sách assets
+            download_url = None
+            for asset in data.get("assets", []):
+                if asset.get("name", "").endswith(".exe"):
+                    download_url = asset.get("browser_download_url")
+                    break
+
+            # So sánh phiên bản (phân tích thành list of int để so sánh chính xác)
+            def parse_version(v):
+                try:
+                    return [int(x) for x in v.split(".")]
+                except ValueError:
+                    return [0]
+
+            if parse_version(latest_version) > parse_version(CURRENT_VERSION):
+                # Có phiên bản mới! Gọi hàm hiển thị thông báo trên luồng UI chính
+                self.root.after(
+                    0,
+                    lambda: self._prompt_update(latest_version, download_url, html_url, changelog)
+                )
+            else:
+                if not silent:
+                    self.root.after(
+                        0,
+                        lambda: messagebox.showinfo(
+                            "Kiểm tra cập nhật",
+                            f"Bạn đang sử dụng phiên bản mới nhất ({CURRENT_VERSION})."
+                        )
+                    )
+        except Exception as e:
+            logger.error(f"Lỗi kiểm tra cập nhật: {e}")
+            if not silent:
+                error_msg = f"Không thể kết nối đến máy chủ GitHub để kiểm tra cập nhật:\n{e}"
+                if hasattr(e, "code") and e.code == 404:
+                    error_msg = "Chưa có bản phát hành (Release) nào được tạo trên GitHub cho dự án này.\n\n" \
+                                "Vui lòng tạo một Release trên GitHub (ví dụ: v1.0.1) và đính kèm file gui_auto_config.exe."
+                self.root.after(
+                    0,
+                    lambda: messagebox.showerror(
+                        "Lỗi kiểm tra cập nhật",
+                        error_msg
+                    )
+                )
+
+    def _prompt_update(self, latest_version, download_url, html_url, changelog):
+        msg = f"Đã có phiên bản mới: {latest_version}\n" \
+              f"(Phiên bản hiện tại: {CURRENT_VERSION})\n\n" \
+              f"Nội dung cập nhật:\n{changelog}\n\n" \
+              f"Bạn có muốn cập nhật ngay bây giờ không?"
+              
+        if messagebox.askyesno("Tìm thấy bản cập nhật mới", msg):
+            if not getattr(sys, 'frozen', False):
+                # Đang chạy từ mã nguồn .py -> Mở trình duyệt web tới trang release
+                messagebox.showinfo(
+                    "Thông báo",
+                    "Bạn đang chạy ứng dụng từ mã nguồn (source code).\n"
+                    "Hệ thống sẽ mở trình duyệt để bạn tải file hoặc git pull bản mới nhất.",
+                    parent=self.root
+                )
+                webbrowser.open(html_url)
+            else:
+                # Đang chạy file đóng gói .exe -> Tải và tự động cài đặt cập nhật
+                if download_url:
+                    self._download_update(download_url)
+                else:
+                    messagebox.showwarning(
+                        "Cảnh báo",
+                        "Không tìm thấy file thực thi (.exe) trong bản phát hành mới trên GitHub.\n"
+                        "Hệ thống sẽ mở trình duyệt để bạn tải về thủ công.",
+                        parent=self.root
+                    )
+                    webbrowser.open(html_url)
+
+    def _download_update(self, download_url):
+        # Tạo cửa sổ con hiển thị tiến trình tải
+        progress_win = tk.Toplevel(self.root)
+        progress_win.title("Đang tải bản cập nhật...")
+        progress_win.geometry("400x120")
+        progress_win.resizable(False, False)
+        progress_win.grab_set()  # Chặn tương tác với cửa sổ chính
+        
+        # Căn giữa cửa sổ con theo cửa sổ chính
+        x = self.root.winfo_x() + (self.root.winfo_width() - 400) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - 120) // 2
+        progress_win.geometry(f"+{x}+{y}")
+
+        lbl = tk.Label(progress_win, text="Đang tải về bản cập nhật, vui lòng đợi...", font=("Arial", 10))
+        lbl.pack(pady=15)
+        
+        progress = ttk.Progressbar(progress_win, orient=tk.HORIZONTAL, length=320, mode='determinate')
+        progress.pack(pady=5)
+        
+        def _download_thread():
+            try:
+                current_exe = os.path.abspath(sys.argv[0]) if not getattr(sys, 'frozen', False) else sys.executable
+                dir_name = os.path.dirname(current_exe)
+                filename = os.path.basename(current_exe)
+                
+                base, ext = os.path.splitext(filename)
+                new_exe_name = f"{base}_new{ext}"
+                new_exe_path = os.path.join(dir_name, new_exe_name)
+                
+                req = urllib.request.Request(
+                    download_url,
+                    headers={"User-Agent": "AutoKVTM-Updater"}
+                )
+                with urllib.request.urlopen(req) as response, open(new_exe_path, 'wb') as out_file:
+                    total_size = int(response.headers.get('content-length', 0))
+                    block_size = 16384
+                    read_size = 0
+                    while True:
+                        data = response.read(block_size)
+                        if not data:
+                            break
+                        out_file.write(data)
+                        read_size += len(data)
+                        if total_size > 0:
+                            percent = (read_size / total_size) * 100
+                            progress_win.after(0, lambda p=percent: progress.config(value=p))
+                
+                # Tắt cửa sổ tiến trình tải
+                progress_win.after(0, progress_win.destroy)
+                
+                # Thực hiện cập nhật thay thế exe trên Windows
+                self.root.after(100, lambda: self._apply_update_windows(current_exe, new_exe_path))
+                
+            except Exception as e:
+                logger.error(f"Lỗi tải file cập nhật: {e}")
+                progress_win.after(0, progress_win.destroy)
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Lỗi tải xuống",
+                    f"Có lỗi xảy ra khi đang tải cập nhật:\n{e}"
+                ))
+
+        threading.Thread(target=_download_thread, daemon=True).start()
+
+    def _apply_update_windows(self, current_exe, new_exe_path):
+        try:
+            dir_name = os.path.dirname(current_exe)
+            current_exe_name = os.path.basename(current_exe)
+            new_exe_name = os.path.basename(new_exe_path)
+            bat_path = os.path.join(dir_name, "updater.bat")
+            
+            # Script batch để đợi ứng dụng chính đóng hẳn, xoá exe cũ, đổi tên file mới và chạy lại
+            bat_content = f"""@echo off
+taskkill /f /im "{current_exe_name}" >nul 2>&1
+timeout /t 2 /nobreak >nul
+del /f /q "{current_exe}"
+ren "{new_exe_name}" "{current_exe_name}"
+start "" "{current_exe}"
+del "%~f0"
+"""
+            # Ghi file script bat
+            with open(bat_path, "w", encoding="utf-8") as f:
+                f.write(bat_content)
+                
+            # Khởi chạy file bat ngầm
+            subprocess.Popen([bat_path], shell=True, cwd=dir_name)
+            
+            # Đóng ngay ứng dụng chính để script bat hoạt động
+            sys.exit(0)
+        except Exception as e:
+            logger.error(f"Lỗi khởi động updater.bat: {e}")
+            messagebox.showerror(
+                "Lỗi cập nhật",
+                f"Không thể áp dụng bản cập nhật tự động:\n{e}"
+            )
 
 
 class DeviceNameFilter(logging.Filter):
