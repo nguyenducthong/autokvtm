@@ -3902,12 +3902,16 @@ class AutoConfigGUI:
 
     def _check_for_updates_thread(self, silent):
         try:
-            # Gửi request lên GitHub Releases API với User-Agent để tránh bị 403
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
             req = urllib.request.Request(
                 GITHUB_API_URL,
                 headers={"User-Agent": "AutoKVTM-Updater"}
             )
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
                 data = json.loads(response.read().decode("utf-8"))
 
             latest_tag = data.get("tag_name", "").strip()
@@ -3984,7 +3988,7 @@ class AutoConfigGUI:
             else:
                 # Đang chạy file đóng gói .exe -> Tải và tự động cài đặt cập nhật
                 if download_url:
-                    self._download_update(download_url)
+                    self._download_update(download_url, latest_version, changelog)
                 else:
                     messagebox.showwarning(
                         "Cảnh báo",
@@ -4037,11 +4041,16 @@ class AutoConfigGUI:
                 
                 new_exe_path = os.path.join(dir_name, new_exe_name)
                 
+                import ssl
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+
                 req = urllib.request.Request(
                     download_url,
                     headers={"User-Agent": "AutoKVTM-Updater"}
                 )
-                with urllib.request.urlopen(req, timeout=30) as response, open(new_exe_path, 'wb') as out_file:
+                with urllib.request.urlopen(req, timeout=30, context=ctx) as response, open(new_exe_path, 'wb') as out_file:
                     total_size = int(response.headers.get('content-length', 0))
                     block_size = 16384
                     read_size = 0
@@ -4091,6 +4100,9 @@ class AutoConfigGUI:
                         "Lỗi tải xuống",
                         f"Có lỗi xảy ra khi đang tải cập nhật:\n{e}"
                     ))
+
+        # Kích hoạt luồng tải về ngầm
+        threading.Thread(target=_download_thread, daemon=True).start()
 
     def _apply_update_windows(self, current_exe, new_exe_path):
         try:
