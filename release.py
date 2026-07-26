@@ -14,6 +14,11 @@ def main():
         # Chuẩn hóa tag (v1.0.1) và số phiên bản (1.0.1)
         tag = f"v{version}" if not version.lower().startswith("v") else version
         version_num = tag[1:] if tag.lower().startswith("v") else tag
+
+        # Nhập ghi chú / nội dung cập nhật của phiên bản
+        notes = input("Nhập ghi chú / nội dung cập nhật cho phiên bản này: ").strip()
+        if not notes:
+            notes = f"Phát hành phiên bản {tag}"
         
         # 2. Cập nhật file config.py
         config_path = "config.py"
@@ -39,13 +44,14 @@ def main():
         print("\n-> Đang thêm thay đổi vào git (git add)...")
         subprocess.run(["git", "add", "."], check=True)
         
+        commit_msg = f"Cập nhật phiên bản {tag}\n\n{notes}"
         print("-> Đang commit thay đổi (git commit)...")
-        subprocess.run(["git", "commit", "-m", f"Cập nhật phiên bản {tag}"], check=True)
+        subprocess.run(["git", "commit", "-m", commit_msg], check=True)
         
-        print(f"-> Đang tạo tag {tag}...")
-        # Xóa tag cục bộ cũ nếu trùng lặp để tránh lỗi (tùy chọn)
+        print(f"-> Đang tạo tag {tag} kèm ghi chú...")
+        # Xóa tag cục bộ cũ nếu trùng lặp để tránh lỗi
         subprocess.run(["git", "tag", "-d", tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["git", "tag", tag], check=True)
+        subprocess.run(["git", "tag", "-a", tag, "-m", notes], check=True)
         
         print("-> Đang đẩy code lên nhánh main (git push)...")
         subprocess.run(["git", "push", "origin", "main"], check=True)
