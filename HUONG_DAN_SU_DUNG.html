@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Huong Dan Su Dung Auto KVTM</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+        
+        @page {
+            size: A4;
+            margin: 15mm;
+        }
+
+        body {
+            font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #24292e;
+            background-color: #ffffff;
+            margin: 0;
+            padding: 20px 30px;
+        }
+
+        h1 {
+            font-size: 24px;
+            color: #1a365d;
+            border-bottom: 2px solid #3182ce;
+            padding-bottom: 8px;
+            margin-top: 0;
+            text-align: center;
+        }
+
+        h2 {
+            font-size: 18px;
+            color: #2b6cb0;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 6px;
+            margin-top: 24px;
+            page-break-after: avoid;
+        }
+
+        h3 {
+            font-size: 15px;
+            color: #2c5282;
+            margin-top: 18px;
+            page-break-after: avoid;
+        }
+
+        h4 {
+            font-size: 14px;
+            color: #4a5568;
+            margin-top: 14px;
+            page-break-after: avoid;
+        }
+
+        p {
+            margin-bottom: 10px;
+        }
+
+        code {
+            font-family: 'Consolas', 'Courier New', monospace;
+            background-color: #edf2f7;
+            color: #c53030;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        pre {
+            background-color: #1a202c;
+            color: #f7fafc;
+            padding: 12px 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.45;
+            page-break-inside: avoid;
+        }
+
+        pre code {
+            background-color: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 12px;
+            page-break-inside: avoid;
+        }
+
+        table th {
+            background-color: #ebf8ff;
+            color: #2b6cb0;
+            font-weight: 600;
+            text-align: left;
+            padding: 8px 12px;
+            border: 1px solid #cbd5e0;
+        }
+
+        table td {
+            padding: 8px 12px;
+            border: 1px solid #cbd5e0;
+        }
+
+        table tr:nth-child(even) {
+            background-color: #f7fafc;
+        }
+
+        ul, ol {
+            padding-left: 24px;
+            margin-bottom: 12px;
+        }
+
+        li {
+            margin-bottom: 4px;
+        }
+
+        .callout {
+            border-left: 4px solid #3182ce;
+            background-color: #ebf8ff;
+            padding: 12px 16px;
+            margin: 16px 0;
+            border-radius: 0 6px 6px 0;
+            page-break-inside: avoid;
+        }
+
+        .callout-title {
+            font-weight: bold;
+            color: #2b6cb0;
+            margin-bottom: 4px;
+        }
+
+        .callout-body {
+            color: #2d3748;
+        }
+
+        hr {
+            border: none;
+            border-top: 1px solid #e2e8f0;
+            margin: 20px 0;
+        }
+
+        a {
+            color: #3182ce;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <h1 id="huong-dan-su-dung-auto-khu-vuon-tren-may-auto-kvtm">HƯỚNG DẪN SỬ DỤNG AUTO KHU VƯỜN TRÊN MÂY (AUTO KVTM)</h1>
+<p>Tài liệu này hướng dẫn chi tiết cách cài đặt, cấu hình và sử dụng công cụ <strong>Auto Khu Vườn Trên Mây (Auto KVTM)</strong> chạy trên giả lập Android (LDPlayer / BlueStacks / Nox) hoặc thiết bị Android thật thông qua kết nối ADB.</p>
+<hr />
+<h2 id="muc-luc">📋 MỤC LỤC</h2>
+<ol>
+<li><a href="#1-yêu-cầu-hệ-thống--chuẩn-bị">Yêu cầu hệ thống &amp; Chuẩn bị</a></li>
+<li><a href="#2-cài-đặt-môi-trường-python--thư-viện">Cài đặt môi trường Python &amp; Thư viện</a></li>
+<li><a href="#3-cấu-hình-giả-lập-ldplayer">Cấu hình Giả lập LDPlayer</a></li>
+<li><a href="#4-hướng-dẫn-sử-dụng-giao-diện-auto-gui_auto_configpy">Hướng dẫn sử dụng Giao diện Auto (<code>gui_auto_config.py</code>)</a></li>
+<li><a href="#tab-1-chạy-auto">Tab 1: Chạy Auto</a></li>
+<li><a href="#tab-2-quản-lý--chỉnh-sửa-cấu-hình">Tab 2: Quản lý &amp; Chỉnh sửa Cấu hình</a></li>
+<li><a href="#5-chi-tiết-các-tính-năng-auto">Chi tiết các tính năng Auto</a></li>
+<li><a href="#6-quản-lý-file-cấu-hình-json">Quản lý File Cấu hình (JSON)</a></li>
+<li><a href="#7-cập-nhật-phiên-bản--đóng-gói-release">Cập nhật phiên bản &amp; Đóng gói release</a></li>
+<li><a href="#8-xử-lý-sự-cố-thường-gặp-troubleshooting">Xử lý sự cố thường gặp (Troubleshooting)</a></li>
+</ol>
+<hr />
+<h2 id="1-yeu-cau-he-thong-chuan-bi">1. Yêu cầu hệ thống &amp; Chuẩn bị</h2>
+<ul>
+<li><strong>Hệ điều hành</strong>: Windows 10 / 11 (64-bit).</li>
+<li><strong>Giả lập Android</strong>: LDPlayer 9 (khuyên dùng) hoặc BlueStacks / NoxPlayer.</li>
+<li><strong>Game</strong>: Game <strong>Khu Vườn Trên Mây</strong> (ZingPlay - Package: <code>vn.kvtm.js</code>).</li>
+<li><strong>ADB (Android Debug Bridge)</strong>: Đã bật tính năng Debugging trong giả lập / thiết bị.</li>
+</ul>
+<div class="callout callout-note"><div class="callout-title">GHI CHÚ</div><div class="callout-body">**Dành cho Người Dùng Cuối (Dùng file `.exe`)**: <br>Bạn **KHÔNG CẦN** cài đặt Python hay bất kỳ thư viện nào! File `.exe` đã được đóng gói sẵn toàn bộ môi trường cần thiết. Bạn chỉ cần giải nén thư mục release (bao gồm file `gui_auto_config.exe` cùng các thư mục `assets/`, `configs/`) và nhấp đúp vào file `.exe` để chạy ngay.</div></div>
+
+<hr />
+<h2 id="2-cai-at-moi-truong-python-chi-danh-cho-dev-chay-tu-ma-nguon-py">2. Cài đặt môi trường Python (Chỉ dành cho Dev / Chạy từ mã nguồn <code>.py</code>)</h2>
+<p><em>Nếu bạn chạy trực tiếp file <code>.exe</code>, bạn có thể bỏ qua bước này.</em></p>
+<h3 id="buoc-1-kiem-tra-python">Bước 1: Kiểm tra Python</h3>
+<p>Mở <strong>Command Prompt</strong> (CMD) hoặc <strong>PowerShell</strong> và kiểm tra phiên bản Python:</p>
+<pre><code class="language-bash">py --version
+</code></pre>
+<h3 id="buoc-2-nang-cap-pip-va-cai-at-cac-thu-vien-phu-thuoc">Bước 2: Nâng cấp <code>pip</code> và cài đặt các thư viện phụ thuộc</h3>
+<p>Chạy các lệnh sau để cài đặt đầy đủ các gói cần thiết:</p>
+<pre><code class="language-bash"># Nâng cấp pip
+py -m ensurepip --upgrade
+py -m pip install --upgrade pip
+
+# Thư viện xử lý ảnh và OCR
+py -m pip install opencv-python numpy pillow pytesseract
+
+# Thư viện ADB và tự động hóa
+py -m pip install pure-python-adb adbutils
+
+# Thư viện điều khiển và tiện ích
+py -m pip install requests pyautogui keyboard mouse
+</code></pre>
+<hr />
+<h2 id="3-cau-hinh-gia-lap-ldplayer">3. Cấu hình Giả lập LDPlayer</h2>
+<p>Để Auto nhận diện chính xác hình ảnh và tọa độ thao tác, hãy cài đặt giả lập LDPlayer theo chuẩn sau:</p>
+<ol>
+<li><strong>Độ phân giải màn hình</strong>:</li>
+<li>Cài đặt độ phân giải tùy chỉnh: <strong>800 x 800 (DPI 240)</strong>.</li>
+<li><strong>Cấu hình ADB</strong>:</li>
+<li>Vào <strong>Cài đặt LDPlayer</strong> -&gt; <strong>Cài đặt khác</strong> -&gt; <strong>Bật ADB Debugging</strong> (Chọn <em>Open local connection</em> / <em>Mở kết nối cục bộ</em>).</li>
+<li><strong>Cài đặt Game</strong>:</li>
+<li>Đảm bảo đã đăng nhập và mở game KVTM ổn định trước khi bắt đầu Auto.</li>
+</ol>
+<hr />
+<h2 id="4-huong-dan-su-dung-giao-dien-auto-gui_auto_configexe-hoac-gui_auto_configpy">4. Hướng dẫn sử dụng Giao diện Auto (<code>gui_auto_config.exe</code> hoặc <code>gui_auto_config.py</code>)</h2>
+<ul>
+<li><strong>Cách 1 (Dùng file <code>.exe</code>)</strong>: Nhấp đúp trực tiếp vào file <code>gui_auto_config.exe</code>.</li>
+<li><strong>Cách 2 (Dùng file <code>.py</code>)</strong>: Mở CMD tại thư mục project và gõ <code>py gui_auto_config.py</code>.</li>
+</ul>
+<p>Giao diện chương trình gồm <strong>2 Tab chính</strong>:</p>
+<p><img alt="Giao diện chính" src="assets/items/num/1.png" /> <em>(Tùy chọn minh họa)</em></p>
+<hr />
+<h3 id="tab-1-chay-auto">Tab 1: Chạy Auto</h3>
+<p>Tab này dùng để điều khiển và giám sát quá trình chạy tự động trên một hoặc nhiều thiết bị.</p>
+<h4 id="cac-buoc-van-hanh">Các bước vận hành:</h4>
+<ol>
+<li><strong>Quét thiết bị ADB</strong>:</li>
+<li>Nhấn nút <strong>"Quét thiết bị"</strong> để Auto tự động tìm các cửa sổ LDPlayer hoặc thiết bị Android đang kết nối.</li>
+<li><strong>Chọn Cấu hình</strong>:</li>
+<li>Tại danh sách thiết bị tương ứng, chọn cấu hình Auto mong muốn từ menu thả xuống (ví dụ: <code>mac_dinh.json</code>, <code>ban_dua.json</code>, <code>tcsk.json</code>).</li>
+<li><strong>Bắt đầu Chạy</strong>:</li>
+<li>Nhấn nút <strong>"Chạy"</strong> tại dòng thiết bị muốn làm việc, hoặc nhấn <strong>"Chạy tất cả"</strong> để khởi chạy đồng loạt.</li>
+<li>Để ngưng Auto, nhấn nút <strong>"Dừng"</strong>.</li>
+<li><strong>Theo dõi Nhật ký &amp; Thống kê</strong>:</li>
+<li>Ô <strong>Khung Log</strong> phía dưới hiển thị chi tiết từng hành động (Thu hoạch, Gieo hạt, Sản xuất, Bán đồ, Lỗi nếu có).</li>
+<li>Bảng <strong>Thống kê hàng ngày</strong> hỗ trợ theo dõi số lượng nông sản / sản phẩm đã thu hoạch hoặc giao dịch trong ngày.</li>
+</ol>
+<hr />
+<h3 id="tab-2-quan-ly-chinh-sua-cau-hinh-config-editor">Tab 2: Quản lý &amp; Chỉnh sửa Cấu hình (Config Editor)</h3>
+<p>Tab này cho phép bạn xem, tạo mới, sao chép, quản lý danh sách nhiệm vụ (Task List) và chỉnh sửa mọi tham số hoạt động của các kịch bản Auto lưu dưới dạng file <code>.json</code>.</p>
+<p><img alt="Tab Cấu hình" src="assets/items/num/2.png" /> <em>(Tùy chọn minh họa)</em></p>
+<hr />
+<h4 id="1-thanh-quan-ly-profile-cau-hinh-profile-bar">📌 1. Thanh Quản lý Profile Cấu hình (Profile Bar)</h4>
+<p>Nằm ở đầu tab, giúp quản lý các tập tin kịch bản kịch bản:<br />
+- <strong>Danh sách Profile (<code>Combobox</code>)</strong>: Hiển thị tất cả các file cấu hình <code>.json</code> hiện có trong thư mục <code>configs/</code> (ví dụ: <code>mac_dinh.json</code>, <code>ban_dua.json</code>, <code>tcsk.json</code>).<br />
+- <strong>Nút "Tạo mới"</strong>: Tạo một kịch bản mới với các tham số trống/mặc định.<br />
+- <strong>Nút "Sao chép" (Duplicate)</strong>: Nhân bản cấu hình đang chọn thành một file mới để tùy biến mà không làm hỏng file gốc.<br />
+- <strong>Nút "Xóa"</strong>: Xóa file cấu hình hiện tại khỏi hệ thống.<br />
+- <strong>Nút "Lưu cấu hình"</strong>: Lưu toàn bộ các chỉnh sửa trên giao diện vào file <code>.json</code>.</p>
+<hr />
+<h4 id="2-cai-at-tong-quan-global-settings-panel">⚙️ 2. Cài đặt Tổng quan (Global Settings Panel)</h4>
+<p>Nơi thiết lập quy tắc hoạt động chung cho kịch bản:</p>
+<ul>
+<li><strong>Chế độ vòng lặp tổng (<code>loop_tong_mode</code>)</strong>:</li>
+<li><code>Vô hạn (forever)</code>: Auto sẽ lặp lại toàn bộ kịch bản liên tục cho đến khi người dùng bấm <strong>Dừng</strong>.</li>
+<li><code>Số lượt quy định (count)</code>: Chạy đủ số vòng lặp quy định tại ô <code>loop_tong</code> rồi tự động ngắt.</li>
+<li><strong>Số lượt lặp tổng (<code>loop_tong</code>)</strong>: Số chu kỳ lặp lại của toàn bộ kịch bản (chỉ áp dụng khi chọn chế độ <code>count</code>).</li>
+<li><strong>Số lượt lặp sub-task (<code>loop</code>)</strong>: Số lần lặp lại thao tác nhỏ trong một vòng quét nhiệm vụ.</li>
+<li><strong>Ngưỡng nhận diện ảnh (<code>threshold</code>)</strong>:</li>
+<li>Tỷ lệ chính xác khi so khớp hình ảnh mẫu với màn hình game (Giá trị từ <code>0.10</code> đến <code>1.00</code>, Mặc định: <code>0.85</code>).</li>
+<li><em>Mẹo</em>: Nếu Auto không nhận dạng được hình ảnh -&gt; Hạ threshold xuống <code>0.80</code> - <code>0.82</code>. Nếu Auto bấm nhầm -&gt; Nâng threshold lên <code>0.88</code> - <code>0.90</code>.</li>
+<li><strong>Các công tắc Bật/Tắt tính năng (<code>Checkbuttons</code>)</strong>:</li>
+<li><code>bat_trong_cay</code>: Cho phép tự động gieo hạt theo từng tầng.</li>
+<li><code>bat_thu_hoach</code>: Cho phép tự động quét và thu hoạch nông sản đã chín.</li>
+<li><code>bat_may</code>: Cho phép tự động đưa nguyên liệu vào máy chế biến / máy sản xuất cám.</li>
+<li><code>bat_ban_vp</code>: Cho phép bán sản phẩm trên quầy hàng / đơn hàng.</li>
+<li><code>bat_ban_kho</code>: Cho phép mở kho và xả bớt vật phẩm tích trữ.</li>
+<li><code>bat_giao_cu</code>: Cho phép nhận và hoàn thành đơn hàng Cú vận chuyển.</li>
+<li><code>bat_giao_tom</code>: Cho phép nhận và hoàn thành đơn hàng Tôm.</li>
+<li><code>bat_mo_ruong</code>: Cho phép tự động kiểm tra và mở rương quà định kỳ.</li>
+</ul>
+<hr />
+<h4 id="3-bang-danh-sach-nhiem-vu-task-list-treeview">📋 3. Bảng Danh sách Nhiệm vụ (Task List Treeview)</h4>
+<p>Hiển thị danh sách các bước nhiệm vụ được Auto thực hiện theo thứ tự từ trên xuống dưới:<br />
+- <strong>Thông tin cột</strong>:<br />
+  - <code>STT</code>: Thứ tự ưu tiên thực thi nhiệm vụ.<br />
+  - <code>Loại Task</code>: Loại hành động (<code>TC</code> - Trồng cây, <code>MAY</code> - Sản xuất, <code>BAN</code> - Bán hàng, <code>GIAO_CU</code>, <code>GIAO_TOM</code>).<br />
+  - <code>Tầng (Row)</code>: Số tầng chậu mây áp dụng (dành cho task Trồng cây).<br />
+  - <code>Danh sách ô</code>: Các chậu cây cụ thể được gieo (ví dụ: <code>1.1, 1.2, 1.3...</code>).<br />
+  - <code>Cây / Sản phẩm</code>: Loại nông sản (Hồng, Táo, Bông, Tuyết...) hoặc sản phẩm chế biến.<br />
+  - <code>Vùng quét (Region)</code>: Tọa độ giới hạn quét ảnh <code>[X, Y, W, H]</code>.<br />
+  - <code>Threshold</code>: Ngưỡng nhận diện riêng của task.</p>
+<ul>
+<li><strong>Thao tác quản lý Task</strong>:</li>
+<li><strong>Nút "Thêm Task"</strong>: Mở form để nhập thông tin task mới vào cuối danh sách.</li>
+<li><strong>Nút "Sửa Task"</strong>: Chọn 1 dòng trong bảng và nhấn nút này để nạp thông tin lên form chỉnh sửa.</li>
+<li><strong>Nút "Xóa Task"</strong>: Xóa nhiệm vụ đang chọn khỏi danh sách.</li>
+<li><strong>Nút "Lên" / "Xuống"</strong>: Thay đổi thứ tự ưu tiên thực thi của nhiệm vụ được chọn.</li>
+</ul>
+<hr />
+<h4 id="4-form-cau-hinh-chi-tiet-nhiem-vu-task-form-panel">📝 4. Form Cấu hình Chi tiết Nhiệm vụ (Task Form Panel)</h4>
+<h5 id="a-khi-chon-loai-task-tc-trong-cay">A. Khi chọn Loại Task: <code>TC</code> (Trồng Cây)</h5>
+<ul>
+<li><strong>Số tầng (<code>row</code>)</strong>: Chọn từ tầng <code>1</code> đến tầng <code>6</code> (hoặc tầng tùy chỉnh).</li>
+<li><strong>Danh sách ô chậu (<code>indexs</code>)</strong>: Chọn các ô chậu mây cụ thể (Ví dụ: Tầng 1 gồm <code>1.1</code>, <code>1.2</code>, <code>1.3</code>, <code>1.4</code>, <code>1.5</code>, <code>1.6</code>).</li>
+<li><strong>Loại cây gieo (<code>path_item</code>)</strong>: Chọn loại hạt giống cần gieo (Táo, Hồng, Bông, Tuyết, Dừa, v.v.). Danh sách hạt giống được tải tự động từ thư mục <code>assets/items/</code>.</li>
+<li><strong>Cây mặc định (<code>path_item_default</code>)</strong>: Loại hạt gieo dự phòng trường hợp loại cây chính hết hạt trong kho.</li>
+</ul>
+<h5 id="b-cau-hinh-vung-quet-region-settings">B. Cấu hình Vùng Quét (Region Settings)</h5>
+<p>Giúp khu vực quét ảnh chính xác hơn, tăng tốc độ nhận diện và tránh bấm nhầm ra ngoài:<br />
+- <strong>Preset vùng có sẵn (<code>Preset Dropdown</code>)</strong>:<br />
+  - <code>Toàn màn</code>: Quét trên toàn bộ màn hình giả lập.<br />
+  - <code>Cây và gieo</code>: Vùng giới hạn chứa chậu cây và bảng chọn hạt giống.<br />
+  - <code>Máy sản xuất</code>: Vùng giới hạn chứa các nhà máy chế biến.<br />
+  - <code>Mây</code>: Vùng quét mây.<br />
+  - <code>Quầy hàng</code>: Vùng chứa quầy bán hàng.<br />
+  - <code>Tôm</code>: Vùng nhận đơn hàng Tôm.<br />
+- <strong>Chọn "Vùng từ crop hiện tại"</strong>: Tự động lấy tọa độ <code>[X, Y, W, H]</code> vừa kéo chọn từ <strong>Tab 3 (Chụp &amp; Cắt ảnh)</strong>.<br />
+- <strong>Tọa độ thủ công</strong>: Nhập trực tiếp các thông số <code>X</code>, <code>Y</code>, <code>Chiều rộng (W)</code>, <code>Chiều cao (H)</code>.</p>
+<hr />
+<h4 id="5-cai-at-ban-hang-kho-on-hang-warehouse-sell-options">🛒 5. Cài đặt Bán Hàng Kho &amp; Đơn Hàng (Warehouse &amp; Sell Options)</h4>
+<p>Cấu hình danh mục sản phẩm sự kiện / vật phẩm tích trữ cần xả kho:<br />
+- <strong>Danh sách vật phẩm kho chọn bán</strong>:<br />
+  - <code>KSK_KEM</code> (Kem)<br />
+  - <code>KSK_KINH</code> (Kính)<br />
+  - <code>KSK_DUA</code> (Dừa)<br />
+  - <code>KSK_BO</code> (Bò)<br />
+  - <code>KSK_CUU</code> (Cừu)<br />
+  - <code>KSK_GA</code> (Gà)<br />
+  - <code>KSK_HEO</code> (Heo)<br />
+- <strong>Vùng quét bán đồ kho (<code>bd_region</code>)</strong>: Cấu hình vùng hiển thị của giao diện bán kho để Auto click chính xác nút Bán.</p>
+<hr />
+<hr />
+<h2 id="5-chi-tiet-cac-tinh-nang-auto">5. Chi tiết các tính năng Auto</h2>
+<h3 id="1-trong-cay-thu-hoach">🌾 1. Trồng cây &amp; Thu hoạch</h3>
+<ul>
+<li>Auto tự động quét vùng chậu mây theo tầng (<code>row 1</code> đến <code>row 6</code>).</li>
+<li>Thu hoạch cây chín trước, sau đó gieo loại hạt được cấu hình (Táo, Hồng, Bông, Tuyết, v.v.).</li>
+<li>Hỗ trợ ưu tiên trồng nông sản sự kiện hoặc nông sản nhiệm vụ.</li>
+</ul>
+<h3 id="2-may-san-xuat-san-xuat-cam">🏭 2. Máy Sản xuất &amp; Sản xuất Cám</h3>
+<ul>
+<li>Tự động kéo nguyên liệu vào máy chế biến khi máy rảnh.</li>
+<li>Sản xuất các loại thức ăn gia súc / cám chăn nuôi cho Heo, Bò, Cừu, Gà.</li>
+</ul>
+<h3 id="3-ban-o-kho-su-kien-event">🏪 3. Bán đồ kho &amp; Sự kiện (Event)</h3>
+<ul>
+<li>Tự động mở kho thành phẩm, chọn vật phẩm cần bán (Kem, Kính, Dừa, Bò, Cừu, Gà, Heo, v.v.).</li>
+<li>Xử lý các đợt bán hàng theo giá niêm yết hoặc xả kho khi kho đầy.</li>
+</ul>
+<h3 id="4-giao-cu-giao-tom">📦 4. Giao Cú &amp; Giao Tôm</h3>
+<ul>
+<li>Tự động kiểm tra danh sách đơn hàng Cú / Tôm.</li>
+<li>Nếu đủ nguyên liệu trong kho -&gt; Nhấn hoàn thành đơn hàng để nhận kinh nghiệm và tiền vàng.</li>
+</ul>
+<hr />
+<h2 id="6-quan-ly-file-cau-hinh-json">6. Quản lý File Cấu hình (JSON)</h2>
+<p>Tất cả các kịch bản lưu trong thư mục <code>configs/</code> dưới dạng file JSON. Có thể chỉnh sửa trực tiếp qua file nếu cần:</p>
+<p>Ví dụ cấu trúc mẫu file <code>configs/mac_dinh.json</code>:</p>
+<pre><code class="language-json">{
+  &quot;settings&quot;: {
+    &quot;loop_tong_mode&quot;: &quot;forever&quot;,
+    &quot;loop_tong&quot;: 1,
+    &quot;loop&quot;: 3,
+    &quot;threshold&quot;: 0.85,
+    &quot;bat_trong_cay&quot;: true,
+    &quot;bat_may&quot;: true,
+    &quot;bat_ban_vp&quot;: true,
+    &quot;bat_thu_hoach&quot;: true,
+    &quot;bat_mo_ruong&quot;: true,
+    &quot;bat_giao_cu&quot;: false
+  },
+  &quot;tasks&quot;: [
+    {
+      &quot;id&quot;: 1,
+      &quot;row&quot;: 1,
+      &quot;type&quot;: &quot;TC&quot;,
+      &quot;indexs&quot;: [&quot;1.1&quot;, &quot;1.2&quot;, &quot;1.3&quot;, &quot;1.4&quot;, &quot;1.5&quot;, &quot;1.6&quot;],
+      &quot;path_row&quot;: &quot;assets/items/num/1.png&quot;,
+      &quot;path_item&quot;: &quot;assets/items/cay_tao.png&quot;,
+      &quot;threshold&quot;: 0.85
+    }
+  ]
+}
+</code></pre>
+<hr />
+<h2 id="7-cap-nhat-phien-ban-ong-goi-release">7. Cập nhật phiên bản &amp; Đóng gói release</h2>
+<h3 id="kiem-tra-ban-cap-nhat">Kiểm tra bản cập nhật</h3>
+<p>Ứng dụng tự động kiểm tra phiên bản mới nhất từ <strong>GitHub Releases</strong>. Khi có phiên bản mới, ứng dụng sẽ hiển thị thông báo hỗ trợ tải về.</p>
+<h3 id="ong-goi-release-moi-danh-cho-developer">Đóng gói Release mới (Dành cho Developer)</h3>
+<p>Khi muốn phát hành phiên bản mới:<br />
+1. Chạy script release:<br />
+<code>bash
+   py release.py</code><br />
+2. Nhập số phiên bản mới (ví dụ: <code>1.0.6</code>).<br />
+3. Script sẽ tự động cập nhật <code>CURRENT_VERSION</code> trong <a href="file:///d:/ldplay/autokvtm/config.py">config.py</a>, tạo git tag và push lên GitHub. GitHub Actions sẽ tự động build và upload file zip release.</p>
+<hr />
+<h2 id="8-xu-ly-su-co-thuong-gap-troubleshooting">8. Xử lý sự cố thường gặp (Troubleshooting)</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Sự cố</th>
+<th style="text-align: left;">Nguyên nhân</th>
+<th style="text-align: left;">Cách khắc phục</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Không tìm thấy thiết bị ADB</strong></td>
+<td style="text-align: left;">Chưa bật ADB Debugging hoặc Server ADB bị đơ.</td>
+<td style="text-align: left;">Bật ADB trong LDPlayer; Bấm nút <strong>"Quét thiết bị"</strong> lại hoặc gõ <code>adb kill-server</code> rồi <code>adb start-server</code> trong CMD.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Auto click trượt / Không nhận diện được cây</strong></td>
+<td style="text-align: left;">Độ phân giải LDPlayer không chuẩn hoặc màn hình bị che khuất.</td>
+<td style="text-align: left;">Chỉnh độ phân giải LDPlayer về chuẩn <strong>800x800 (DPI 240)</strong>. Đảm bảo giao diện game không bị rương quà che.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Lỗi thiếu thư viện Python</strong></td>
+<td style="text-align: left;">Chưa cài đủ gói dependency.</td>
+<td style="text-align: left;">Chạy lệnh <code>py -m pip install -r install.txt</code> hoặc cài từng gói theo <a href="#2-cài-đặt-môi-trường-python--thư-viện">Mục 2</a>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Game văng ra ngoài màn hình chính</strong></td>
+<td style="text-align: left;">App KVTM bị crash.</td>
+<td style="text-align: left;">Bật tùy chọn <code>AUTO_OPEN_GAME_AFTER_LD_START = True</code> trong <code>config.py</code> để Auto tự khởi động lại game.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>Tài liệu hướng dẫn sử dụng Auto Khu Vườn Trên Mây - Phiên bản 1.0+</em></p>
+</body>
+</html>
