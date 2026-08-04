@@ -11,8 +11,24 @@ import pytesseract
 # from config import DEVICE_SERIAL
 from PIL import Image, ImageEnhance, ImageFilter
 logger = logging.getLogger(__name__)
+
+def get_resource_path(path: str) -> str:
+    """Lấy đường dẫn tài nguyên (hỗ trợ đọc cả file trên ổ đĩa và file đóng gói trong .exe)."""
+    if not path:
+        return path
+    if os.path.exists(path):
+        return path
+    import sys
+    if getattr(sys, 'frozen', False):
+        base_dir = getattr(sys, '_MEIPASS', os.path.abspath('.'))
+        bundled_path = os.path.join(base_dir, path)
+        if os.path.exists(bundled_path):
+            return bundled_path
+    return path
+
 # adb = ADBController(serial=DEVICE_SERIAL)  
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+tesseract_bin = os.path.join("tools", "tesseract", "tesseract.exe")
+pytesseract.pytesseract.tesseract_cmd = get_resource_path(tesseract_bin)
 class ImageProcessor:
     def __init__(self, cache_dir: str = "cache/images"):
         self.cache_dir = cache_dir
@@ -410,7 +426,8 @@ class ImageProcessor:
             # Cách an toàn: không thể tự detect, nên document rõ hoặc thêm param
             pass  # Giữ nguyên, nhưng cần caller đảm bảo BGR
 
-        template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
+        template_path = get_resource_path(str(template_path))
+        template = cv2.imread(template_path, cv2.IMREAD_UNCHANGED)
         if template is None:
             logger.warning(f"Không tải được ảnh mẫu: {template_path}")
             return None
