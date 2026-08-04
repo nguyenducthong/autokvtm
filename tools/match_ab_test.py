@@ -8,8 +8,8 @@ SCREENSHOTS_DIR = ROOT / 'assets' / 'screenshots'
 DEBUG_DIR = ROOT / 'debug' / 'ab_tests'
 TEMPLATES = [
     ROOT / 'assets' / 'items' / 'num' / '1.png',
-    ROOT / 'assets' / 'items' / 'thu_hoach.png',
-    ROOT / 'assets' / 'items' / 'check_xuong_1.png',
+    ROOT / 'assets' / 'items' / 'core_thu_hoach.png',
+    ROOT / 'assets' / 'items' / 'core_check_xuong_1.png',
     ROOT / 'assets' / 'items' / 'hong_say.png',
     ROOT / 'assets' / 'items' / 'cay' / 'ripe' / 'tao.png',
 ]

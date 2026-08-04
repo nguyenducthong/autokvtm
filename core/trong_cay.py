@@ -131,7 +131,7 @@ def tim_cay_trong(template_path, template_path_default=None, count=1,
 
     set_state(PlayerState.TIM_CAY)
     tpl_name = os.path.basename(template_path).replace(".png", "")
-    next_gieo = "assets/items/next_gieo.png"
+    next_gieo = "assets/items/core_next_gieo.png"
 
     if count > 5:
         logger.info(f"Đã thử tìm cây {count} lần, dừng tìm kiếm")
@@ -201,19 +201,19 @@ def check_trong_cay(threshold=None, is_retry = False, tap = None):
         return "chua_chin"
 
     # Tìm tất cả trên cùng 1 screenshot (không retry, không chụp lại)
-    pos_TH = img.find_template_color("assets/items/thu_hoach.png", threshold=th, screen_img=screen)
+    pos_TH = img.find_template_color("assets/items/core_thu_hoach.png", threshold=th, screen_img=screen)
     if pos_TH:
         logger.info("Tìm được giỏ hàng (thu_hoach)")
         return "gio_hang"
-    pos_TH = img.find_template_color("assets/items/thu_hoach_1.png", threshold=th, screen_img=screen)
+    pos_TH = img.find_template_color("assets/items/core_thu_hoach_1.png", threshold=th, screen_img=screen)
     if pos_TH:
         logger.info("Tìm được giỏ hàng (thu_hoach_1)")
         return "gio_hang"
-    pos = img.find_template_color("assets/items/next_gieo.png", threshold=th, screen_img=screen)
+    pos = img.find_template_color("assets/items/core_next_gieo.png", threshold=th, screen_img=screen)
     if pos:
         logger.info("Tìm được nút next gieo")
         return "next_gieo"
-    pos_cay_chin = img.find_template_color("assets/items/cay_chua_chin.png", threshold=th, screen_img=screen)
+    pos_cay_chin = img.find_template_color("assets/items/core_cay_chua_chin.png", threshold=th, screen_img=screen)
     if pos_cay_chin:
         logger.info("Tìm được cây chưa chín")
         return "chua_chin"
@@ -252,14 +252,14 @@ def xu_ly_may(config_may: dict, threshold: float = THRESHOLD, is_sua_may: bool =
         screen = adb.screenshot_full()
         if screen is None:
             continue
-        pos_slot = img.find_template_color("assets/items/sanxuat_vp.png", threshold=threshold, screen_img=screen)
+        pos_slot = img.find_template_color("assets/items/core_sanxuat_vp.png", threshold=threshold, screen_img=screen)
         if pos_slot:
             logger.info(f"Máy rảnh sau {i+1} lần tap")
             found_next_sanxuat = True
             break
 
         logger.info(f"Máy chưa rảnh, tap lần {i+1}")
-        pos_next_sx = img.find_template_color("assets/items/next_sanxuat.png", threshold=threshold, screen_img=screen)
+        pos_next_sx = img.find_template_color("assets/items/core_next_sanxuat.png", threshold=threshold, screen_img=screen)
         if pos_next_sx:
             logger.info(f"Tìm thấy next_sanxuat sau {i+1} lần tap")
             found_next_sanxuat = True
@@ -291,7 +291,7 @@ def xu_ly_may(config_may: dict, threshold: float = THRESHOLD, is_sua_may: bool =
 
         # Check hết nguyên liệu — 1 screenshot
         screen = adb.screenshot_full()
-        pos_nut_x = img.find_template_color("assets/items/nut_x.png",
+        pos_nut_x = img.find_template_color("assets/items/core_nut_x.png",
                                             threshold=threshold, screen_img=screen) if screen is not None else None
         if pos_nut_x:
             logger.info("Máy hết nguyên liệu, đóng máy")
@@ -331,7 +331,7 @@ def tim_vp(template_path, count=1, threshold: float=THRESHOLD, region=None):
 
     logger.info(f"Không tìm được {template_path} lần {count}")
     # Tìm nút next trên cùng screenshot
-    # next_sanxuat = "assets/items/next_sanxuat.png"
+    # next_sanxuat = "assets/items/core_next_sanxuat.png"
     # pos_next = img.find_template_color(next_sanxuat, threshold=threshold, screen_img=screen)
     # if pos_next:
     #     x, y = pos_next
@@ -350,7 +350,7 @@ def sua_may(threshold: float = THRESHOLD):
     
     adb = _get_adb()
     set_state(PlayerState.SUA_MAY)
-    pos_sua = find_image_v2("assets/items/sua_may.png", True, threshold=threshold,
+    pos_sua = find_image_v2("assets/items/core_sua_may.png", True, threshold=threshold,
                             max_retry=0)
     if pos_sua:
         x_sua, y_sua = pos_sua
@@ -362,7 +362,7 @@ def sua_may(threshold: float = THRESHOLD):
             _sleep(TIME_SLEEP_SHORT)
             logger.info("Sửa máy thành công")
         else:    
-            pos_vang = find_image_v2("assets/items/sua_may_vang.png", True, threshold=threshold,
+            pos_vang = find_image_v2("assets/items/core_sua_may_vang.png", True, threshold=threshold,
                                     max_retry=0)
             if pos_vang:
                 x_vang, y_vang = pos_vang

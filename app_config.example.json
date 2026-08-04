@@ -11,22 +11,22 @@
     {
       "code": "KSK",
       "name": "Kho Sự Kiện",
-      "path_warehouse_not_select": "assets/items/kho_event_0.png",
-      "path_warehouse_select": "assets/items/kho_event.png",
+      "path_warehouse_not_select": "assets/items/core_kho_event_0.png",
+      "path_warehouse_select": "assets/items/core_kho_event.png",
       "position": [361, 530]
     },
     {
       "code": "KNS",
       "name": "Kho Nông Sản",
       "path_warehouse_not_select": "assets/items/kho_nong_san_0.png",
-      "path_warehouse_select": "assets/items/kho_nong_san.png",
+      "path_warehouse_select": "assets/items/core_kho_nong_san.png",
       "position": [361, 296]
     },
     {
       "code": "KTP",
       "name": "Kho Thành Phẩm",
-      "path_warehouse_not_select": "assets/items/kho_thanh_pham_0.png",
-      "path_warehouse_select": "assets/items/kho_thanh_pham.png",
+      "path_warehouse_not_select": "assets/items/core_kho_thanh_pham_0.png",
+      "path_warehouse_select": "assets/items/core_kho_thanh_pham.png",
       "position": [361, 353]
     }
   ],

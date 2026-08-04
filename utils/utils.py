@@ -356,7 +356,7 @@ def xuong_nha(duration: int=50, sleep: float=0.7, threshold=None):
     adb.scroll_up(450, 500, 70, duration)
     adb.scroll_down(500, 450, 70, duration)
     _sleep(sleep)
-    pos = find_image_v2("assets/items/check_xuong_1.png", True, threshold=th)
+    pos = find_image_v2("assets/items/core_check_xuong_1.png", True, threshold=th)
     if (pos):
         logger.info("Tìm được xuống nhà")
         (x, y) = pos
@@ -524,7 +524,7 @@ def recover_from_state():
                    PlayerState.CHON_VP, PlayerState.DAT_BAN):
         # Đang trong flow bán hàng → thử đóng popup bằng nút X
         logger.info(f"[RECOVERY] Đang trong flow bán hàng ({state.name}), thử đóng popup...")
-        pos = find_image_v2("assets/items/nut_x.png", True, threshold=0.85)
+        pos = find_image_v2("assets/items/core_nut_x.png", True, threshold=0.85)
         if pos:
             x, y = pos
             adb.tap(x, y)
@@ -543,7 +543,7 @@ def recover_from_state():
     elif state in (PlayerState.MO_MAY, PlayerState.SAN_XUAT, PlayerState.SUA_MAY):
         # Đang sản xuất → thử đóng máy
         logger.info(f"[RECOVERY] Đang trong flow sản xuất ({state.name}), thử đóng popup...")
-        pos = find_image_v2("assets/items/nut_x.png", True, threshold=0.85)
+        pos = find_image_v2("assets/items/core_nut_x.png", True, threshold=0.85)
         if pos:
             x, y = pos
             adb.tap(x, y)

@@ -14,11 +14,11 @@ from utils.utils import tim_may_v2, xuong_nha
 logger = logging.getLogger(__name__)
 img = ImageProcessor()
 
-CHEST_TEMPLATE = "assets/items/chest.png"
-RUONG_GO_TEMPLATE = "assets/items/ruong_go.png"
-OPEN_CHEST_TEMPLATE = "assets/items/open_chest.png"
-FULL_KHO_TEMPLATE = "assets/items/full_kho.png"
-CHAM_VAO_DE_MO_TEMPLATE = "assets/items/ruong_cham_de_nhan_qua.png"
+CHEST_TEMPLATE = "assets/items/core_chest.png"
+RUONG_GO_TEMPLATE = "assets/items/core_ruong_go.png"
+OPEN_CHEST_TEMPLATE = "assets/items/core_open_chest.png"
+FULL_KHO_TEMPLATE = "assets/items/core_full_kho.png"
+CHAM_VAO_DE_MO_TEMPLATE = "assets/items/core_ruong_cham_de_nhan_qua.png"
 RUONG_INTERVAL_SECONDS = 20 * 60
 
 _day_kho_flags = {}

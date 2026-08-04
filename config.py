@@ -57,50 +57,50 @@ WAREHOUSE_ITEM_KSK = [
         "code": "KSK_KEM",
         "name": "Kem",
         "path": "assets/items/vpsk_kem.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+        "path_warehouse_not_select": "assets/items/core_kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/core_kho_event.png" #đường dẫn kho khi đã chọn
     },
     {
         "code": "KSK_KINH",
         "name": "Kính",
         "path": "assets/items/vpsk_kinh.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+        "path_warehouse_not_select": "assets/items/core_kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/core_kho_event.png" #đường dẫn kho khi đã chọn
     },
     {
         "code": "KSK_DUA",
         "name": "Dừa",
         "path": "assets/items/vpsk_dua.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+        "path_warehouse_not_select": "assets/items/core_kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/core_kho_event.png" #đường dẫn kho khi đã chọn
     },
     {
         "code": "KSK_BO",
         "name": "Bò",
         "path": "assets/items/vpsk_bo.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+        "path_warehouse_not_select": "assets/items/core_kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/core_kho_event.png" #đường dẫn kho khi đã chọn
     },
     {
         "code": "KSK_CUU",
         "name": "Cừu",
         "path": "assets/items/vpsk_cuu.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+        "path_warehouse_not_select": "assets/items/core_kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/core_kho_event.png" #đường dẫn kho khi đã chọn
     },
     {
         "code": "KSK_GA",
         "name": "Gà",
         "path": "assets/items/vpsk_ga.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+        "path_warehouse_not_select": "assets/items/core_kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/core_kho_event.png" #đường dẫn kho khi đã chọn
     },
     {
         "code": "KSK_HEO",
         "name": "Heo",
         "path": "assets/items/vpsk_heo.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_not_select": "assets/items/kho_event_0.png", #đường dẫn kho khi chưa chọn
-        "path_warehouse_select": "assets/items/kho_event.png" #đường dẫn kho khi đã chọn
+        "path_warehouse_not_select": "assets/items/core_kho_event_0.png", #đường dẫn kho khi chưa chọn
+        "path_warehouse_select": "assets/items/core_kho_event.png" #đường dẫn kho khi đã chọn
     }
 ]
 
@@ -261,22 +261,22 @@ CONFIG_LOAI_KHO = [
     {
         "code": "KSK",
         "name": "Kho Su Kien",
-        "path_warehouse_not_select": "assets/items/kho_event_0.png",
-        "path_warehouse_select": "assets/items/kho_event.png",
+        "path_warehouse_not_select": "assets/items/core_kho_event_0.png",
+        "path_warehouse_select": "assets/items/core_kho_event.png",
         "position": (361, 530)
     },
     {
         "code": "KNS",
         "name": "Kho Nong San",
         "path_warehouse_not_select": "assets/items/kho_nong_san_0.png",
-        "path_warehouse_select": "assets/items/kho_nong_san.png",
+        "path_warehouse_select": "assets/items/core_kho_nong_san.png",
         "position": (361, 296)
     },
     {
         "code": "KTP",
         "name": "Kho Thanh Pham",
-        "path_warehouse_not_select": "assets/items/kho_thanh_pham_0.png",
-        "path_warehouse_select": "assets/items/kho_thanh_pham.png",
+        "path_warehouse_not_select": "assets/items/core_kho_thanh_pham_0.png",
+        "path_warehouse_select": "assets/items/core_kho_thanh_pham.png",
         "position": (361, 353)
     }
 ]
@@ -290,7 +290,7 @@ CONFIG_BAN_DO = {
     "check_stock": False, # true mới đọc số lượng tồn kho để lập kế hoạch bán
     # New: lists of templates (thứ tự sẽ được thử từng cái)
     "qc_templates": ["assets/items/cua_hang_qc.png"],
-    "xoa_kc_templates": ["assets/items/xoa_vp_kc.png"],
+    "xoa_kc_templates": ["assets/items/core_xoa_vp_kc.png"],
     "dsvp_bo_qua": [],
     "tom_vp": "",
     "tom_kho": "KTP"

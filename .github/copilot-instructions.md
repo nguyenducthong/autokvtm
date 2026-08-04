@@ -39,7 +39,7 @@ img = adb.screenshot_full()
 - Find harvest basket template:
 ```
 det = ImageDetector()
-pos = det.find_template(img, "assets/items/thu_hoach.png")
+pos = det.find_template(img, "assets/items/core_thu_hoach.png")
 if pos: x,y = pos
 ```
 - Use automation flows: create bot with `create_farm_bot(adb, smart=True)` from `core/auto_farm.py` and call `harvest_all()` / `plant_all()`.

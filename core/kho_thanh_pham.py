@@ -103,13 +103,13 @@ def _open_kho_thanh_pham(adb, stop_event=None):
 
 def list_kho_thanh_pham_templates():
     excluded = {
-        "kho_event.png",
-        "kho_event_0.png",
-        "kho_nong_san.png",
+        "core_kho_event.png",
+        "core_kho_event_0.png",
+        "core_kho_nong_san.png",
         "kho_nong_san_0.png",
-        "kho_thanh_pham.png",
-        "kho_thanh_pham_0.png",
-        "kho_vat_dung.png",
+        "core_kho_thanh_pham.png",
+        "core_kho_thanh_pham_0.png",
+        "core_kho_vat_dung.png",
     }
     paths = []
     for path in glob.glob(os.path.join("assets", "items", "kho_*.png")):

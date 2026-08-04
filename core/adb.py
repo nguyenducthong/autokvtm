@@ -317,7 +317,6 @@ class ADBController:
         return None
     
   
-# core/adb.py
     def screenshot_scrcpy(save_path="cache/screen.png"):
         """Dùng scrcpy + screencap → ảnh sạch 100%"""
         os.system("adb shell screencap -p /sdcard/screen.png")

@@ -9,10 +9,10 @@ from utils.daily_stats import record_daily_stat
 logger = logging.getLogger(__name__)
 img = ImageProcessor()
 
-GIAO_CU_CO_DON = "assets/items/giao_cu_co_don.png"
-GIAO_CU_GIAO_DON = "assets/items/giao_cu_giao_don.png"
-GIAO_CU_DON_HANG_OFF = "assets/items/giao_cu_don_hang_off.png"
-GIAO_CU_BACK = "assets/items/back.png"
+GIAO_CU_CO_DON = "assets/items/core_giao_cu_co_don.png"
+GIAO_CU_GIAO_DON = "assets/items/core_giao_cu_giao_don.png"
+GIAO_CU_DON_HANG_OFF = "assets/items/core_giao_cu_don_hang_off.png"
+GIAO_CU_BACK = "assets/items/core_back.png"
 GIAO_CU_DONG_Y = "assets/items/giao_cu_dong_y.png"
 GIAO_CU_INTERVAL_SECONDS = 31 * 60
 

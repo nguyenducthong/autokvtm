@@ -39,7 +39,7 @@ def thuhoach(points: list, tap, duration_ms: int = 800, threshold: float = None)
 
 def tim_gio_thu_hoach(threshold: float = None):
     th = threshold or THRESHOLD
-    pos = find_image_v2(template_path="assets/items/thu_hoach.png", screen=True,
+    pos = find_image_v2(template_path="assets/items/core_thu_hoach.png", screen=True,
                         threshold=th, max_retry=0)
     if pos:
         logger.info(f"Tìm được giỏ tại {pos}")

@@ -21,13 +21,13 @@ from utils.utils import tim_may_v2, xuong_nha
 logger = logging.getLogger(__name__)
 img = ImageProcessor()
 
-TOM_TEMPLATE = "assets/items/tom.png"
-TIM_HANG_TEMPLATE = "assets/items/tim_hang.png"
-TOM_THAY_HANG_TEMPLATE = "assets/items/tom_thay_hang.png"
-QUAY_ITEMS_TOM_TEMPLATE = "assets/items/quay_items_tom.png"
-NOT_BUY_TOM_TEMPLATE = "assets/items/not_buy_tom.png"
-KHONG_MUA_DAU_TEMPLATE = "assets/items/khong_mua_dau.png"
-DAY_DI_MA_TEMPLATE = "assets/items/day_di_ma.png"
+TOM_TEMPLATE = "assets/items/core_tom.png"
+TIM_HANG_TEMPLATE = "assets/items/core_tim_hang.png"
+TOM_THAY_HANG_TEMPLATE = "assets/items/core_tom_thay_hang.png"
+QUAY_ITEMS_TOM_TEMPLATE = "assets/items/core_quay_items_tom.png"
+NOT_BUY_TOM_TEMPLATE = "assets/items/core_not_buy_tom.png"
+KHONG_MUA_DAU_TEMPLATE = "assets/items/core_khong_mua_dau.png"
+DAY_DI_MA_TEMPLATE = "assets/items/core_day_di_ma.png"
 
 TOM_ROW_0_REGION = (82, 708, 205, 89)
 TOM_KHO_REGION = (7, 259, 469, 450)

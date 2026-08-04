@@ -56,7 +56,7 @@ class ImageDetector:
 
         return None
 
-    def detect_basket(self, screenshot: np.ndarray, basket_template_path: str = "assets/items/thu_hoach.png") -> Optional[Tuple[int, int]]:
+    def detect_basket(self, screenshot: np.ndarray, basket_template_path: str = "assets/items/core_thu_hoach.png") -> Optional[Tuple[int, int]]:
         """
         Phát hiện giỏ thu hoạch
 
@@ -92,7 +92,7 @@ class ImageDetector:
         return None
 
     def analyze_screen(self, screenshot: np.ndarray,
-                      basket_template: str = "assets/items/thu_hoach.png",
+                      basket_template: str = "assets/items/core_thu_hoach.png",
                       plant_templates: List[str] = None) -> dict:
         """
         Phân tích màn hình để quyết định hành động

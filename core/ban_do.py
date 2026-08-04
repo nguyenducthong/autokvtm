@@ -171,7 +171,7 @@ def _find_match(adb, template_path, threshold=THRESHOLD):
 # ================================================================
 # HELPER: Đóng popup bằng nút X (an toàn hơn press_key Back)
 # ================================================================
-NUT_X_PATH = "assets/items/nut_x.png"
+NUT_X_PATH = "assets/items/core_nut_x.png"
 
 
 def _dong_popup(adb):
@@ -249,7 +249,7 @@ def check_cua_hang(adb):
         return False
 
     # Kiểm tra đã ở cửa hàng chưa
-    pos, _ = _find(adb, "assets/items/quay_hang_on.png", step_name="check_cua_hang")
+    pos, _ = _find(adb, "assets/items/core_quay_hang_on.png", step_name="check_cua_hang")
     if pos:
         logger.info("Đã ở cửa hàng")
         set_state(PlayerState.CUA_HANG)
@@ -271,7 +271,7 @@ def check_cua_hang(adb):
     _sleep(CLICK_DELAY)
 
     # Kiểm tra lại
-    pos, _ = _find(adb, "assets/items/quay_hang_on.png", step_name="check_cua_hang_retry1")
+    pos, _ = _find(adb, "assets/items/core_quay_hang_on.png", step_name="check_cua_hang_retry1")
     if pos:
         logger.info("Đã mở cửa hàng thành công")
         set_state(PlayerState.CUA_HANG)
@@ -283,7 +283,7 @@ def check_cua_hang(adb):
     adb.tap(x, y)
     _sleep(CLICK_DELAY)
 
-    pos, _ = _find(adb, "assets/items/quay_hang_on.png", step_name="check_cua_hang_retry2")
+    pos, _ = _find(adb, "assets/items/core_quay_hang_on.png", step_name="check_cua_hang_retry2")
     if pos:
         logger.info("Đã mở cửa hàng thành công (retry)")
         set_state(PlayerState.CUA_HANG)
@@ -313,7 +313,7 @@ def _nhat_vang(adb, screen):
     while True:
         if _should_stop():
             return screen
-        pos = _find_on_screen(screen, "assets/items/vang3.png", threshold=0.9,
+        pos = _find_on_screen(screen, "assets/items/core_vang3.png", threshold=0.9,
                               step_name="tim_o_vang")
         if not pos:
             break
@@ -353,14 +353,14 @@ def tim_o_ban(adb, max_swipe=SWIPE_LEFT_MAX):
             return None
 
         # Tim o vang truoc; co o vang thi tra toa do luon.
-        pos_vang = _find_on_screen(screen, "assets/items/vang3.png", threshold=0.9,
+        pos_vang = _find_on_screen(screen, "assets/items/core_vang3.png", threshold=0.9,
                                    step_name=f"tim_o_vang_swipe{swipe_i}")
         if pos_vang:
             logger.info(f"Tim thay o vang tai {pos_vang} (sau {swipe_i} lan keo)")
             return pos_vang
 
         # Tìm ô trống
-        pos_trong = _find_on_screen(screen, "assets/items/o_trong.png", threshold=0.9,
+        pos_trong = _find_on_screen(screen, "assets/items/core_o_trong.png", threshold=0.9,
                                     step_name=f"tim_o_trong_swipe{swipe_i}")
         if pos_trong:
             logger.info(f"Tìm thấy ô trống tại {pos_trong} (sau {swipe_i} lần kéo)")
@@ -1025,7 +1025,7 @@ def dat_ban(adb, bat_qc=True, xoa_kc=False):
     # Xé kim cương nếu config bật
     if xoa_kc:
         screen = adb.screenshot_full()
-        pos_kc = _find_btn(adb, screen, "assets/items/xoa_vp_kc.png",
+        pos_kc = _find_btn(adb, screen, "assets/items/core_xoa_vp_kc.png",
                             "xe_kc", threshold=0.85, step_name="dat_ban_xe_kc")
         if pos_kc:
             x, y = pos_kc
@@ -1154,7 +1154,7 @@ def _xu_ly_sau_dat_ban(adb):
     _dong_popup(adb)
 
     # Kiểm tra nếu vẫn đang ở cửa hàng → về nhà luôn
-    pos, _ = _find(adb, "assets/items/quay_hang_on.png", step_name="post_ban_check_cua_hang")
+    pos, _ = _find(adb, "assets/items/core_quay_hang_on.png", step_name="post_ban_check_cua_hang")
     if pos:
         logger.info("Vẫn đang ở cửa hàng sau khi đặt bán, về nhà để reset trạng thái...")
         # Tap vào vị trí cửa hàng mặc định
@@ -1181,7 +1181,7 @@ def _xu_ly_dat_qc(adb, data_vps, threshold, color_threshold):
             logger.info(f"Tìm thấy VP '{name}' đã đặt bán tại {pos}, click để bật QC")
             adb.tap(x, y, 0.1)
             _sleep(0.3)
-            pos_qc, _ = _find(adb, "assets/items/dat_quang_cao.png", threshold=0.7,
+            pos_qc, _ = _find(adb, "assets/items/core_dat_quang_cao.png", threshold=0.7,
                             step_name=f"dat_qc_vp_{name}")
             if pos_qc:
                 x_qc, y_qc = pos_qc
@@ -1217,14 +1217,14 @@ def _xu_ly_xe_kc(adb , data_vps, threshold, color_threshold):
             logger.info(f"Tìm thấy VP '{name}' đã đặt bán tại {pos}, click để bật xé KC")
             adb.tap(x, y, 0.1)
             _sleep(0.3)
-            pos_kc, _ = _find(adb, "assets/items/xoa_vp_kc.png", threshold=0.7,
+            pos_kc, _ = _find(adb, "assets/items/core_xoa_vp_kc.png", threshold=0.7,
                             step_name="xe_kc_after_click_vp")
             if pos_kc:
                 x_kc, y_kc = pos_kc
                 logger.info(f"Tìm thấy nút xé KC tại ({x_kc}, {y_kc}), click để xé")
                 adb.tap(x_kc, y_kc, 0.1)
                 _sleep(0.3)
-                pos_dong_y, _ = _find(adb, "assets/items/dong_y.png", threshold=0.7,
+                pos_dong_y, _ = _find(adb, "assets/items/core_dong_y.png", threshold=0.7,
                             step_name="xe_kc_xac_nhan")
                 if pos_dong_y:
                     x_dy, y_dy = pos_dong_y

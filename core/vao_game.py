@@ -9,10 +9,10 @@ from core.image import ImageProcessor
 logger = logging.getLogger(__name__)
 img = ImageProcessor()
 
-TAI_KHOAN_TEMPLATE = "assets/items/tai_khoan.png"
-TAI_KHOAN_ON_TEMPLATE = "assets/items/tai_khoan_on.png"
-ICON_GAME_TEMPLATE = "assets/items/icon_game.png"
-CHECK_LOG_GAME_TEMPLATE = "assets/items/check_log_game.png"
+TAI_KHOAN_TEMPLATE = "assets/items/core_tai_khoan.png"
+TAI_KHOAN_ON_TEMPLATE = "assets/items/core_tai_khoan_on.png"
+ICON_GAME_TEMPLATE = "assets/items/core_icon_game.png"
+CHECK_LOG_GAME_TEMPLATE = "assets/items/core_check_log_game.png"
 
 def doi_thiet_bi_adb(serial: str, timeout: int = 75, interval: float = 2.0) -> bool:
     """Doi LDPlayer xuat hien trong adb devices."""

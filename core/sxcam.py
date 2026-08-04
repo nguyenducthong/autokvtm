@@ -62,7 +62,7 @@ def run_sxcam(adb, serial: str = None, force: bool = False, stop_event=None) -> 
         return False
 
     # 2. Ở tầng 0 tìm ảnh sxcam_soi.png -> tìm được tab vào. -> đợi 2-3s
-    pos_soi = _tim_anh(adb, "assets/items/sxcam_soi.png", threshold=0.85)
+    pos_soi = _tim_anh(adb, "assets/items/core_sxcam_soi.png", threshold=0.85)
     if not pos_soi:
         logger.warning("[SXCAM] Không tìm thấy sxcam_soi.png ở tầng 0")
         return False
@@ -75,7 +75,7 @@ def run_sxcam(adb, serial: str = None, force: bool = False, stop_event=None) -> 
         return False
 
     # 3. kiểm tra có sxcam_log.png thì nhấn tap_thoat_mac_dinh. -> kéo sang trái tìm hình ảnh sxcam_sx.png ->tab vào.
-    pos_log = _tim_anh(adb, "assets/items/sxcam_log.png", threshold=0.85)
+    pos_log = _tim_anh(adb, "assets/items/core_sxcam_log.png", threshold=0.85)
     if pos_log:
         logger.info("[SXCAM] Phát hiện sxcam_log.png, nhấn thoát mặc định")
         _thoat_mac_dinh(adb, stop_event)
@@ -86,7 +86,7 @@ def run_sxcam(adb, serial: str = None, force: bool = False, stop_event=None) -> 
     for attempt in range(5):
         if _should_stop(stop_event):
             return False
-        pos_sx = _tim_anh(adb, "assets/items/sxcam_sx.png", threshold=0.8)
+        pos_sx = _tim_anh(adb, "assets/items/core_sxcam_sx.png", threshold=0.8)
         if pos_sx:
             logger.info("[SXCAM] Tìm thấy sxcam_sx.png tại %s, tap vào", pos_sx)
             adb.tap(*pos_sx)
@@ -108,7 +108,7 @@ def run_sxcam(adb, serial: str = None, force: bool = False, stop_event=None) -> 
         return False
 
     # 4. tìm ảnh sxcam_luami.png thì kéo vị trí đó đến index_sxcam.
-    pos_luami = _tim_anh(adb, "assets/items/sxcam_luami.png", threshold=0.8)
+    pos_luami = _tim_anh(adb, "assets/items/core_sxcam_luami.png", threshold=0.8)
     if pos_luami:
         logger.info("[SXCAM] Tìm thấy sxcam_luami.png tại %s, kéo đến INDEX_SXCAM %s", pos_luami, INDEX_SXCAM)
         x_lm, y_lm = pos_luami
@@ -129,7 +129,7 @@ def run_sxcam(adb, serial: str = None, force: bool = False, stop_event=None) -> 
         return False
     _sleep(1.5, stop_event)
 
-    pos_venha = _tim_anh(adb, "assets/items/sxcam_venha.png", threshold=0.8)
+    pos_venha = _tim_anh(adb, "assets/items/core_sxcam_venha.png", threshold=0.8)
     if pos_venha:
         logger.info("[SXCAM] Tìm thấy sxcam_venha.png, click để về nhà")
         adb.tap(*pos_venha)
