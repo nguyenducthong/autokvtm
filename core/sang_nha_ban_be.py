@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from core.image import ImageProcessor
+from core.image import ImageProcessor, get_resource_path
 from utils.daily_stats import record_daily_stat
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,8 @@ def _should_stop(stop_event=None):
     return stop_event is not None and stop_event.is_set()
 
 def _tim_anh(adb, template_path: str, threshold: float = 0.82):
-    if not os.path.exists(template_path):
+    resolved_path = get_resource_path(template_path)
+    if not os.path.exists(resolved_path):
         logger.warning("[SANG BẠN BÈ] Thiếu ảnh mẫu: %s", template_path)
         return None
     screen = adb.screenshot_full()

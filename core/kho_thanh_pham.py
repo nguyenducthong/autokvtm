@@ -102,22 +102,37 @@ def _open_kho_thanh_pham(adb, stop_event=None):
 
 
 def list_kho_thanh_pham_templates():
+    import sys
     excluded = {
         "core_kho_event.png",
         "core_kho_event_0.png",
         "core_kho_nong_san.png",
-        "kho_nong_san_0.png",
+        "core_kho_nong_san_0.png",
         "core_kho_thanh_pham.png",
         "core_kho_thanh_pham_0.png",
         "core_kho_vat_dung.png",
     }
-    paths = []
-    for path in glob.glob(os.path.join("assets", "items", "kho_*.png")):
+    
+    base_dir = os.path.abspath('.')
+    is_frozen = getattr(sys, 'frozen', False)
+    
+    # 1. Thử tìm ở thư mục ngoài trước
+    search_pattern = os.path.join(base_dir, "assets", "items", "kho_*.png")
+    paths = glob.glob(search_pattern)
+    
+    # 2. Nếu không có ở ngoài và đang chạy đóng gói .exe, tìm trong thư mục tạm của PyInstaller
+    if not paths and is_frozen:
+        mei_dir = getattr(sys, '_MEIPASS', base_dir)
+        search_pattern_mei = os.path.join(mei_dir, "assets", "items", "kho_*.png")
+        paths = glob.glob(search_pattern_mei)
+
+    filtered_paths = []
+    for path in paths:
         name = os.path.basename(path)
         if name in excluded or name.endswith("_0.png"):
             continue
-        paths.append(path)
-    return sorted(paths, key=lambda p: os.path.basename(p))
+        filtered_paths.append(path)
+    return sorted(filtered_paths, key=lambda p: os.path.basename(p))
 
 
 def _scan_visible_page(adb, templates, threshold=0.82, color_threshold=0.6):

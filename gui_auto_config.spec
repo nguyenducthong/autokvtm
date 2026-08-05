@@ -5,10 +5,7 @@ a = Analysis(
     ['gui_auto_config.py'],
     pathex=[],
     binaries=[],
-    datas=[
-        ('assets', 'assets'),
-        ('tools/tesseract', 'tools/tesseract'),
-    ],
+    datas=[('assets', 'assets'), ('tools/tesseract', 'tools/tesseract')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

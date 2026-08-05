@@ -3,7 +3,7 @@ import os
 import time
 
 from config import INDEX_MAC_DINH_GIAO_CU, INDEX_THOAT_SAN_XUAT_MAC_DINH, INDEX_XOA_DON_GIAO_CU
-from core.image import ImageProcessor
+from core.image import ImageProcessor, get_resource_path
 from utils.daily_stats import record_daily_stat
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,8 @@ def _should_stop(stop_event=None):
 
 
 def _tim_anh(adb, template_path: str, threshold: float = 0.82):
-    if not os.path.exists(template_path):
+    resolved_path = get_resource_path(template_path)
+    if not os.path.exists(resolved_path):
         logger.warning("[GIAO CÚ] Thiếu ảnh mẫu: %s", template_path)
         return None
     screen = adb.screenshot_full()

@@ -14,7 +14,7 @@ from config import (
     INDEX_TOM_O_MUA,
     REGION_TOM_O_MUA,
 )
-from core.image import ImageProcessor
+from core.image import ImageProcessor, get_resource_path
 from utils.daily_stats import record_daily_stat
 from utils.utils import tim_may_v2, xuong_nha
 
@@ -56,7 +56,8 @@ def _normalize_template_path(path: str) -> str:
 
 def _tim_anh(adb, template_path: str, threshold: float = 0.82, region=None):
     template_path = _normalize_template_path(template_path)
-    if not template_path or not os.path.exists(template_path):
+    resolved_path = get_resource_path(template_path) if template_path else ""
+    if not template_path or not os.path.exists(resolved_path):
         logger.warning("[GIAO TÔM] Thiếu ảnh mẫu: %s", template_path)
         return None
     screen = adb.screenshot_full()
@@ -136,7 +137,8 @@ def _doi_trang_thai_sau_khi_tap_tom(adb, timeout=6, stop_event=None):
 
 def _tim_tat_ca_vi_tri(adb, template_path: str, threshold: float = 0.78, region=None):
     template_path = _normalize_template_path(template_path)
-    if not template_path or not os.path.exists(template_path):
+    resolved_path = get_resource_path(template_path) if template_path else ""
+    if not template_path or not os.path.exists(resolved_path):
         logger.warning("[GIAO TÔM] Thiếu ảnh mẫu: %s", template_path)
         return []
 

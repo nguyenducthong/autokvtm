@@ -9,7 +9,7 @@ import json
 import re
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from .adb import ADBController
-from .image import ImageProcessor
+from .image import ImageProcessor, get_resource_path
 from config import INDEX_CONG_1, INDEX_CUA_HANG_MAC_DINH, INDEX_TAT_QC,INDEX_DAT_BAN
 from utils.utils import (
     _detect_current_row, xuong_nha, xuong_may,
@@ -510,17 +510,20 @@ def _digit_template_paths():
     stock_num_dir = os.path.join("assets", "items", "stock_num")
     for digit in range(10):
         path = os.path.join(stock_num_dir, f"{digit}.png")
-        if os.path.exists(path):
+        resolved = get_resource_path(path)
+        if os.path.exists(resolved):
             paths.append((str(digit), path))
     if paths:
         x_path = os.path.join(stock_num_dir, "x.png")
-        if os.path.exists(x_path):
+        resolved_x = get_resource_path(x_path)
+        if os.path.exists(resolved_x):
             paths.append(("x", x_path))
         return paths
 
     for digit in range(10):
         path = os.path.join("assets", "items", "num", f"{digit}.png")
-        if os.path.exists(path):
+        resolved = get_resource_path(path)
+        if os.path.exists(resolved):
             paths.append((str(digit), path))
     return paths
 

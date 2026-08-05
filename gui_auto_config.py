@@ -4578,14 +4578,47 @@ del "%~f0"
         self._current_tk_img = None
         self._refresh_core_images_list()
 
+    def _get_resource_path(self, path):
+        if not path:
+            return path
+        if os.path.exists(path):
+            return path
+        import sys
+        if getattr(sys, 'frozen', False):
+            base_dir = getattr(sys, '_MEIPASS', os.path.abspath('.'))
+            bundled_path = os.path.join(base_dir, path)
+            if os.path.exists(bundled_path):
+                return bundled_path
+        return path
+
+    def _get_image_status(self, path):
+        import sys
+        is_frozen = getattr(sys, 'frozen', False)
+        if is_frozen:
+            # Check external override
+            if os.path.exists(path):
+                return "Đã đổi"
+            # Check PyInstaller bundle
+            base_dir = getattr(sys, '_MEIPASS', os.path.abspath('.'))
+            bundled_path = os.path.join(base_dir, path)
+            if os.path.exists(bundled_path):
+                return "Mặc định"
+            return "Thiếu"
+        else:
+            # Running from source
+            if os.path.exists(path):
+                if os.path.exists(path + ".bak"):
+                    return "Đã đổi"
+                return "Mặc định"
+            return "Thiếu"
+
     def _refresh_core_images_list(self):
         for item in self.img_tree.get_children():
             self.img_tree.delete(item)
 
         for img in self.core_images:
             path = img["path"]
-            exists = os.path.exists(path)
-            status = "Tồn tại" if exists else "Thiếu"
+            status = self._get_image_status(path)
             self.img_tree.insert("", tk.END, iid=img["id"], values=(img["name"], path, status))
 
     def _on_core_image_select(self, event):
@@ -4612,7 +4645,8 @@ del "%~f0"
         self.detail_desc.config(text=img_info["desc"])
         
         path = img_info["path"]
-        exists = os.path.exists(path)
+        status = self._get_image_status(path)
+        exists = (status != "Thiếu")
 
         self.btn_replace.config(state=tk.NORMAL)
         self.btn_open_folder.config(state=tk.NORMAL)
@@ -4626,7 +4660,8 @@ del "%~f0"
         if exists:
             try:
                 from PIL import Image, ImageTk
-                pil_img = Image.open(path)
+                resolved_path = self._get_resource_path(path)
+                pil_img = Image.open(resolved_path)
                 w, h = pil_img.size
                 self.detail_size.config(text=f"Kích thước gốc: {w}x{h} px")
 
