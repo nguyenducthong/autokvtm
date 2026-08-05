@@ -10,6 +10,7 @@ TASK_LABELS = {
     "giao_tom": "Tôm",
     "mo_ruong": "Rương",
     "giao_cu": "Cú",
+    "sang_ban_be": "Bạn bè",
 }
 _lock = threading.Lock()
 
@@ -107,7 +108,8 @@ def format_daily_counts(serial=None, date=None):
         f"Bán {counts['ban_do']} | "
         f"Tôm {counts['giao_tom']} | "
         f"Rương {counts['mo_ruong']} | "
-        f"Cú {counts['giao_cu']}"
+        f"Cú {counts['giao_cu']} | "
+        f"Bạn {counts['sang_ban_be']}"
     )
 
 

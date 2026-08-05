@@ -97,11 +97,15 @@ def _tap_tai_khoan_den_khi_on(adb: ADBController, timeout: int = 45) -> bool:
 
 def _dong_popup_quang_cao(adb: ADBController, count: int = 5, interval: float = 2.0):
     x, y = INDEX_THOAT_SAN_XUAT_MAC_DINH
+    adb.tap(x, y)
     for i in range(count):
-        logger.info("[VAO_GAME] Dong popup/quang cao %s/%s tai (%s,%s)", i + 1, count, x, y)
-        adb.tap(x, y)
-        time.sleep(interval)
-
+        pos_icon, _ = _doi_anh(adb, CHECK_LOG_GAME_TEMPLATE, timeout=10, interval=2, threshold=0.82)
+        if pos_icon:
+            logger.info("[VAO_GAME] Dong popup/quang cao %s/%s tai (%s,%s)", i + 1, count, x, y)
+            adb.tap(x, y)
+        else:
+            logger.warning("[VAO_GAME] Chua thay log_game.png")
+            break       
 
 def xu_ly_man_hinh_vao_game(adb: ADBController) -> bool:
     """Chon tai khoan, doi vao game va dong popup sau khi app da mo."""

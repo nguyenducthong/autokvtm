@@ -3,21 +3,37 @@
     "loop_tong_mode": "count",
     "loop_tong": 10,
     "loop": 0,
+    "threshold": 0.85,
     "bat_trong_cay": false,
     "bat_may": false,
     "bat_ban_vp": true,
     "bat_thu_hoach": false,
     "bat_mo_ruong": false,
-    "bat_giao_cu": false
+    "bat_giao_cu": false,
+    "bat_giao_tom": false,
+    "bat_sxcam": false,
+    "bat_sang_ban_be": true,
+    "bat_khoi_dong_lai_ld": false,
+    "thoi_gian_khoi_dong_lai": 5.0
   },
   "tasks": [],
   "ban_do": {
     "loai_kho": "KSK",
     "so_lan_dat_vp": 8,
     "data": [
-      "assets/items/vpsk_dua.png"
+      {
+        "path": "assets/items/vpsk_dua.png"
+      }
     ],
     "xoa_kc": false,
-    "dat_quang_cao": false
+    "dat_quang_cao": false,
+    "check_stock": false,
+    "qc_templates": [],
+    "xoa_kc_templates": [],
+    "dsvp_bo_qua": [],
+    "tom_vp": "",
+    "tom_kho": "KTP",
+    "threshold": 0.85,
+    "color_threshold": 0.6
   }
 }
