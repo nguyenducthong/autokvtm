@@ -211,6 +211,7 @@ DEFAULT_SETTINGS = {
     "bat_giao_tom": False,
     "bat_sxcam": False,
     "bat_sang_ban_be": False,
+    "bat_cap_nhat_khoi_dong": True,
     "bat_khoi_dong_lai_ld": False,
     "thoi_gian_khoi_dong_lai": 5.0
 }
@@ -288,7 +289,23 @@ class AutoConfigGUI:
         self._refresh_configs()
         self._ss_refresh_devices()
         self._schedule_device_auto_refresh()
-        self.check_update_action(silent=True)
+
+        # Check settings for update check on startup
+        run_update_check = True
+        try:
+            name = self.config_var.get()
+            if name:
+                path = os.path.join(CONFIG_DIR, f"{name}.json")
+                if os.path.exists(path):
+                    with open(path, "r", encoding="utf-8") as f:
+                        raw = json.load(f)
+                    if isinstance(raw, dict):
+                        run_update_check = raw.get("settings", {}).get("bat_cap_nhat_khoi_dong", True)
+        except Exception:
+            pass
+
+        if run_update_check:
+            self.check_update_action(silent=True)
 
     # ================================================================
     # UI
@@ -549,6 +566,7 @@ class AutoConfigGUI:
             ("bat_giao_tom", "Giao tôm", False),
             ("bat_sxcam", "Sản xuất cám", False),
             ("bat_sang_ban_be", "Sang nhà bạn", False),
+            ("bat_cap_nhat_khoi_dong", "Kiểm tra cập nhật", True),
         ]
         for i, (key, label, default) in enumerate(toggles):
             var = tk.BooleanVar(value=default)
@@ -4060,11 +4078,36 @@ class AutoConfigGUI:
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
 
-                req = urllib.request.Request(
-                    download_url,
-                    headers={"User-Agent": "AutoKVTM-Updater"}
-                )
-                with urllib.request.urlopen(req, timeout=30, context=ctx) as response, open(new_exe_path, 'wb') as out_file:
+                # Kiểm tra & thử tải qua Mirror Proxy trước
+                urls_to_try = [download_url]
+                if "github.com" in download_url:
+                    proxy_url = f"https://mirror.ghproxy.com/{download_url}"
+                    urls_to_try.insert(0, proxy_url)
+                    logger.info(f"[UPDATER] Thử tải qua Mirror Proxy: {proxy_url}")
+                else:
+                    logger.info(f"[UPDATER] Tải trực tiếp: {download_url}")
+
+                response = None
+                for idx, url in enumerate(urls_to_try):
+                    try:
+                        # Timeout cho proxy là 12s để chuyển nhanh sang link gốc nếu lỗi
+                        timeout = 12 if idx == 0 and len(urls_to_try) > 1 else 30
+                        req = urllib.request.Request(
+                            url,
+                            headers={"User-Agent": "AutoKVTM-Updater"}
+                        )
+                        response = urllib.request.urlopen(req, timeout=timeout, context=ctx)
+                        logger.info(f"[UPDATER] Kết nối thành công tới: {url}")
+                        break
+                    except Exception as conn_err:
+                        logger.warning(f"[UPDATER] Kết nối thất bại tới {url}: {conn_err}")
+                        if idx == len(urls_to_try) - 1:
+                            raise conn_err
+
+                if response is None:
+                    raise RuntimeError("Không thể kết nối đến máy chủ tải xuống!")
+
+                with response, open(new_exe_path, 'wb') as out_file:
                     total_size = int(response.headers.get('content-length', 0))
                     block_size = 16384
                     read_size = 0
