@@ -1,17 +1,35 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-    
         {
-            "name": "Debug Auto Garden",
-            "type": "python",
+            "name": "Python: Debug File Hiện Tại",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/main.py",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Python: Debug Test Mở Rương",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/test_mo_ruong.py",
             "console": "integratedTerminal",
             "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Python: Debug GUI Auto Config",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/gui_auto_config.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             }

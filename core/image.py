@@ -402,35 +402,33 @@ class ImageProcessor:
         color_dist = float(np.sqrt(np.sum((tpl_mean - reg_mean) ** 2)))
         return color_dist <= 80
 
-    def find_template_color(
+    def find_template_color_detail(
         self,
         template_path: str,
         threshold: float = 0.75,
         color_threshold: float = 0.6,
         screen_path: str = None,
         screen_img: np.ndarray = None,
-        region: Optional[Tuple[int, int, int, int]] = None
-    ) -> Optional[Tuple[int, int]]:
-
+        region: Optional[Tuple[int, int, int, int]] = None,
+        find_all: bool = False
+    ) -> Dict:
+        """
+        Tìm template với thuật toán kết hợp BGR/Alpha Mask Shape + 2D HSV Color Histogram.
+        Trả về dictionary chi tiết kết quả phục vụ vẽ khung, debug và phân tích so sánh.
+        """
         if screen_img is not None:
             screen = screen_img
         elif screen_path:
             screen = cv2.imread(screen_path)
         else:
             logger.warning("Cần truyền screen_path hoặc screen_img")
-            return None
-
-        # BUG FIX 2: đảm bảo screen luôn là BGR
-        if screen is not None and screen.ndim == 3 and screen.shape[2] == 3:
-            # Nếu caller truyền RGB (từ PIL/pyautogui), chuyển sang BGR
-            # Cách an toàn: không thể tự detect, nên document rõ hoặc thêm param
-            pass  # Giữ nguyên, nhưng cần caller đảm bảo BGR
+            return {"found": False, "reason": "Thiếu ảnh màn hình (screen_img hoặc screen_path)"}
 
         template_path = get_resource_path(str(template_path))
         template = cv2.imread(template_path, cv2.IMREAD_UNCHANGED)
         if template is None:
             logger.warning(f"Không tải được ảnh mẫu: {template_path}")
-            return None
+            return {"found": False, "reason": f"Không tải được ảnh mẫu: {template_path}"}
 
         rx, ry = 0, 0
         if region is not None:
@@ -471,11 +469,15 @@ class ImageProcessor:
         th, tw = template_bgr.shape[:2]
 
         if th > screen.shape[0] or tw > screen.shape[1]:
-            return None
+            return {
+                "found": False,
+                "reason": f"Kích thước ảnh mẫu ({tw}x{th}) lớn hơn màn hình ({screen.shape[1]}x{screen.shape[0]})",
+                "template_name": template_name,
+                "template_size": (tw, th)
+            }
 
         # BUG FIX 1: dùng masked matchTemplate nếu có alpha
         if alpha_mask is not None:
-            # TM_CCORR_NORMED hỗ trợ mask trực tiếp từ OpenCV 3.x
             result = cv2.matchTemplate(
                 screen, template_bgr, cv2.TM_CCORR_NORMED, mask=alpha_mask
             )
@@ -499,7 +501,14 @@ class ImageProcessor:
 
         if not candidates:
             logger.debug(f"[FIND_COLOR] {template_name} NOT found (no BGR match >= {threshold})")
-            return None
+            return {
+                "found": False,
+                "reason": f"Không có vị trí nào khớp hình dạng >= {threshold:.2f}",
+                "template_name": template_name,
+                "template_size": (tw, th),
+                "candidates_count": 0,
+                "matches_count": 0
+            }
 
         tpl_hsv = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2HSV)
         h_bins, s_bins = 30, 32
@@ -507,8 +516,10 @@ class ImageProcessor:
         tpl_hist = cv2.calcHist([tpl_hsv], [0, 1], alpha_mask, [h_bins, s_bins], hist_ranges)
         cv2.normalize(tpl_hist, tpl_hist, 0, 1, cv2.NORM_MINMAX)
 
+        matches = []
         best_match = None
-        best_combined_score = 0.0  # BUG FIX 3: khởi tạo 0 thay vì -1
+        best_combined_score = 0.0
+        best_rejected = None
 
         for (x, y, shape_score) in candidates:
             matched_region = screen[y:y+th, x:x+tw]
@@ -519,36 +530,95 @@ class ImageProcessor:
             reg_hist = cv2.calcHist([reg_hsv], [0, 1], alpha_mask, [h_bins, s_bins], hist_ranges)
             cv2.normalize(reg_hist, reg_hist, 0, 1, cv2.NORM_MINMAX)
 
-            color_score = cv2.compareHist(tpl_hist, reg_hist, cv2.HISTCMP_CORREL)
+            color_score = float(cv2.compareHist(tpl_hist, reg_hist, cv2.HISTCMP_CORREL))
 
-            # BUG FIX 3: loại ngay nếu color_score âm (màu ngược chiều)
+            # Loại ngay nếu color_score âm (màu ngược chiều)
             if color_score < 0:
                 continue
 
-            combined = 0.4 * shape_score + 0.6 * color_score
+            combined = float(0.4 * shape_score + 0.6 * color_score)
+            item_info = {
+                "x": int(x + rx),
+                "y": int(y + ry),
+                "w": int(tw),
+                "h": int(th),
+                "center": (int(x + rx + tw // 2), int(y + ry + th // 2)),
+                "shape_score": float(shape_score),
+                "color_score": float(color_score),
+                "combined_score": float(combined),
+                "matched_region": matched_region
+            }
 
             logger.debug(
                 f"[FIND_COLOR] {template_name} candidate ({x + rx},{y + ry}): "
                 f"shape={shape_score:.3f} color={color_score:.3f} combined={combined:.3f}"
             )
 
-            if color_score >= color_threshold and combined > best_combined_score:
-                best_combined_score = combined
-                best_match = (x, y, shape_score, color_score)
+            if color_score >= color_threshold:
+                matches.append(item_info)
+                if combined > best_combined_score:
+                    best_combined_score = combined
+                    best_match = item_info
+            else:
+                if best_rejected is None or combined > best_rejected["combined_score"]:
+                    best_rejected = item_info
 
-        if best_match is None:
-            logger.info(f"[FIND_COLOR] {template_name} REJECT (no candidate passed color_threshold={color_threshold})")
-            return None
+        if not matches:
+            reason = f"Tìm thấy {len(candidates)} vị trí hình dạng nhưng bị loại do điểm màu < {color_threshold:.2f}"
+            if best_rejected:
+                reason += f" (điểm màu cao nhất: {best_rejected['color_score']:.3f})"
+            logger.info(f"[FIND_COLOR] {template_name} REJECT ({reason})")
+            return {
+                "found": False,
+                "reason": reason,
+                "template_name": template_name,
+                "template_size": (tw, th),
+                "candidates_count": len(candidates),
+                "matches_count": 0,
+                "best_rejected": best_rejected
+            }
 
-        x, y, shape_score, color_score = best_match
-        cx = x + tw // 2
-        cy = y + th // 2
+        return {
+            "found": True,
+            "center": best_match["center"],
+            "box": (best_match["x"], best_match["y"], best_match["w"], best_match["h"]),
+            "shape_score": best_match["shape_score"],
+            "color_score": best_match["color_score"],
+            "combined_score": best_match["combined_score"],
+            "template_name": template_name,
+            "template_size": (tw, th),
+            "candidates_count": len(candidates),
+            "matches_count": len(matches),
+            "all_matches": matches,
+            "matched_region": best_match["matched_region"]
+        }
 
-        logger.info(
-            f"[FIND_COLOR] {template_name}: ({cx + rx},{cy + ry}) "
-            f"shape={shape_score:.3f} color={color_score:.3f} combined={best_combined_score:.3f}"
+    def find_template_color(
+        self,
+        template_path: str,
+        threshold: float = 0.75,
+        color_threshold: float = 0.6,
+        screen_path: str = None,
+        screen_img: np.ndarray = None,
+        region: Optional[Tuple[int, int, int, int]] = None
+    ) -> Optional[Tuple[int, int]]:
+        detail = self.find_template_color_detail(
+            template_path=template_path,
+            threshold=threshold,
+            color_threshold=color_threshold,
+            screen_path=screen_path,
+            screen_img=screen_img,
+            region=region,
+            find_all=False
         )
-        return (cx + rx, cy + ry)
+        if detail.get("found"):
+            cx, cy = detail["center"]
+            logger.info(
+                f"[FIND_COLOR] {detail.get('template_name')}: ({cx},{cy}) "
+                f"shape={detail.get('shape_score', 0):.3f} color={detail.get('color_score', 0):.3f} combined={detail.get('combined_score', 0):.3f}"
+            )
+            return detail["center"]
+        return None
 
     def count_template_color(
         self,
@@ -564,71 +634,15 @@ class ImageProcessor:
         """
         if screen_img is None:
             return 0
-
-        screen = screen_img
-        if region is not None:
-            rx, ry, rw, rh = region
-            h_max, w_max = screen.shape[:2]
-            rx = max(0, min(rx, w_max - 1))
-            ry = max(0, min(ry, h_max - 1))
-            rw = max(1, min(rw, w_max - rx))
-            rh = max(1, min(rh, h_max - ry))
-            screen = screen[ry:ry+rh, rx:rx+rw]
-
-        template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
-        if template is None:
-            return 0
-
-        alpha_mask = None
-        if template.ndim == 3 and template.shape[2] == 4:
-            alpha_mask = template[:, :, 3]
-            alpha_mask = (alpha_mask > 10).astype(np.uint8) * 255
-            template_bgr = template[:, :, :3]
-        else:
-            template_bgr = template
-
-        th, tw = template_bgr.shape[:2]
-        if th > screen.shape[0] or tw > screen.shape[1]:
-            return 0
-
-        result = cv2.matchTemplate(screen, template_bgr, cv2.TM_CCOEFF_NORMED)
-        locations = np.where(result >= threshold)
-        # Loại duplicate (cùng vùng)
-        used = []
-        candidates = []
-        for pt in zip(*locations[::-1]):
-            is_dup = False
-            for u in used:
-                if abs(pt[0] - u[0]) < tw // 2 and abs(pt[1] - u[1]) < th // 2:
-                    is_dup = True
-                    break
-            if not is_dup:
-                score = float(result[pt[1], pt[0]])
-                candidates.append((pt[0], pt[1], score))
-                used.append(pt)
-
-        if not candidates:
-            return 0
-
-        # Lọc qua color histogram
-        tpl_hsv = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2HSV)
-        h_bins, s_bins = 30, 32
-        hist_ranges = [0, 180, 0, 256]
-        tpl_hist = cv2.calcHist([tpl_hsv], [0, 1], alpha_mask, [h_bins, s_bins], hist_ranges)
-        cv2.normalize(tpl_hist, tpl_hist, 0, 1, cv2.NORM_MINMAX)
-
-        count = 0
-        for (x, y, shape_score) in candidates:
-            matched_region = screen[y:y+th, x:x+tw]
-            if matched_region.shape[0] != th or matched_region.shape[1] != tw:
-                continue
-            reg_hsv = cv2.cvtColor(matched_region, cv2.COLOR_BGR2HSV)
-            reg_hist = cv2.calcHist([reg_hsv], [0, 1], alpha_mask, [h_bins, s_bins], hist_ranges)
-            cv2.normalize(reg_hist, reg_hist, 0, 1, cv2.NORM_MINMAX)
-            color_score = cv2.compareHist(tpl_hist, reg_hist, cv2.HISTCMP_CORREL)
-            if color_score >= color_threshold:
-                count += 1
-
+        detail = self.find_template_color_detail(
+            template_path=template_path,
+            threshold=threshold,
+            color_threshold=color_threshold,
+            screen_img=screen_img,
+            region=region,
+            find_all=True
+        )
+        count = detail.get("matches_count", 0)
         template_name = os.path.basename(template_path).replace('.png', '')
         logger.debug(f"[COUNT_COLOR] {template_name}: {count} matches")
         return count

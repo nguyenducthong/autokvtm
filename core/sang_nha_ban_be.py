@@ -96,10 +96,23 @@ def sang_ban_be(adb, serial: str = None, force: bool = False, stop_event=None) -
     # 4. Đợi xuất hiện hình ảnh -> core_ban_be -> hoàn thành
     logger.info("[SANG BẠN BÈ] Đợi xuất hiện lại core_ban_be.png để hoàn thành")
     pos_ban_be_lai = _doi_anh(adb, CORE_BAN_BE, timeout=30, stop_event=stop_event)
+    _sleep(1.5, stop_event)
     if pos_ban_be_lai:
         logger.info("[SANG BẠN BÈ] Đã quay về nhà thành công (thấy core_ban_be.png)")
         record_daily_stat(serial, "sang_ban_be")
         return True
     else:
+        # xử lý nếu không về được nhà thì chạy lại bước 3  rồi đợi 3s
+        pos_quay_ve = _doi_anh(adb, CORE_QUAY_VE, timeout=30, stop_event=stop_event)
+        if pos_quay_ve:
+            logger.info("[SANG BẠN BÈ] Tìm thấy nút quay về tại %s, tap để quay về", pos_quay_ve)
+            adb.tap(*pos_quay_ve)
+            _sleep(1.5, stop_event)
+            pos_ban_be_lai = _doi_anh(adb, CORE_BAN_BE, timeout=30, stop_event=stop_event)
+            _sleep(1.5, stop_event)
+            if pos_ban_be_lai:
+                logger.info("[SANG BẠN BÈ] Đã quay về nhà thành công (thấy core_ban_be.png)")
+                record_daily_stat(serial, "sang_ban_be")
+                return True
         logger.warning("[SANG BẠN BÈ] Không thấy core_ban_be.png sau khi quay về")
         return False

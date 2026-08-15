@@ -9,7 +9,13 @@
     "bat_ban_vp": false,
     "bat_thu_hoach": false,
     "bat_mo_ruong": true,
-    "bat_giao_cu": false
+    "bat_giao_cu": false,
+    "bat_giao_tom": false,
+    "bat_sxcam": false,
+    "bat_sang_ban_be": true,
+    "bat_cap_nhat_khoi_dong": true,
+    "bat_khoi_dong_lai_ld": false,
+    "thoi_gian_khoi_dong_lai": 5.0
   },
   "tasks": [],
   "ban_do": {
@@ -18,8 +24,12 @@
     "data": [],
     "xoa_kc": true,
     "dat_quang_cao": true,
+    "check_stock": false,
     "qc_templates": [],
     "xoa_kc_templates": [],
+    "dsvp_bo_qua": [],
+    "tom_vp": "",
+    "tom_kho": "KTP",
     "threshold": 0.85,
     "color_threshold": 0.6
   }
