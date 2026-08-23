@@ -47,6 +47,8 @@ def vao_game(
 
     logger.info("[VAO_GAME] Mo game %s tren %s", package_name, serial)
     adb = ADBController(serial=serial)
+    from utils.utils import setup_thread, get_device_name
+    setup_thread(adb, device_name=get_device_name())
     adb.open_app(package_name, activity)
     time.sleep(10)
     return xu_ly_man_hinh_vao_game(adb)

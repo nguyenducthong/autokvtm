@@ -1818,8 +1818,7 @@ class AutoConfigGUI:
         def run():
             try:
                 from utils.utils import setup_thread
-                from core.adb import ADBController
-                setup_thread(ADBController(serial=serial), device_name=dev_name)
+                setup_thread(None, device_name=dev_name)
                 self._set_card_status(serial, "Đợi LD sẵn sàng...", "#f39c12")
                 from core.vao_game import vao_game_sau_khi_start_ld
                 ok = vao_game_sau_khi_start_ld(serial)

@@ -1,4 +1,3 @@
-- Nâng cấp cơ chế tự động cập nhật exe: làm sạch môi trường PyInstaller và vòng lặp thay thế an toàn
-- Sửa lỗi mất tên LDPlayer trong log, đồng bộ [device_name] trên toàn bộ hệ thống
-- Tối ưu nhận diện tầng mây và sửa lỗi tim_may_v2
-- Đồng bộ ngữ cảnh luồng ADB cho giao tôm và sản xuất cám
+- Sửa lỗi khởi tạo kết nối ADB quá sớm khi LDPlayer đang khởi động
+- Đảm bảo tự động mở game sau khi mở LDPlayer hoạt động ổn định
+- Đồng bộ hiển thị tên LDPlayer trong toàn bộ các luồng log
