@@ -163,9 +163,9 @@ def _row_to_level(row):
 def _detect_current_row(take_screenshot=True, threshold=None):
     """Chụp màn hình và nhận diện đang ở hàng nào (0-10).
     Tối ưu: chụp 1 screenshot, tìm 11 số trên cùng ảnh.
-    Nếu lần 1 không thấy (bóng/lag) → chụp lại lần 2.
-    Tối đa 2 screenshot thay vì 22."""
-    th = threshold or THRESHOLD
+    Nếu lần 1 không thấy (bóng/lag) → thử thoát dialog và chụp lại lần 2.
+    """
+    th = threshold or 0.75
     adb = _get_adb()
     if not adb:
         return None
@@ -176,11 +176,13 @@ def _detect_current_row(take_screenshot=True, threshold=None):
             screen = getattr(_ctx, '_last_screen', None)
             if screen is None:
                 screen = adb.screenshot_full()
+        elif attempt == 0 and take_screenshot:
+            screen = adb.screenshot_full()
         else:
+            # Lần 2: Thử tap nút đóng/thoát nếu nghi ngờ có popup đè lên, đợi 0.4s rồi chụp lại
+            logger.info("Lần 1 không nhận diện được hàng, thử thoát dialog và chụp lại...")
             adb.tap(*INDEX_THOAT_SAN_XUAT_MAC_DINH)
-            if attempt > 0:
-                _sleep(0.3)
-                logger.info("Lần 1 không nhận diện được hàng, chụp lại...")
+            _sleep(0.4)
             screen = adb.screenshot_full()
 
         if screen is None:
@@ -188,12 +190,21 @@ def _detect_current_row(take_screenshot=True, threshold=None):
 
         _ctx._last_screen = screen
 
-        # Tìm 11 số trên cùng 1 ảnh (không retry từng số)
+        # Tìm 11 số trên cùng 1 ảnh (thử color match trước, fallback sang basic match)
         for i in range(0, 11):
             may_i = f"assets/items/num/{i}.png"
-            pos = img.find_template_color(may_i, threshold=th, screen_img=screen)
+            if not os.path.exists(may_i):
+                continue
+
+            pos = img.find_template_color(may_i, threshold=th, color_threshold=0.5, screen_img=screen)
             if pos:
                 logger.info(f"Nhận diện hàng hiện tại: {i} (lần {attempt+1})")
+                set_state(_row_to_state(i))
+                return i
+
+            pos_basic = img.find_template(may_i, threshold=max(0.70, th - 0.05), screen_img=screen)
+            if pos_basic:
+                logger.info(f"Nhận diện hàng hiện tại (fallback match): {i} (lần {attempt+1})")
                 set_state(_row_to_state(i))
                 return i
 
@@ -204,25 +215,35 @@ def tim_may_v2(template_path, config_row, max_retry=2):
     """Tìm và di chuyển đến hàng config_row.
 
     Logic scroll theo tầng (level):
-      - Máy 1, 2 cùng khung hình → level 0 (không cần scroll)
-      - Máy 3 → level 1 (1 scroll từ nhà)
-      - Máy 4 → level 2 (2 scroll từ nhà)
-      - Máy N (N>=3) → level N-2
-
-    Scroll = chênh lệch level, KHÔNG phải chênh lệch row.
-    VD: đang ở máy 1 (level 0), cần đến máy 3 (level 1) → 1 scroll
-        đang ở máy 1 (level 0), cần đến máy 4 (level 2) → 2 scroll
-        đang ở máy 2 (level 0), cần đến máy 3 (level 1) → 1 scroll
-        đang ở máy 3 (level 1), cần đến máy 1 (level 0) → 1 scroll xuống
+      - Máy 1, 2 cùng khung hình → level 1
+      - Máy 3 → level 2
+      - Máy 4 → level 3
+      - Máy N (N>=3) → level N-1
     """
     if _should_stop():
         return False
 
+    target_level = _row_to_level(config_row)
+
+    # === BƯỚC 0: Kiểm tra nhanh nếu đã ở đúng template đích ===
+    if template_path and os.path.exists(template_path):
+        screen = _get_screen(True)
+        if screen is not None:
+            pos_target = img.find_template_color(template_path, threshold=0.75, color_threshold=0.5, screen_img=screen)
+            if not pos_target:
+                pos_target = img.find_template(template_path, threshold=0.72, screen_img=screen)
+            if pos_target:
+                logger.info(f"Đã nhìn thấy template đích {template_path} (hàng {config_row}), không cần scroll")
+                set_state(_row_to_state(config_row))
+                return True
+
     # === BƯỚC 1: Nhận diện hàng hiện tại (có retry) ===
-    current_row = _detect_current_row(take_screenshot=True)
+    current_row = _detect_current_row(take_screenshot=False)
+    if current_row is None:
+        current_row = _detect_current_row(take_screenshot=True)
 
     if current_row is None:
-        logger.warning("Không nhận diện được hàng, chụp lại...")
+        logger.warning("Không nhận diện được hàng, thử lại...")
         _sleep(0.5)
         current_row = _detect_current_row(take_screenshot=True)
 
@@ -231,28 +252,29 @@ def tim_may_v2(template_path, config_row, max_retry=2):
         import config
         if getattr(config, "ENABLE_AI_RECOVERY", False) and getattr(config, "GEMINI_API_KEY", "").strip():
             try:
-                logger.warning("[AI_RECOVERY] Nghi ngờ màn hình bị kẹt popup/quảng cáo. Đang gọi Gemini VLM để giải cứu...")
-                from core.ai_recovery import AIRecovery
-                ai_rec = AIRecovery()
-                screen = adb.screenshot_full()
-                rec_data = ai_rec.analyze_and_recover(screen)
-                if rec_data and rec_data.get("is_stuck") and rec_data.get("action") == "click" and rec_data.get("original_coords"):
-                    orig_x, orig_y = rec_data["original_coords"]
-                    logger.info(f"[AI_RECOVERY] Phát hiện kẹt: '{rec_data['reason']}'. Click đóng tại ({orig_x}, {orig_y})")
-                    adb.tap(orig_x, orig_y)
-                    _sleep(1.5)
-                    # Chụp và thử nhận diện lại hàng
-                    current_row = _detect_current_row(take_screenshot=True)
+                adb = _get_adb()
+                if adb:
+                    logger.warning("[AI_RECOVERY] Nghi ngờ màn hình bị kẹt popup/quảng cáo. Đang gọi Gemini VLM để giải cứu...")
+                    from core.ai_recovery import AIRecovery
+                    ai_rec = AIRecovery()
+                    screen = adb.screenshot_full()
+                    rec_data = ai_rec.analyze_and_recover(screen)
+                    if rec_data and rec_data.get("is_stuck") and rec_data.get("action") == "click" and rec_data.get("original_coords"):
+                        orig_x, orig_y = rec_data["original_coords"]
+                        logger.info(f"[AI_RECOVERY] Phát hiện kẹt: '{rec_data['reason']}'. Click đóng tại ({orig_x}, {orig_y})")
+                        adb.tap(orig_x, orig_y)
+                        _sleep(1.5)
+                        # Chụp và thử nhận diện lại hàng
+                        current_row = _detect_current_row(take_screenshot=True)
             except Exception as ai_err:
                 logger.error(f"[AI_RECOVERY] Gặp lỗi khi gọi AI gỡ kẹt: {ai_err}")
 
     if current_row is None:
-        logger.error("Không thể nhận diện hàng hiện tại sau 2 lần chụp")
+        logger.error(f"Không thể nhận diện hàng hiện tại sau các lần chụp để đến hàng {config_row}")
         return False
 
     # === BƯỚC 2: Tính level hiện tại và level đích ===
     current_level = _row_to_level(current_row)
-    target_level = _row_to_level(config_row)
 
     logger.info(f"Hàng hiện tại: {current_row} (level {current_level}), "
                 f"cần đến: {config_row} (level {target_level})")
@@ -294,6 +316,17 @@ def tim_may_v2(template_path, config_row, max_retry=2):
     for retry in range(max_retry):
         if _should_stop():
             return False
+
+        # Kiểm tra nhanh template đích nếu có
+        if template_path and os.path.exists(template_path):
+            scr = _get_screen(True)
+            if scr is not None:
+                if img.find_template_color(template_path, threshold=0.75, color_threshold=0.5, screen_img=scr) or \
+                   img.find_template(template_path, threshold=0.72, screen_img=scr):
+                    logger.info(f"Verify OK: Thấy template {template_path} trên màn hình")
+                    set_state(_row_to_state(config_row))
+                    return True
+
         verify_row = _detect_current_row(take_screenshot=True)
 
         if verify_row is None:
@@ -318,6 +351,13 @@ def tim_may_v2(template_path, config_row, max_retry=2):
         _sleep(0.5)
 
     # Kiểm tra lần cuối
+    if template_path and os.path.exists(template_path):
+        scr = _get_screen(True)
+        if scr is not None and (img.find_template_color(template_path, threshold=0.75, color_threshold=0.5, screen_img=scr) or \
+                                img.find_template(template_path, threshold=0.72, screen_img=scr)):
+            logger.info(f"Verify cuối cùng OK: Thấy template {template_path}")
+            return True
+
     final_row = _detect_current_row(take_screenshot=True)
     if final_row is not None and _row_to_level(final_row) == target_level:
         logger.info(f"Verify cuối cùng OK: hàng {final_row} (level {target_level})")

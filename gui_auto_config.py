@@ -4293,7 +4293,7 @@ class AutoConfigGUI:
             latest_tag = data.get("tag_name", "").strip()
             # Bỏ ký tự 'v' ở đầu phiên bản nếu có (ví dụ 'v1.0.1' -> '1.0.1')
             latest_version = latest_tag[1:] if latest_tag.lower().startswith('v') else latest_tag
-            changelog = data.get("body", "Không có thông tin thay đổi.")
+            changelog = data.get("body") or "Không có thông tin thay đổi."
             html_url = data.get("html_url", "https://github.com/nguyenducthong/autokvtm/releases")
 
             # Tìm file .exe trong danh sách assets

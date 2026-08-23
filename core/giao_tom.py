@@ -16,7 +16,7 @@ from config import (
 )
 from core.image import ImageProcessor, get_resource_path
 from utils.daily_stats import record_daily_stat
-from utils.utils import tim_may_v2, xuong_nha
+from utils.utils import tim_may_v2, xuong_nha, setup_thread
 
 logger = logging.getLogger(__name__)
 img = ImageProcessor()
@@ -416,6 +416,7 @@ def _chon_vat_pham_va_tim_hang(adb, vp_path: str, kho: str, stop_event=None):
 
 def giao_tom(adb, vp_path: str, kho: str = "KTP", stop_event=None) -> bool:
     """Xử lý giao tôm."""
+    setup_thread(adb, stop_event=stop_event)
     vp_path = _normalize_template_path(vp_path)
     if _should_stop(stop_event):
         return False
