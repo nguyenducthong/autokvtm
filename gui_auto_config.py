@@ -4524,11 +4524,20 @@ set _MEIPASS2=
 set PYINSTALLER_PARENT_PID=
 set PYINSTALLER_STRICT_UNPACK_MODE=
 set _PYI_SPLASH_IPC=
+set PYTHONHOME=
+set PYTHONPATH=
+timeout /t 1 /nobreak >nul
+:loop
 taskkill /f /im "{current_exe_name}" >nul 2>&1
-timeout /t 2 /nobreak >nul
-del /f /q "{current_exe}"
-ren "{new_exe_name}" "{current_exe_name}"
-start "" "{current_exe}"
+timeout /t 1 /nobreak >nul
+del /f /q "{current_exe}" >nul 2>&1
+if exist "{current_exe}" (
+    timeout /t 1 /nobreak >nul
+    goto loop
+)
+move /y "{new_exe_name}" "{current_exe_name}" >nul 2>&1
+start "" "{current_exe_name}"
+timeout /t 1 /nobreak >nul
 del "%~f0"
 """
             # Ghi file script bat
@@ -4537,7 +4546,7 @@ del "%~f0"
                 
             # Tạo bản sao môi trường sạch, loại bỏ các biến PyInstaller
             clean_env = os.environ.copy()
-            for key in ["_MEIPASS", "_MEIPASS2", "PYINSTALLER_PARENT_PID", "PYINSTALLER_STRICT_UNPACK_MODE", "_PYI_SPLASH_IPC"]:
+            for key in ["_MEIPASS", "_MEIPASS2", "PYINSTALLER_PARENT_PID", "PYINSTALLER_STRICT_UNPACK_MODE", "_PYI_SPLASH_IPC", "PYTHONHOME", "PYTHONPATH"]:
                 clean_env.pop(key, None)
 
             # Flags để tiến trình bat hoàn toàn tách rời khỏi process cha
@@ -4548,7 +4557,7 @@ del "%~f0"
                 flags |= subprocess.DETACHED_PROCESS
 
             # Khởi chạy file bat ngầm hoàn toàn độc lập
-            subprocess.Popen([bat_path], shell=True, cwd=dir_name, env=clean_env, creationflags=flags)
+            subprocess.Popen(["cmd.exe", "/c", bat_path], cwd=dir_name, env=clean_env, creationflags=flags)
             
             # Đóng ngay ứng dụng chính để script bat hoạt động
             sys.exit(0)
