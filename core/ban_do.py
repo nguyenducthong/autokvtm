@@ -10,6 +10,7 @@ import re
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from .adb import ADBController
 from .image import ImageProcessor, get_resource_path
+import config
 from config import INDEX_CONG_1, INDEX_CUA_HANG_MAC_DINH, INDEX_TAT_QC,INDEX_DAT_BAN
 from utils.utils import (
     _detect_current_row, xuong_nha, xuong_may,
@@ -923,6 +924,7 @@ def _scan_va_luu_stock_kho(adb, vp_list, threshold=THRESHOLD, color_threshold=0.
         return {}
 
     # Tạm tắt đọc stock bằng Gemini theo yêu cầu để tối ưu tốc độ bán
+    gemini_key = getattr(config, "GEMINI_API_KEY", "").strip()
     if getattr(config, "ENABLE_GEMINI_STOCK", False) and gemini_key:
         try:
             ai_stock = _scan_stock_with_gemini(screen, vp_list, gemini_key)

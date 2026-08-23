@@ -23,50 +23,47 @@ def train_ai():
     project_name = "farming-game-plants-pots-and-w"
 
     print("\n--- STEP 1: FETCHING LATEST DATASET VERSION ---")
-    try:
-        # 1. Gọi API lấy thông tin Project để lấy version mới nhất
-        project_url = f"https://api.roboflow.com/{workspace}/{project_name}?api_key={api_key}"
-        r = requests.get(project_url, timeout=10)
-        r.raise_for_status()
-        project_data = r.json()
-        latest_version = project_data["project"]["versions"]
-        print(f"[INFO] Latest version on Roboflow: Version {latest_version}")
-
-        # 2. Gọi API lấy link tải zip của version mới nhất
-        version_url = f"https://api.roboflow.com/{workspace}/{project_name}/{latest_version}/yolov8?api_key={api_key}"
-        rv = requests.get(version_url, timeout=10)
-        rv.raise_for_status()
-        version_data = rv.json()
-        
-        zip_url = version_data["export"]["link"]
-        print(f"[INFO] Fetching download link for Version {latest_version}...")
-    except Exception as e:
-        print(f"[ERROR] Failed to query Roboflow API: {e}")
-        return
-
-    zip_dest = "dataset.zip"
     extract_dir = "dataset"
     
-    # 3. Tải và giải nén Dataset
+    # Xóa thư mục cũ nếu có để tránh lẫn dữ liệu cũ
+    if os.path.exists(extract_dir):
+        shutil.rmtree(extract_dir)
+
     try:
-        print(f"Downloading dataset zip from: {zip_url}")
-        urllib.request.urlretrieve(zip_url, zip_dest)
-        
-        print("Extracting dataset zip...")
-        # Xóa thư mục cũ nếu có để tránh lẫn dữ liệu cũ
-        if os.path.exists(extract_dir):
-            shutil.rmtree(extract_dir)
+        try:
+            from roboflow import Roboflow
+            rf = Roboflow(api_key=api_key)
+            project = rf.workspace(workspace).project(project_name)
+            version = project.version(4)
+            dataset = version.download("yolov8", location=extract_dir)
+            print(f"[SUCCESS] Dataset Version 4 downloaded to: {extract_dir}")
+        except Exception as e_rf:
+            print(f"[INFO] Roboflow SDK failed ({e_rf}), falling back to direct REST API...")
+            project_url = f"https://api.roboflow.com/{workspace}/{project_name}?api_key={api_key}"
+            r = requests.get(project_url, timeout=60)
+            r.raise_for_status()
+            project_data = r.json()
+            latest_version = project_data["project"]["versions"]
+            print(f"[INFO] Latest version on Roboflow: Version {latest_version}")
+
+            version_url = f"https://api.roboflow.com/{workspace}/{project_name}/{latest_version}/yolov8?api_key={api_key}"
+            rv = requests.get(version_url, timeout=60)
+            rv.raise_for_status()
+            version_data = rv.json()
             
-        with zipfile.ZipFile(zip_dest, 'r') as zip_ref:
-            zip_ref.extractall(extract_dir)
+            zip_url = version_data["export"]["link"]
+            print(f"Downloading dataset zip from: {zip_url}")
+            zip_dest = "dataset.zip"
+            urllib.request.urlretrieve(zip_url, zip_dest)
             
-        print(f"[SUCCESS] Dataset successfully extracted to: {extract_dir}")
-        
-        # Dọn dẹp file zip
-        if os.path.exists(zip_dest):
-            os.remove(zip_dest)
+            print("Extracting dataset zip...")
+            with zipfile.ZipFile(zip_dest, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+            if os.path.exists(zip_dest):
+                os.remove(zip_dest)
+            print(f"[SUCCESS] Dataset successfully extracted to: {extract_dir}")
     except Exception as e:
-        print(f"[ERROR] Failed to download or extract dataset: {e}")
+        print(f"[ERROR] Failed to download dataset: {e}")
         return
 
     data_yaml_path = os.path.join(extract_dir, "data.yaml")
