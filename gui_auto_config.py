@@ -1813,8 +1813,13 @@ class AutoConfigGUI:
         if not AUTO_OPEN_GAME_AFTER_LD_START:
             return
 
+        dev_name = self.device_cards.get(serial, {}).get("name") or serial
+
         def run():
             try:
+                from utils.utils import setup_thread
+                from core.adb import ADBController
+                setup_thread(ADBController(serial=serial), device_name=dev_name)
                 self._set_card_status(serial, "Đợi LD sẵn sàng...", "#f39c12")
                 from core.vao_game import vao_game_sau_khi_start_ld
                 ok = vao_game_sau_khi_start_ld(serial)

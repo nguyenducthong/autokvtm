@@ -93,11 +93,17 @@ def _get_stop_event():
 
 def setup_thread(adb_instance, stop_event=None, device_name=None):
     """Gọi đầu mỗi thread để set ADB + stop_event + tên thiết bị + state cho thread đó."""
-    _ctx.adb = adb_instance
-    _ctx.stop_event = stop_event
+    if adb_instance is not None:
+        _ctx.adb = adb_instance
+    if stop_event is not None:
+        _ctx.stop_event = stop_event
     _ctx._last_screen = None
-    _ctx.device_name = device_name
-    _ctx.state = PlayerState.UNKNOWN
+    if device_name is not None:
+        _ctx.device_name = device_name
+    elif not hasattr(_ctx, 'device_name'):
+        _ctx.device_name = None
+    if not hasattr(_ctx, 'state') or _ctx.state is None:
+        _ctx.state = PlayerState.UNKNOWN
 
 
 def get_device_name():

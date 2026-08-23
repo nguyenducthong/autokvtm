@@ -2,7 +2,7 @@ import logging
 import time
 from config import INDEX_THOAT_SAN_XUAT_MAC_DINH, INDEX_SXCAM
 from core.image import ImageProcessor
-from utils.utils import tim_may_v2, xuong_nha, setup_thread
+from utils.utils import tim_may_v2, xuong_nha, setup_thread, get_device_name
 
 logger = logging.getLogger(__name__)
 img = ImageProcessor()
@@ -48,7 +48,7 @@ def _thoat_mac_dinh(adb, stop_event=None):
 def run_sxcam(adb, serial: str = None, force: bool = False, stop_event=None) -> bool:
     """Sản xuất cám mỗi 30 phút. Trả về True nếu chạy thành công."""
     serial = serial or getattr(adb, "serial", "unknown")
-    setup_thread(adb, stop_event=stop_event, device_name=serial)
+    setup_thread(adb, stop_event=stop_event, device_name=get_device_name() or serial)
     if _should_stop(stop_event):
         return False
     if not force and not can_sxcam(serial):

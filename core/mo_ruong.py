@@ -9,7 +9,7 @@ from config import (
 )
 from core.image import ImageProcessor
 from utils.daily_stats import record_daily_stat
-from utils.utils import tim_may_v2, xuong_nha, setup_thread
+from utils.utils import tim_may_v2, xuong_nha, setup_thread, get_device_name
 
 logger = logging.getLogger(__name__)
 img = ImageProcessor()
@@ -104,7 +104,7 @@ def _xu_ly_day_kho(adb, serial: str, stop_event=None):
 def mo_ruong(adb, serial: str = None, force: bool = False, stop_event=None) -> bool:
     """Mở rương mỗi 20 phút. Trả về True nếu đã xử lý mở rương thành công."""
     serial = serial or getattr(adb, "serial", "unknown")
-    setup_thread(adb, stop_event=stop_event, device_name=serial)
+    setup_thread(adb, stop_event=stop_event, device_name=get_device_name() or serial)
     if _should_stop(stop_event):
         return False
     if da_day_kho(serial):
