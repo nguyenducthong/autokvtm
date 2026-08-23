@@ -15,20 +15,6 @@ jobs:
     steps:
     - name: Checkout source code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Get Tag Message
-      id: tag_info
-      shell: bash
-      run: |
-        TAG_MSG=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
-        if [ -z "$TAG_MSG" ]; then
-          TAG_MSG=$(git log -1 --pretty=%B)
-        fi
-        echo "msg<<EOF" >> $GITHUB_OUTPUT
-        echo "$TAG_MSG" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -48,6 +34,6 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: dist/gui_auto_config.exe
-        body: ${{ steps.tag_info.outputs.msg }}
+        body_path: release_notes.txt
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

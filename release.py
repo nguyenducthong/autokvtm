@@ -39,6 +39,11 @@ def main():
         with open(config_path, "w", encoding="utf-8") as f:
             f.write(new_content)
         print(f"-> Đã cập nhật CURRENT_VERSION = '{version_num}' trong config.py")
+
+        # Lưu ghi chú vào file release_notes.txt để GitHub Actions làm mô tả Release
+        with open("release_notes.txt", "w", encoding="utf-8") as f:
+            f.write(notes)
+        print(f"-> Đã lưu nội dung cập nhật vào release_notes.txt")
         
         # 3. Chạy các lệnh Git
         print("\n-> Đang thêm thay đổi vào git (git add)...")
