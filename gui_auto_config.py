@@ -215,7 +215,11 @@ DEFAULT_SETTINGS = {
     "bat_sang_ban_be": False,
     "bat_cap_nhat_khoi_dong": True,
     "bat_khoi_dong_lai_ld": False,
-    "thoi_gian_khoi_dong_lai": 5.0
+    "thoi_gian_khoi_dong_lai": 5.0,
+    "bat_ai_recovery": False,
+    "gemini_api_key": "",
+    "bat_yolo": False,
+    "yolo_model_path": "configs/kvtm_yolo.onnx"
 }
 
 DEFAULT_BAN_DO = {
@@ -338,6 +342,7 @@ class AutoConfigGUI:
 
         self.tab_auto = tk.Frame(self.notebook, bg="#ecf0f1")
         self.tab_config = tk.Frame(self.notebook, bg="#ecf0f1")
+        self.tab_config_chung = tk.Frame(self.notebook, bg="#ecf0f1")
         self.tab_screenshot = tk.Frame(self.notebook, bg="#ecf0f1")
         self.tab_match_test = tk.Frame(self.notebook, bg="#ecf0f1")
         self.tab_core_images = tk.Frame(self.notebook, bg="#ecf0f1")
@@ -345,6 +350,7 @@ class AutoConfigGUI:
 
         self.notebook.add(self.tab_auto, text="  Auto  ")
         self.notebook.add(self.tab_config, text="  Cấu Hình  ")
+        self.notebook.add(self.tab_config_chung, text="  Cấu Hình Chung  ")
         self.notebook.add(self.tab_screenshot, text="  Chụp & Cắt ảnh  ")
         self.notebook.add(self.tab_match_test, text="  So Sánh Ảnh  ")
         self.notebook.add(self.tab_core_images, text="  Hình ảnh Core  ")
@@ -352,10 +358,12 @@ class AutoConfigGUI:
 
         self._build_tab_auto()
         self._build_tab_config()
+        self._build_tab_config_chung()
         self._build_tab_screenshot()
         self._build_tab_match_test()
         self._build_tab_core_images()
         self._build_tab_log()
+        self._load_global_settings()
 
         # Status bar
         self.status_label = tk.Label(self.root, text="Sẵn sàng", font=("Arial", 9),
@@ -606,6 +614,8 @@ class AutoConfigGUI:
                    textvariable=self.thoi_gian_khoi_dong_lai_var, width=6,
                    font=("Arial", 10)).pack(side=tk.LEFT)
         tk.Label(restart_row, text="(vd: 5 hoặc 0.02 để test)", bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(side=tk.LEFT, padx=8)
+
+
 
         # ===== SECTION 2: TASKS (TC + MAY) =====
         form_frame = tk.LabelFrame(pad, text="Thêm mục TC / MÁY", font=("Arial", 10, "bold"),
@@ -2009,6 +2019,13 @@ class AutoConfigGUI:
                 from utils.utils import setup_thread
                 setup_thread(adb_inst, stop_ev, device_name=dev_name)
 
+                # Đồng bộ cấu hình AI toàn cục từ Tab Cấu Hình Chung
+                import config as global_config
+                global_config.GEMINI_API_KEY = self.gemini_api_key_var.get().strip()
+                global_config.ENABLE_AI_RECOVERY = self.bat_ai_recovery_var.get()
+                global_config.ENABLE_YOLO = self.bat_yolo_var.get()
+                global_config.YOLO_MODEL_PATH = self.yolo_model_path_var.get().strip()
+
                 self._log(f"{dev_label} Kết nối thành công | Config: {config_name}")
 
                 tc_tasks = [t for t in tasks if
@@ -2592,6 +2609,178 @@ class AutoConfigGUI:
             messagebox.showinfo("Thông báo", "Chưa có tệp nhật ký!")
 
     # ----------------------------------------------------------------
+    # TAB: CẤU HÌNH CHUNG (AI & YOLO)
+    # ----------------------------------------------------------------
+    def _build_tab_config_chung(self):
+        """Tạo giao diện cho tab Cấu Hình Chung."""
+        import config
+        # Container
+        pad = tk.Frame(self.tab_config_chung, bg="#ecf0f1", padx=15, pady=15)
+        pad.pack(fill=tk.BOTH, expand=True)
+
+        title = tk.Label(pad, text="CẤU HÌNH AI & YOLO TOÀN CỤC (Dùng chung cho mọi cấu hình)", 
+                         font=("Arial", 11, "bold"), bg="#ecf0f1", fg="#2c3e50")
+        title.pack(anchor=tk.W, pady=(0, 12))
+
+        # 1. Gemini AI Frame
+        ai_frame = tk.LabelFrame(pad, text="Cấu hình Gemini AI (Gỡ kẹt màn hình)", font=("Arial", 10, "bold"),
+                                  bg="#ecf0f1", fg="#2980b9", padx=15, pady=12)
+        ai_frame.pack(fill=tk.X, pady=8)
+
+        ai_row = tk.Frame(ai_frame, bg="#ecf0f1")
+        ai_row.pack(fill=tk.X, pady=4)
+        tk.Label(ai_row, text="Gemini AI Recovery:", bg="#ecf0f1", width=20, anchor=tk.W, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        self.bat_ai_recovery_var = tk.BooleanVar(value=getattr(config, "ENABLE_AI_RECOVERY", True))
+        tk.Checkbutton(ai_row, text="Bật AI Recovery (Tự động đóng popup, quảng cáo, captcha khi bị kẹt)", 
+                       variable=self.bat_ai_recovery_var, bg="#ecf0f1",
+                       font=("Arial", 9), activebackground="#ecf0f1").pack(side=tk.LEFT)
+
+        key_row = tk.Frame(ai_frame, bg="#ecf0f1")
+        key_row.pack(fill=tk.X, pady=4)
+        tk.Label(key_row, text="Gemini API Key:", bg="#ecf0f1", width=20, anchor=tk.W, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        self.gemini_api_key_var = tk.StringVar(value=getattr(config, "GEMINI_API_KEY", ""))
+        self.gemini_api_key_entry = tk.Entry(key_row, textvariable=self.gemini_api_key_var, width=50, font=("Arial", 9))
+        self.gemini_api_key_entry.pack(side=tk.LEFT, padx=(0, 6))
+
+        # Nút ghi chú ? hướng dẫn tạo API Key
+        help_btn = tk.Button(key_row, text="?", command=self._show_gemini_guide_popup,
+                             bg="#3498db", fg="white", font=("Arial", 9, "bold"),
+                             width=2, relief=tk.FLAT, cursor="hand2", title_text="Hướng dẫn tạo API Key" if hasattr(tk.Button, 'title_text') else None)
+        help_btn.pack(side=tk.LEFT, padx=2)
+
+        # 2. YOLO Frame
+        yolo_frame = tk.LabelFrame(pad, text="Cấu hình YOLO Detection (Quầy hàng)", font=("Arial", 10, "bold"),
+                                    bg="#ecf0f1", fg="#27ae60", padx=15, pady=12)
+        yolo_frame.pack(fill=tk.X, pady=8)
+
+        yolo_row = tk.Frame(yolo_frame, bg="#ecf0f1")
+        yolo_row.pack(fill=tk.X, pady=4)
+        tk.Label(yolo_row, text="YOLO Detection:", bg="#ecf0f1", width=20, anchor=tk.W, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        self.bat_yolo_var = tk.BooleanVar(value=getattr(config, "ENABLE_YOLO", False))
+        tk.Checkbutton(yolo_row, text="Bật YOLO Detection (Tìm ô trống, nhặt vàng siêu tốc)", 
+                       variable=self.bat_yolo_var, bg="#ecf0f1",
+                       font=("Arial", 9), activebackground="#ecf0f1").pack(side=tk.LEFT)
+
+        path_row = tk.Frame(yolo_frame, bg="#ecf0f1")
+        path_row.pack(fill=tk.X, pady=4)
+        tk.Label(path_row, text="Model ONNX Path:", bg="#ecf0f1", width=20, anchor=tk.W, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        self.yolo_model_path_var = tk.StringVar(value=getattr(config, "YOLO_MODEL_PATH", "configs/kvtm_yolo.onnx"))
+        self.yolo_model_path_entry = tk.Entry(path_row, textvariable=self.yolo_model_path_var, width=55, font=("Arial", 9))
+        self.yolo_model_path_entry.pack(side=tk.LEFT)
+
+        # Tự động lưu cấu hình chung khi có bất kỳ thay đổi nào
+        self.bat_ai_recovery_var.trace_add("write", lambda *args: self._save_global_settings())
+        self.gemini_api_key_var.trace_add("write", lambda *args: self._save_global_settings())
+        self.bat_yolo_var.trace_add("write", lambda *args: self._save_global_settings())
+        self.yolo_model_path_var.trace_add("write", lambda *args: self._save_global_settings())
+
+    def _save_global_settings(self):
+        """Lưu cấu hình chung (API Key, YOLO) vào file global_settings.json."""
+        GLOBAL_SETTINGS_FILE = "configs/global_settings.json"
+        data = {
+            "gemini_api_key": self.gemini_api_key_var.get().strip(),
+            "bat_ai_recovery": self.bat_ai_recovery_var.get(),
+            "bat_yolo": self.bat_yolo_var.get(),
+            "yolo_model_path": self.yolo_model_path_var.get().strip()
+        }
+        try:
+            os.makedirs(os.path.dirname(GLOBAL_SETTINGS_FILE), exist_ok=True)
+            with open(GLOBAL_SETTINGS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.exception(f"Lỗi khi lưu cấu hình chung: {e}")
+
+    def _load_global_settings(self):
+        """Tải cấu hình chung từ file global_settings.json hoặc từ config.py mặc định."""
+        GLOBAL_SETTINGS_FILE = "configs/global_settings.json"
+        import config
+        default_key = ""
+        
+        data = {
+            "gemini_api_key": getattr(config, "GEMINI_API_KEY", "") or default_key,
+            "bat_ai_recovery": getattr(config, "ENABLE_AI_RECOVERY", True),
+            "bat_yolo": getattr(config, "ENABLE_YOLO", False),
+            "yolo_model_path": getattr(config, "YOLO_MODEL_PATH", "configs/kvtm_yolo.onnx")
+        }
+        if os.path.exists(GLOBAL_SETTINGS_FILE):
+            try:
+                with open(GLOBAL_SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                    file_data = json.load(f) or {}
+                    for k, v in file_data.items():
+                        if v is not None:
+                            data[k] = v
+            except Exception:
+                pass
+                
+        self.gemini_api_key_var.set(data["gemini_api_key"])
+        self.bat_ai_recovery_var.set(data["bat_ai_recovery"])
+        self.bat_yolo_var.set(data["bat_yolo"])
+        self.yolo_model_path_var.set(data["yolo_model_path"])
+        
+        # Đồng bộ trực tiếp vào module config
+        config.GEMINI_API_KEY = data["gemini_api_key"]
+        config.ENABLE_AI_RECOVERY = data["bat_ai_recovery"]
+        config.ENABLE_YOLO = data["bat_yolo"]
+        config.YOLO_MODEL_PATH = data["yolo_model_path"]
+
+    def _show_gemini_guide_popup(self):
+        """Hiển thị popup hướng dẫn cách tạo và lấy API Key miễn phí từ Google Gemini."""
+        import webbrowser
+        
+        popup = tk.Toplevel(self.root)
+        popup.title("Hướng Dẫn Lấy Gemini API Key Miễn Phí")
+        w, h = 540, 420
+        sx = self.root.winfo_screenwidth()
+        sy = self.root.winfo_screenheight()
+        popup.geometry(f"{w}x{h}+{(sx - w) // 2}+{(sy - h) // 2}")
+        popup.resizable(False, False)
+        popup.configure(bg="#ecf0f1")
+        popup.grab_set()  # Modal popup
+
+        # Header
+        hdr = tk.Frame(popup, bg="#2980b9", height=45)
+        hdr.pack(fill=tk.X)
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="HƯỚNG DẪN TẠO GEMINI API KEY MIỄN PHÍ",
+                 font=("Arial", 11, "bold"), fg="white", bg="#2980b9").pack(pady=10)
+
+        # Content container
+        body = tk.Frame(popup, bg="#ecf0f1", padx=20, pady=15)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        guide_text = (
+            "Google cung cấp Gemini API hoàn toàn MIỄN PHÍ để hỗ trợ người dùng.\n"
+            "Các bước thực hiện nhanh để lấy API Key:\n\n"
+            "1. Bấm nút [Mở Google AI Studio] bên dưới để mở trang tạo Key.\n"
+            "2. Đăng nhập bằng tài khoản Google (Gmail) của bạn.\n"
+            "3. Bấm vào nút 'Get API key' ở góc trên bên trái màn hình.\n"
+            "4. Chọn 'Create API key' ➡️ Chọn 'Create API key in new project'.\n"
+            "5. Sao chép (Copy) chuỗi API Key vừa tạo.\n"
+            "6. Dán vào ô 'Gemini API Key' trong Tool và sử dụng ngay!\n\n"
+            "Lưu ý: API Key là mã riêng tư của bạn, không nên chia sẻ công khai."
+        )
+
+        tk.Label(body, text=guide_text, font=("Arial", 9), bg="#ecf0f1",
+                 fg="#2c3e50", justify=tk.LEFT, wraplength=490).pack(anchor=tk.W, pady=(0, 15))
+
+        # Action buttons
+        btn_row = tk.Frame(body, bg="#ecf0f1")
+        btn_row.pack(fill=tk.X, pady=5)
+
+        def open_url():
+            webbrowser.open("https://aistudio.google.com/app/apikey")
+
+        open_btn = tk.Button(btn_row, text="🌐 Mở Google AI Studio để tạo Key", command=open_url,
+                             bg="#27ae60", fg="white", font=("Arial", 9, "bold"),
+                             padx=12, pady=6, relief=tk.FLAT, cursor="hand2")
+        open_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        close_btn = tk.Button(btn_row, text="Đóng", command=popup.destroy,
+                              bg="#95a5a6", fg="white", font=("Arial", 9, "bold"),
+                              padx=15, pady=6, relief=tk.FLAT, cursor="hand2")
+        close_btn.pack(side=tk.LEFT)
+
+    # ----------------------------------------------------------------
     # TAB 3: SCREENSHOT & CROP
     # ----------------------------------------------------------------
     def _build_tab_screenshot(self):
@@ -2709,6 +2898,17 @@ class AutoConfigGUI:
                   bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2").pack(fill=tk.X, pady=2)
         tk.Button(save_frame, text="Lưu ảnh đã cắt", command=self._ss_quick_save_cropped,
                   bg="#e67e22", fg="white", relief=tk.FLAT, cursor="hand2").pack(fill=tk.X, pady=2)
+
+        # Công cụ AI & Gỡ kẹt
+        ai_tool_frame = tk.LabelFrame(right, text="Công cụ AI & Gỡ kẹt", font=("Arial", 10, "bold"),
+                                      bg="#ecf0f1", padx=8, pady=8)
+        ai_tool_frame.pack(fill=tk.X, padx=8, pady=4)
+        tk.Button(ai_tool_frame, text="Quét YOLO (Test model)", command=self._ss_test_yolo,
+                  bg="#9b59b6", fg="white", relief=tk.FLAT, cursor="hand2").pack(fill=tk.X, pady=2)
+        tk.Button(ai_tool_frame, text="Gửi Gemini VLM (Gỡ kẹt)", command=self._ss_test_gemini,
+                  bg="#34495e", fg="white", relief=tk.FLAT, cursor="hand2").pack(fill=tk.X, pady=2)
+        tk.Button(ai_tool_frame, text="Lưu Dataset YOLO", command=self._ss_save_yolo_dataset,
+                  bg="#16a085", fg="white", relief=tk.FLAT, cursor="hand2").pack(fill=tk.X, pady=2)
 
         # Crop preview
         preview_frame = tk.LabelFrame(right, text="Xem trước vùng cắt", font=("Arial", 10, "bold"),
@@ -2888,6 +3088,144 @@ class AutoConfigGUI:
         if folder:
             self.ss_folder.delete(0, tk.END)
             self.ss_folder.insert(0, folder)
+
+    def _ss_display_clean(self):
+        """Vẽ lại ảnh gốc sạch lên canvas để xóa các nét vẽ cũ"""
+        if self.ss_screenshot is not None:
+            self.ss_canvas.delete("all")
+            self.ss_canvas.create_image(0, 0, anchor=tk.NW, image=self.ss_photo)
+            self.ss_crop_rect = None
+
+    def _ss_test_yolo(self):
+        if self.ss_screenshot is None:
+            messagebox.showwarning("Cảnh báo", "Vui lòng chụp ảnh (F2) trước!")
+            return
+        
+        model_path = self.yolo_model_path_var.get().strip()
+        if not os.path.exists(model_path):
+            messagebox.showerror("Lỗi", f"Không tìm thấy mô hình YOLO tại:\n{model_path}\nVui lòng tạo hoặc đặt mô hình ONNX đúng thư mục.")
+            return
+
+        import threading
+
+        def run():
+            from core.yolo_detector import YOLODetector
+            import config
+            old_val = config.ENABLE_YOLO
+            old_path = config.YOLO_MODEL_PATH
+            try:
+                config.ENABLE_YOLO = True
+                config.YOLO_MODEL_PATH = model_path
+                
+                detector = YOLODetector()
+                if not detector.is_available():
+                    self.root.after(0, lambda: messagebox.showerror("Lỗi", "Không thể khởi tạo mô hình YOLO. Vui lòng kiểm tra log."))
+                    return
+
+                self.root.after(0, lambda: self.status_label.config(text="Đang nhận diện YOLO...", bg="#f39c12"))
+                
+                detections = detector.detect(self.ss_screenshot)
+                self.root.after(0, lambda: self._ss_on_yolo_done(detections))
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Lỗi nhận diện YOLO: {e}"))
+            finally:
+                config.ENABLE_YOLO = old_val
+                config.YOLO_MODEL_PATH = old_path
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _ss_on_yolo_done(self, detections):
+        self._ss_display_clean()
+        info_lines = [f"--- KẾT QUẢ YOLO ({len(detections)} vật thể) ---"]
+        for det in detections:
+            label = det["class"]
+            conf = det["confidence"]
+            box = det["box"]
+            cx, cy = det["center"]
+            
+            info_lines.append(f"• {label} ({conf*100:.1f}%) tại ({cx},{cy})")
+            
+            x, y, w, h = box
+            self.ss_canvas.create_rectangle(x, y, x + w, y + h, outline="#9b59b6", width=2)
+            self.ss_canvas.create_oval(cx - 3, cy - 3, cx + 3, cy + 3, fill="red", outline="white")
+            self.ss_canvas.create_text(x, max(y - 8, 10), text=f"{label} {conf:.2f}", fill="#9b59b6", font=("Arial", 8, "bold"), anchor=tk.W)
+            
+        self._ss_set_info("\n".join(info_lines))
+        self.status_label.config(text=f"Đã nhận diện {len(detections)} vật thể", bg="#27ae60")
+
+    def _ss_test_gemini(self):
+        if self.ss_screenshot is None:
+            messagebox.showwarning("Cảnh báo", "Vui lòng chụp ảnh (F2) trước!")
+            return
+            
+        api_key = self.gemini_api_key_var.get().strip()
+        if not api_key:
+            import config
+            api_key = getattr(config, "GEMINI_API_KEY", "").strip()
+            
+        if not api_key:
+            messagebox.showwarning("Cảnh báo", "Vui lòng nhập Gemini API Key ở mục cài đặt chung!")
+            return
+            
+        import threading
+        
+        def run():
+            from core.ai_recovery import AIRecovery
+            import config
+            old_val = config.ENABLE_AI_RECOVERY
+            old_key = config.GEMINI_API_KEY
+            try:
+                config.ENABLE_AI_RECOVERY = True
+                config.GEMINI_API_KEY = api_key
+                
+                ai_rec = AIRecovery()
+                self.root.after(0, lambda: self.status_label.config(text="Đang gửi ảnh tới Gemini VLM...", bg="#f39c12"))
+                
+                result = ai_rec.analyze_and_recover(self.ss_screenshot)
+                self.root.after(0, lambda: self._ss_on_gemini_done(result))
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Lỗi kết nối Gemini: {e}"))
+                self.root.after(0, lambda: self.status_label.config(text="Lỗi kết nối", bg="#e74c3c"))
+            finally:
+                config.ENABLE_AI_RECOVERY = old_val
+                config.GEMINI_API_KEY = old_key
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _ss_on_gemini_done(self, result):
+        self._ss_display_clean()
+        if result:
+            import json
+            info_text = "--- KẾT QUẢ GEMINI API ---\n"
+            info_text += json.dumps(result, indent=2, ensure_ascii=False)
+            self._ss_set_info(info_text)
+            
+            if result.get("is_stuck") and result.get("action") == "click" and result.get("original_coords"):
+                cx, cy = result["original_coords"]
+                self.ss_canvas.create_oval(cx - 15, cy - 15, cx + 15, cy + 15, outline="red", width=2)
+                self.ss_canvas.create_line(cx - 20, cy, cx + 20, cy, fill="red", width=2)
+                self.ss_canvas.create_line(cx, cy - 20, cx, cy + 20, fill="red", width=2)
+                self.ss_canvas.create_text(cx + 18, cy + 18, text="CLICK HERE", fill="red", font=("Arial", 10, "bold"), anchor=tk.NW)
+                
+            self.status_label.config(text="Gemini phân tích xong", bg="#27ae60")
+        else:
+            self._ss_set_info("Lỗi: Không nhận được phản hồi hợp lệ từ Gemini.")
+            self.status_label.config(text="Lỗi Gemini", bg="#e74c3c")
+
+    def _ss_save_yolo_dataset(self):
+        if self.ss_screenshot is None:
+            messagebox.showwarning("Cảnh báo", "Vui lòng chụp ảnh (F2) trước!")
+            return
+            
+        try:
+            from core.yolo_detector import save_screenshot_for_training
+            filepath = save_screenshot_for_training(self.ss_screenshot)
+            if filepath:
+                messagebox.showinfo("Thành công", f"Đã lưu ảnh chụp làm dữ liệu YOLO:\n{filepath}")
+            else:
+                raise Exception("Lưu ảnh thất bại")
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không lưu được ảnh: {e}")
 
     def _ss_save_original(self):
         if self.ss_screenshot is None:
@@ -3393,6 +3731,7 @@ class AutoConfigGUI:
             var.set(settings.get(key, DEFAULT_SETTINGS.get(key, False)))
         self.bat_khoi_dong_lai_ld_var.set(settings.get("bat_khoi_dong_lai_ld", False))
         self.thoi_gian_khoi_dong_lai_var.set(float(settings.get("thoi_gian_khoi_dong_lai", 5.0)))
+
 
     def _set_ban_do_to_ui(self, ban_do):
         self.bd_loai_kho_var.set(ban_do.get("loai_kho", "KTP"))

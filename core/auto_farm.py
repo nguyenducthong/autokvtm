@@ -262,40 +262,20 @@ class AutoFarm:
 
 class SmartFarm(AutoFarm):
     """
-    Farm thông minh - Tự động phát hiện cây chín và thu hoạch
+    Farm thông minh - Thu hoạch tất cả các hàng
     """
 
     def __init__(self, adb: ADBController):
         super().__init__(adb)
 
-    def check_tree_ripe(self, x: int, y: int) -> bool:
-        """
-        Kiểm tra cây đã chín chưa bằng cách chụp màn hình
-        và check pixel màu vùng icon trên đầu cây
-        """
-        # TODO: Implement image detection
-        # Tạm thời return True để test
-        return True
-
     def smart_harvest_row(self, row: int):
-        """
-        Thu hoạch thông minh - Chỉ thu hoạch cây đã chín
-        """
-        logger.info(f"[FARM] Smart harvest hàng {row}")
-
+        """Thu hoạch các chậu trong hàng"""
+        logger.info(f"[FARM] Thu hoạch hàng {row}")
         positions = self.get_tree_positions(row)
-
-        harvested_count = 0
         for i, (x, y) in enumerate(positions, 1):
-            if self.check_tree_ripe(x, y):
-                logger.info(f"[FARM] Cây {i} đã chín - Thu hoạch")
-                self.harvest_tree(x, y)
-                harvested_count += 1
-                time.sleep(self.HARVEST_DELAY)
-            else:
-                logger.info(f"[FARM] Cây {i} chưa chín - Bỏ qua")
-
-        logger.info(f"[FARM] Thu hoạch {harvested_count}/{len(positions)} cây - Hàng {row}")
+            logger.info(f"[FARM] Thu hoạch chậu {i}")
+            self.harvest_tree(x, y)
+            time.sleep(self.HARVEST_DELAY)
 
     def smart_harvest_all(self):
         """
@@ -303,7 +283,6 @@ class SmartFarm(AutoFarm):
         """
         logger.info(f"[FARM] Bắt đầu smart harvest tất cả")
 
-        total_harvested = 0
         for row in [1, 2, 3, 4]:
             self.smart_harvest_row(row)
             time.sleep(0.5)

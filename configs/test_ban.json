@@ -11,9 +11,15 @@
     "bat_mo_ruong": false,
     "bat_giao_cu": false,
     "bat_giao_tom": false,
-    "bat_sxcam": true,
-    "bat_khoi_dong_lai_ld": true,
-    "thoi_gian_khoi_dong_lai": 0.02
+    "bat_sxcam": false,
+    "bat_sang_ban_be": false,
+    "bat_cap_nhat_khoi_dong": false,
+    "bat_khoi_dong_lai_ld": false,
+    "thoi_gian_khoi_dong_lai": 0.02,
+    "bat_ai_recovery": true,
+    "gemini_api_key": "",
+    "bat_yolo": true,
+    "yolo_model_path": "configs/kvtm_yolo.onnx"
   },
   "tasks": [],
   "ban_do": {
@@ -45,6 +51,12 @@
     "tom_vp": "",
     "tom_kho": "KTP",
     "threshold": 0.85,
-    "color_threshold": 0.6
+    "color_threshold": 0.6,
+    "region": [
+      12,
+      216,
+      682,
+      374
+    ]
   }
 }

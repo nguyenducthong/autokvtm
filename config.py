@@ -8,8 +8,15 @@ GAME_PACKAGE_NAME = "vn.kvtm.js"
 GAME_ACTIVITY_NAME = "gsn.game.zingplaynew.AppActivity"
 AUTO_OPEN_GAME_AFTER_LD_START = True
 
+# Cấu hình AI nâng cấp
+GEMINI_API_KEY = ""
+ENABLE_AI_RECOVERY = True
+YOLO_MODEL_PATH = "configs/kvtm_yolo.onnx"
+ENABLE_YOLO = False
+ENABLE_GEMINI_STOCK = False
+
 # Cấu hình phiên bản và tự động cập nhật
-CURRENT_VERSION = "1.0.8"
+CURRENT_VERSION = "1.0.9"
 GITHUB_API_URL = "https://api.github.com/repos/nguyenducthong/autokvtm/releases/latest"
 
 GARDEN_REGION = (100, 380, 880, 1100)

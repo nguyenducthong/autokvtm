@@ -9,7 +9,17 @@
     "bat_ban_vp": true,
     "bat_thu_hoach": true,
     "bat_mo_ruong": true,
-    "bat_giao_cu": false
+    "bat_giao_cu": false,
+    "bat_giao_tom": false,
+    "bat_sxcam": false,
+    "bat_sang_ban_be": false,
+    "bat_cap_nhat_khoi_dong": true,
+    "bat_khoi_dong_lai_ld": false,
+    "thoi_gian_khoi_dong_lai": 5.0,
+    "bat_ai_recovery": true,
+    "gemini_api_key": "",
+    "bat_yolo": true,
+    "yolo_model_path": "configs/kvtm_yolo.onnx"
   },
   "tasks": [
     {
@@ -363,6 +373,7 @@
     ],
     "xoa_kc": true,
     "dat_quang_cao": true,
+    "check_stock": false,
     "qc_templates": [
       "assets/items/ch_tra_hoa_hong.png",
       "assets/items/ch_tinh_dau_tao.png",
@@ -371,13 +382,16 @@
     "xoa_kc_templates": [
       "assets/items/ch_tra_hoa_hong.png"
     ],
+    "dsvp_bo_qua": [],
+    "tom_vp": "",
+    "tom_kho": "KTP",
     "threshold": 0.85,
     "color_threshold": 0.85,
     "region": [
-      12,
-      216,
-      682,
-      374
+      630,
+      571,
+      51,
+      225
     ]
   }
 }

@@ -227,6 +227,26 @@ def tim_may_v2(template_path, config_row, max_retry=2):
         current_row = _detect_current_row(take_screenshot=True)
 
     if current_row is None:
+        # Nếu không nhận diện được hàng, có thể màn hình bị kẹt bởi popup/quảng cáo. Thử dùng AI gỡ kẹt.
+        import config
+        if getattr(config, "ENABLE_AI_RECOVERY", False) and getattr(config, "GEMINI_API_KEY", "").strip():
+            try:
+                logger.warning("[AI_RECOVERY] Nghi ngờ màn hình bị kẹt popup/quảng cáo. Đang gọi Gemini VLM để giải cứu...")
+                from core.ai_recovery import AIRecovery
+                ai_rec = AIRecovery()
+                screen = adb.screenshot_full()
+                rec_data = ai_rec.analyze_and_recover(screen)
+                if rec_data and rec_data.get("is_stuck") and rec_data.get("action") == "click" and rec_data.get("original_coords"):
+                    orig_x, orig_y = rec_data["original_coords"]
+                    logger.info(f"[AI_RECOVERY] Phát hiện kẹt: '{rec_data['reason']}'. Click đóng tại ({orig_x}, {orig_y})")
+                    adb.tap(orig_x, orig_y)
+                    _sleep(1.5)
+                    # Chụp và thử nhận diện lại hàng
+                    current_row = _detect_current_row(take_screenshot=True)
+            except Exception as ai_err:
+                logger.error(f"[AI_RECOVERY] Gặp lỗi khi gọi AI gỡ kẹt: {ai_err}")
+
+    if current_row is None:
         logger.error("Không thể nhận diện hàng hiện tại sau 2 lần chụp")
         return False
 

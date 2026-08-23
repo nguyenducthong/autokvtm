@@ -150,9 +150,67 @@ def _find(adb, template_path, threshold=THRESHOLD, color_threshold=0.6, step_nam
 
 def _find_on_screen(screen, template_path, threshold=THRESHOLD, color_threshold=0.6,
                     step_name="find_cached", region=None):
-    """Tìm template trên screen đã chụp sẵn."""
+    """Tìm template trên screen đã chụp sẵn (hỗ trợ YOLO AI trước, dự phòng OpenCV)."""
     if screen is None:
         return None
+
+    # 1. Thử tìm bằng YOLO (nếu bật)
+    import config
+    if getattr(config, "ENABLE_YOLO", False):
+        try:
+            from core.yolo_detector import YOLODetector
+            detector = YOLODetector()
+            if detector.is_available():
+                detections = detector.detect(screen)
+                classes = detector.classes
+                
+                # Trích xuất tên file không chứa đường dẫn và đuôi mở rộng
+                base = os.path.basename(template_path).replace(".png", "")
+                
+                # Quy tắc ánh xạ thông minh từ template_path sang class YOLO
+                target_class = None
+                if base in classes:
+                    target_class = base
+                else:
+                    normalized = base.replace("core_", "").replace("kho_", "").replace("cay_", "")
+                    # Xử lý các nhãn đặc biệt
+                    if "vang" in normalized:
+                        for c in ("o_vang", "o_ban_vang", "vang"):
+                            if c in classes:
+                                target_class = c
+                                break
+                    elif "trong" in normalized:
+                        for c in ("o_trong", "o_ban_trong", "trong"):
+                            if c in classes:
+                                target_class = c
+                                break
+                    else:
+                        # Tìm fuzzy match tên nhãn lớp
+                        for c in classes:
+                            if c in base or base in c or c in normalized or normalized in c:
+                                target_class = c
+                                break
+                
+                if target_class:
+                    pos_yolo = None
+                    for d in detections:
+                        if d["class"] == target_class:
+                            pos_yolo = d["center"]
+                            # Kiểm tra giới hạn vùng chụp (region) nếu có
+                            if region:
+                                rx, ry, rw, rh = region
+                                cx, cy = pos_yolo
+                                if not (rx <= cx <= rx + rw and ry <= cy <= ry + rh):
+                                    continue
+                            break
+                    if pos_yolo:
+                        logger.info(f"[YOLO] Tìm thấy '{target_class}' (từ {base}) tại {pos_yolo}")
+                        _save_debug_screenshot(screen, template_path, pos_yolo, f"yolo_{step_name}")
+                        return pos_yolo
+        except Exception as e:
+            logger.warning(f"[BAN_DO_YOLO] Lỗi nhận diện bằng YOLO cho {template_path}: {e}")
+
+    # 2. Dự phòng: OpenCV Template Matching
     pos = img.find_template_color(template_path=template_path, threshold=threshold,
                                   color_threshold=color_threshold, screen_img=screen,
                                   region=region)
@@ -344,6 +402,7 @@ def tim_o_ban(adb, max_swipe=SWIPE_LEFT_MAX):
     if _should_stop():
         return None
     _sleep(CLICK_DELAY)
+
     for swipe_i in range(max_swipe + 1):  # 0 = trang hiện tại, 1..max = sau kéo
         if _should_stop():
             return None
@@ -352,14 +411,14 @@ def tim_o_ban(adb, max_swipe=SWIPE_LEFT_MAX):
         if screen is None:
             return None
 
-        # Tim o vang truoc; co o vang thi tra toa do luon.
+        # Tim o vang truoc; co o vang thi tra toa do luon (tự động dùng YOLO nếu bật)
         pos_vang = _find_on_screen(screen, "assets/items/core_vang3.png", threshold=0.9,
                                    step_name=f"tim_o_vang_swipe{swipe_i}")
         if pos_vang:
-            logger.info(f"Tim thay o vang tai {pos_vang} (sau {swipe_i} lan keo)")
+            logger.info(f"Tìm thấy ô vàng tại {pos_vang} (sau {swipe_i} lần kéo)")
             return pos_vang
 
-        # Tìm ô trống
+        # Tìm ô trống (tự động dùng YOLO nếu bật)
         pos_trong = _find_on_screen(screen, "assets/items/core_o_trong.png", threshold=0.9,
                                     step_name=f"tim_o_trong_swipe{swipe_i}")
         if pos_trong:
@@ -390,9 +449,9 @@ def chon_kho(adb, path_kho_selected, path_kho_not_selected, max_retry=3, positio
         try:
             x, y = position
             logger.info(f"Chon kho bang toa do co dinh: ({x}, {y})")
-            _sleep(CLICK_DELAY)
+            _sleep(0.2)
             adb.tap(int(x), int(y), 0.1)
-            _sleep(0.5)
+            _sleep(0.3)
             return True
         except (TypeError, ValueError) as e:
             logger.warning(f"Toa do kho khong hop le {position}: {e}. Fallback tim anh.")
@@ -751,6 +810,108 @@ def _read_stock_number_near_item(screen, pos_vp, stock_offset=STOCK_NUMBER_OFFSE
     return None
 
 
+_HTTP_SESSION = None
+
+def _get_http_session():
+    global _HTTP_SESSION
+    if _HTTP_SESSION is None:
+        import requests
+        _HTTP_SESSION = requests.Session()
+    return _HTTP_SESSION
+
+
+def _scan_stock_with_gemini(screen, vp_list, api_key):
+    """
+    Sử dụng Gemini VLM để đọc số lượng vật phẩm trong kho thành phẩm.
+    """
+    import base64
+    import json
+    
+    # 1. Trích xuất danh sách tên vật phẩm từ vp_list
+    item_map = {} # map name -> path
+    for item in vp_list:
+        path = item.get("path") if isinstance(item, dict) else item
+        name = os.path.basename(path).replace(".png", "").replace("kho_", "").replace("core_", "")
+        item_map[name] = path
+
+    item_names = list(item_map.keys())
+    
+    # 2. Resize ảnh để gửi cho nhẹ (rộng 900px)
+    h, w = screen.shape[:2]
+    target_width = 900  # Tăng độ phân giải lên 900px để chữ số to rõ ràng hơn
+    target_height = int(h * (target_width / w))
+    resized = cv2.resize(screen, (target_width, target_height))
+    # Nén JPEG chất lượng cao 95% để tránh nhiễu nén làm nhòe chữ số
+    _, buffer = cv2.imencode('.jpg', resized, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+    image_bytes = buffer.tobytes()
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    
+    # 3. Chuẩn bị prompt tiếng Anh ngắn để giảm token và tối ưu hóa thời gian suy luận
+    prompt = (
+        "Identify quantities of these items in the warehouse screen. "
+        "Read numbers at the bottom-right corner of each item cell (e.g. x152 is 152). "
+        f"Items to find: {', '.join(item_names)}. "
+        "Output ONLY a valid JSON dictionary using double quotes for keys, format: {\"item_name\": quantity}. "
+        "If not found, set its value to 0."
+    )
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt},
+                    {
+                        "inlineData": {
+                            "mimeType": "image/jpeg",
+                            "data": image_b64
+                        }
+                    }
+                ]
+            }
+        ],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "temperature": 0.1,
+            "maxOutputTokens": 150  # Giới hạn số token đầu ra để phản hồi nhanh nhất
+        }
+    }
+    
+    try:
+        session = _get_http_session()
+        response = session.post(url, headers=headers, json=payload, timeout=20)
+        response.raise_for_status()
+        res_json = response.json()
+        resp_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+        
+        # Parse JSON phản hồi (có dự phòng dùng ast.literal_eval nếu trả về nháy đơn hoặc markdown block)
+        try:
+            result = json.loads(resp_text)
+        except Exception:
+            import ast
+            cleaned_text = resp_text.replace("```json", "").replace("```", "").strip()
+            result = ast.literal_eval(cleaned_text)
+            
+        logger.info(f"[STOCK_AI] Phản hồi từ Gemini: {result}")
+        
+        # Ánh xạ kết quả ngược về path vật phẩm
+        stock_result = {}
+        for name, qty in result.items():
+            matched_path = None
+            for k, path in item_map.items():
+                if k in name or name in k:
+                    matched_path = path
+                    break
+            if matched_path:
+                stock_result[matched_path] = int(qty)
+                
+        return stock_result
+    except Exception as e:
+        logger.error(f"[STOCK_AI] Lỗi khi gọi Gemini để đọc kho: {e}")
+        return {}
+
+
 def _scan_va_luu_stock_kho(adb, vp_list, threshold=THRESHOLD, color_threshold=0.6,
                            region=None):
     """Quet so luong cac VP dang cau hinh trong kho va luu JSON theo tung LDPlayer."""
@@ -761,6 +922,48 @@ def _scan_va_luu_stock_kho(adb, vp_list, threshold=THRESHOLD, color_threshold=0.
     if screen is None:
         return {}
 
+    # Tạm tắt đọc stock bằng Gemini theo yêu cầu để tối ưu tốc độ bán
+    if getattr(config, "ENABLE_GEMINI_STOCK", False) and gemini_key:
+        try:
+            ai_stock = _scan_stock_with_gemini(screen, vp_list, gemini_key)
+            if ai_stock:
+                logger.info(f"[STOCK_AI] Quét kho thành công bằng AI: {ai_stock}")
+                
+                # Đồng bộ lưu trữ JSON stock giống như cũ
+                normalized = _normalize_vp_list(vp_list, threshold, color_threshold, region)
+                scanned = {}
+                now = datetime.now().isoformat(timespec="seconds")
+                device_key = _stock_device_key(adb)
+                
+                for vp_info in normalized:
+                    vp_path = vp_info["path"]
+                    if vp_path in ai_stock:
+                        item_key = _stock_item_key(vp_path)
+                        pos = _find_on_screen(screen, vp_path, threshold=0.7, step_name="scan_stock_pos")
+                        if pos:
+                            scanned[item_key] = {
+                                "stock": ai_stock[vp_path],
+                                "last_scan": now,
+                                "position": [int(pos[0]), int(pos[1])]
+                            }
+                if scanned:
+                    with _stock_lock:
+                        state = _load_stock_state()
+                        device_state = state.get(device_key, {})
+                        if not isinstance(device_state, dict):
+                            device_state = {}
+                        for item_key, info in scanned.items():
+                            old = device_state.get(item_key, {})
+                            sold_count = old.get("sold_count", 0) if isinstance(old, dict) else 0
+                            info["sold_count"] = sold_count
+                            device_state[item_key] = info
+                        state[device_key] = device_state
+                        _save_stock_state(state)
+                return ai_stock
+        except Exception as e:
+            logger.warning(f"[STOCK_AI] Quét kho bằng Gemini lỗi, chuyển sang dùng OpenCV: {e}")
+
+    # Fallback dự phòng: OpenCV Template Matching
     normalized = _normalize_vp_list(vp_list, threshold, color_threshold, region)
     scanned = {}
     now = datetime.now().isoformat(timespec="seconds")
@@ -1341,10 +1544,10 @@ def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
             logger.warning("Hết ô trống, dừng bán")
             break
 
-        # Click vào ô trống
+        # Click vào ô trống (tối ưu tốc độ click)
         x, y = pos
-        adb.taps(x, y, 2, 1)
-        _sleep(CLICK_DELAY)
+        adb.taps(x, y, 2, 0.3)
+        _sleep(0.3)
 
         # Step 3: Chọn kho
         if not chon_kho(adb, path_kho_selected, path_kho_not_selected, position=kho_position):

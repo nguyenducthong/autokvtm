@@ -24,7 +24,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install opencv-python numpy==1.26.4 pillow pytesseract pure-python-adb adbutils requests pyautogui keyboard mouse pyinstaller
+        pip install opencv-python numpy==1.26.4 pillow pytesseract pure-python-adb adbutils requests pyautogui keyboard mouse pyinstaller onnx
 
     - name: Build EXE with PyInstaller
       run: |

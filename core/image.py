@@ -754,3 +754,117 @@ class ImageProcessor:
 
         logger.info(f"[FIND_EXACT] {template_name}: ({cx + rx},{cy + ry}) score={score:.3f} color_dist={best_color_dist:.1f}")
         return (cx + rx, cy + ry)
+
+    def wait_for_template_disappear(
+        self,
+        template_path: str,
+        adb,
+        threshold: float = 0.8,
+        region: Optional[Tuple[int, int, int, int]] = None,
+        timeout_sec: float = 1.5,
+        interval_sec: float = 0.1
+    ) -> bool:
+        """
+        Đợi cho đến khi template không còn xuất hiện trên màn hình nữa (hoặc hết timeout).
+        Trả về True nếu biến mất thành công, False nếu quá timeout vẫn còn.
+        """
+        import time
+        start_time = time.time()
+        tpl_name = os.path.basename(template_path)
+        while time.time() - start_time < timeout_sec:
+            try:
+                screen = adb.screenshot_full()
+            except Exception as e:
+                logger.warning(f"[WAIT_DISAPPEAR] Lỗi chụp màn hình: {e}")
+                time.sleep(interval_sec)
+                continue
+            
+            pos = self._match_one(template_path=template_path, threshold=threshold, screen_img=screen, region=region)
+            if not pos:
+                logger.info(f"[WAIT_DISAPPEAR] {tpl_name} đã biến mất sau {time.time() - start_time:.2f}s")
+                return True
+            time.sleep(interval_sec)
+            
+        logger.warning(f"[WAIT_DISAPPEAR] {tpl_name} không biến mất sau {timeout_sec}s")
+        return False
+
+    def wait_for_template_appear(
+        self,
+        template_path: str,
+        adb,
+        threshold: float = 0.8,
+        region: Optional[Tuple[int, int, int, int]] = None,
+        timeout_sec: float = 1.5,
+        interval_sec: float = 0.1
+    ) -> Optional[Tuple[int, int]]:
+        """
+        Đợi cho đến khi template xuất hiện trên màn hình (hoặc hết timeout).
+        Trả về tọa độ (x, y) nếu xuất hiện, None nếu quá timeout.
+        """
+        import time
+        start_time = time.time()
+        tpl_name = os.path.basename(template_path)
+        while time.time() - start_time < timeout_sec:
+            try:
+                screen = adb.screenshot_full()
+            except Exception as e:
+                logger.warning(f"[WAIT_APPEAR] Lỗi chụp màn hình: {e}")
+                time.sleep(interval_sec)
+                continue
+            
+            pos = self._match_one(template_path=template_path, threshold=threshold, screen_img=screen, region=region)
+            if pos:
+                logger.info(f"[WAIT_APPEAR] {tpl_name} xuất hiện tại {pos} sau {time.time() - start_time:.2f}s")
+                return pos
+            time.sleep(interval_sec)
+            
+        logger.warning(f"[WAIT_APPEAR] {tpl_name} không xuất hiện sau {timeout_sec}s")
+        return None
+
+    def wait_for_pixel_change(
+        self,
+        adb,
+        region: Tuple[int, int, int, int],
+        timeout_sec: float = 2.0,
+        interval_sec: float = 0.15,
+        change_threshold: float = 15.0
+    ) -> bool:
+        """
+        Đợi cho vùng màn hình chỉ định thay đổi màu sắc đáng kể so với ảnh ban đầu.
+        Hữu ích để check xem hoạt cảnh (animation) trồng/thu hoạch đã chạy xong chưa.
+        change_threshold: Khoảng cách màu trung bình thay đổi tối thiểu để coi là có biến đổi.
+        """
+        import time
+        rx, ry, rw, rh = region
+        start_time = time.time()
+        
+        # Lấy ảnh ban đầu
+        try:
+            initial_screen = adb.screenshot_full()
+            h_max, w_max = initial_screen.shape[:2]
+            rx_c = max(0, min(rx, w_max - 1))
+            ry_c = max(0, min(ry, h_max - 1))
+            rw_c = max(1, min(rw, w_max - rx_c))
+            rh_c = max(1, min(rh, h_max - ry_c))
+            initial_region = initial_screen[ry_c:ry_c+rh_c, rx_c:rx_c+rw_c]
+            initial_mean = np.mean(initial_region.astype(np.float32), axis=(0, 1))
+        except Exception as e:
+            logger.warning(f"[WAIT_CHANGE] Lỗi chụp ảnh ban đầu: {e}")
+            return False
+
+        while time.time() - start_time < timeout_sec:
+            time.sleep(interval_sec)
+            try:
+                screen = adb.screenshot_full()
+                current_region = screen[ry_c:ry_c+rh_c, rx_c:rx_c+rw_c]
+                current_mean = np.mean(current_region.astype(np.float32), axis=(0, 1))
+                color_dist = float(np.sqrt(np.sum((initial_mean - current_mean) ** 2)))
+                
+                if color_dist >= change_threshold:
+                    logger.info(f"[WAIT_CHANGE] Phát hiện biến đổi ở vùng {region}: dist={color_dist:.1f} after {time.time() - start_time:.2f}s")
+                    return True
+            except Exception as e:
+                logger.warning(f"[WAIT_CHANGE] Lỗi khi check: {e}")
+                
+        logger.warning(f"[WAIT_CHANGE] Vùng {region} không biến đổi sau {timeout_sec}s")
+        return False

@@ -22,3 +22,8 @@ env/
 .vscode/
 *.swp
 *.swo
+
+# YOLO Training Data & Runs
+dataset/
+runs/
+*.pt
