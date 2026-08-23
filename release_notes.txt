@@ -1,4 +1,4 @@
 - Sửa lỗi thiếu adb trong tim_may_v2 khi gọi AI Recovery
-- Cải thiện nhận diện tầng mây, tối ưu tìm kiếm template số
+- Tối ưu nhận diện tầng mây và icon số, khắc phục lỗi không tìm thấy
 - Đồng bộ ngữ cảnh luồng ADB cho giao tôm và sản xuất cám
 - Cập nhật cơ chế hiển thị nội dung cập nhật tự động
