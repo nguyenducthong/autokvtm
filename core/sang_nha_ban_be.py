@@ -58,6 +58,8 @@ def _doi_anh(adb, template_path: str, timeout: int = 30, interval: float = 1.0,
 def sang_ban_be(adb, serial: str = None, force: bool = False, stop_event=None) -> bool:
     """Xử lý sang nhà bạn bè."""
     serial = serial or getattr(adb, "serial", "unknown")
+    from utils.utils import setup_thread, get_device_name
+    setup_thread(adb, stop_event=stop_event, device_name=get_device_name() or serial)
     if _should_stop(stop_event):
         return False
     if not force and not can_sang_ban_be(serial):

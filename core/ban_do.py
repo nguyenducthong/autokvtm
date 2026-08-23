@@ -1450,24 +1450,8 @@ def _xu_ly_xe_kc(adb , data_vps, threshold, color_threshold):
 # MAIN: Hàm chính chạy theo config
 # ================================================================
 def main_ban_hang(adb: ADBController, config: dict, stop_event=None):
-    """
-    Hàm bán hàng theo config từ GUI.
-
-    config = {
-        "loai_kho": "KTP",           # code kho (KSK, KNS, KTP)
-        "so_lan_dat_vp": 4,          # số lần đặt VP (mỗi lần = 1 ô)
-        "data": ["kho_tra_hoa_hong.png", "kho_vai_vang.png"],  # danh sách VP
-        "xoa_kc": True,              # xé kim cương
-        "dat_quang_cao": True         # bật/tắt QC
-    }
-
-    Flow mỗi lần:
-      0. Kiểm tra vị trí → nếu đang ở máy/hàng → về nhà (hàng 0)
-      1. Mở cửa hàng (quay_hang_on.png)
-      2. Tìm ô trống/vàng → kéo trái nếu không thấy → click
-      3. Chọn kho → tìm VP (SP1 hết → thử SP2 → SP3...) → đặt bán
-      * Nút +, QC, đặt bán cache vị trí sau lần đầu → nhanh hơn
-    """
+    from utils.utils import setup_thread, get_device_name
+    setup_thread(adb, stop_event=stop_event, device_name=get_device_name())
     if stop_event:
         _set_stop_event(stop_event)
 

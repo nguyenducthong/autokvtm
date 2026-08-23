@@ -97,6 +97,8 @@ def _co_vat_pham_bo_qua(adb, dsvp_bo_qua, threshold: float = 0.82) -> bool:
 def giao_cu(adb, serial: str = None, dsvp_bo_qua=None, force: bool = False, stop_event=None) -> bool:
     """Xử lý giao cú theo chu kỳ 30 phút."""
     serial = serial or getattr(adb, "serial", "unknown")
+    from utils.utils import setup_thread, get_device_name
+    setup_thread(adb, stop_event=stop_event, device_name=get_device_name() or serial)
     if _should_stop(stop_event):
         return False
     if not force and not can_giao_cu(serial):

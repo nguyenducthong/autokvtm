@@ -1,3 +1,4 @@
 - Sửa lỗi khởi tạo kết nối ADB quá sớm khi LDPlayer đang khởi động
 - Đảm bảo tự động mở game sau khi mở LDPlayer hoạt động ổn định
-- Đồng bộ hiển thị tên LDPlayer trong toàn bộ các luồng log
+- Đồng bộ hiển thị tên LDPlayer và ngữ cảnh luồng trong toàn bộ các module
+- Nâng cấp cơ chế tự động cập nhật exe không bị lỗi bảo mật PyInstaller
