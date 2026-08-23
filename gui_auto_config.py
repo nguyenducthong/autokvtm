@@ -4515,6 +4515,10 @@ class AutoConfigGUI:
             # Script batch để đợi ứng dụng chính đóng hẳn, xoá exe cũ, đổi tên file mới và chạy lại
             bat_content = f"""@echo off
 set _MEIPASS=
+set _MEIPASS2=
+set PYINSTALLER_PARENT_PID=
+set PYINSTALLER_STRICT_UNPACK_MODE=
+set _PYI_SPLASH_IPC=
 taskkill /f /im "{current_exe_name}" >nul 2>&1
 timeout /t 2 /nobreak >nul
 del /f /q "{current_exe}"
@@ -4526,8 +4530,20 @@ del "%~f0"
             with open(bat_path, "w", encoding="utf-8") as f:
                 f.write(bat_content)
                 
-            # Khởi chạy file bat ngầm
-            subprocess.Popen([bat_path], shell=True, cwd=dir_name)
+            # Tạo bản sao môi trường sạch, loại bỏ các biến PyInstaller
+            clean_env = os.environ.copy()
+            for key in ["_MEIPASS", "_MEIPASS2", "PYINSTALLER_PARENT_PID", "PYINSTALLER_STRICT_UNPACK_MODE", "_PYI_SPLASH_IPC"]:
+                clean_env.pop(key, None)
+
+            # Flags để tiến trình bat hoàn toàn tách rời khỏi process cha
+            flags = 0
+            if hasattr(subprocess, 'CREATE_NEW_PROCESS_GROUP'):
+                flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+            if hasattr(subprocess, 'DETACHED_PROCESS'):
+                flags |= subprocess.DETACHED_PROCESS
+
+            # Khởi chạy file bat ngầm hoàn toàn độc lập
+            subprocess.Popen([bat_path], shell=True, cwd=dir_name, env=clean_env, creationflags=flags)
             
             # Đóng ngay ứng dụng chính để script bat hoạt động
             sys.exit(0)

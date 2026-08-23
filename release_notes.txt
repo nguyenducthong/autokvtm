@@ -1,4 +1,4 @@
-- Sửa lỗi thiếu adb trong tim_may_v2 khi gọi AI Recovery
-- Tối ưu nhận diện tầng mây và icon số, khắc phục lỗi không tìm thấy
+- Sửa lỗi Security validation failure khi tự động cập nhật exe
+- Tách biệt tiến trình updater.bat và làm sạch biến môi trường PyInstaller
+- Tối ưu nhận diện tầng mây và sửa lỗi tim_may_v2
 - Đồng bộ ngữ cảnh luồng ADB cho giao tôm và sản xuất cám
-- Cập nhật cơ chế hiển thị nội dung cập nhật tự động
