@@ -168,10 +168,10 @@ def _row_to_level(row):
 
 def _detect_current_row(take_screenshot=True, threshold=None):
     """Chụp màn hình và nhận diện đang ở hàng nào (0-10).
-    Tối ưu: chụp 1 screenshot, tìm 11 số trên cùng ảnh.
+    Tối ưu: chụp 1 screenshot, tìm tất cả số 0-10 và chọn số có điểm khớp cao nhất.
     Nếu lần 1 không thấy (bóng/lag) → thử thoát dialog và chụp lại lần 2.
     """
-    th = threshold or 0.75
+    th = threshold or THRESHOLD
     adb = _get_adb()
     if not adb:
         return None
@@ -185,10 +185,10 @@ def _detect_current_row(take_screenshot=True, threshold=None):
         elif attempt == 0 and take_screenshot:
             screen = adb.screenshot_full()
         else:
-            # Lần 2: Thử tap nút đóng/thoát nếu nghi ngờ có popup đè lên, đợi 0.4s rồi chụp lại
+            # Lần 2: Thử tap nút đóng/thoát nếu nghi ngờ có popup đè lên, đợi 0.6s rồi chụp lại
             logger.info("Lần 1 không nhận diện được hàng, thử thoát dialog và chụp lại...")
             adb.tap(*INDEX_THOAT_SAN_XUAT_MAC_DINH)
-            _sleep(0.4)
+            _sleep(0.6)
             screen = adb.screenshot_full()
 
         if screen is None:
@@ -196,19 +196,33 @@ def _detect_current_row(take_screenshot=True, threshold=None):
 
         _ctx._last_screen = screen
 
-        # Tìm 11 số trên cùng 1 ảnh (thử color match trước, fallback sang basic match)
+        best_row = None
+        best_score = 0.0
+
+        # Tìm số có điểm kết hợp cao nhất (best match) để tránh nhận diện nhầm số tương tự (5 vs 8, 3 vs 8)
         for i in range(0, 11):
             may_i = f"assets/items/num/{i}.png"
             if not os.path.exists(may_i):
                 continue
 
-            pos = img.find_template_color(may_i, threshold=th, color_threshold=0.5, screen_img=screen)
-            if pos:
-                logger.info(f"Nhận diện hàng hiện tại: {i} (lần {attempt+1})")
-                set_state(_row_to_state(i))
-                return i
+            detail = img.find_template_color_detail(may_i, threshold=th, color_threshold=0.6, screen_img=screen)
+            if detail.get("found"):
+                combined = detail.get("combined_score", 0.0)
+                if combined > best_score:
+                    best_score = combined
+                    best_row = i
 
-            pos_basic = img.find_template(may_i, threshold=max(0.70, th - 0.05), screen_img=screen)
+        if best_row is not None and best_score >= th:
+            logger.info(f"Nhận diện hàng hiện tại: {best_row} (best match score: {best_score:.3f}, lần {attempt+1})")
+            set_state(_row_to_state(best_row))
+            return best_row
+
+        # Fallback sang basic match nếu color match không ra
+        for i in range(0, 11):
+            may_i = f"assets/items/num/{i}.png"
+            if not os.path.exists(may_i):
+                continue
+            pos_basic = img.find_template(may_i, threshold=max(0.75, th - 0.05), screen_img=screen)
             if pos_basic:
                 logger.info(f"Nhận diện hàng hiện tại (fallback match): {i} (lần {attempt+1})")
                 set_state(_row_to_state(i))
@@ -231,15 +245,16 @@ def tim_may_v2(template_path, config_row, max_retry=2):
 
     target_level = _row_to_level(config_row)
 
-    # === BƯỚC 0: Kiểm tra nhanh nếu đã ở đúng template đích ===
-    if template_path and os.path.exists(template_path):
+    # === BƯỚC 0: Kiểm tra nhanh nếu đã ở đúng template máy (chỉ áp dụng cho máy không phải số) ===
+    is_num_template = template_path and ("num" in template_path or "assets/items/num" in template_path)
+    if template_path and not is_num_template and os.path.exists(template_path):
         screen = _get_screen(True)
         if screen is not None:
-            pos_target = img.find_template_color(template_path, threshold=0.75, color_threshold=0.5, screen_img=screen)
+            pos_target = img.find_template_color(template_path, threshold=THRESHOLD, color_threshold=0.6, screen_img=screen)
             if not pos_target:
-                pos_target = img.find_template(template_path, threshold=0.72, screen_img=screen)
+                pos_target = img.find_template(template_path, threshold=0.80, screen_img=screen)
             if pos_target:
-                logger.info(f"Đã nhìn thấy template đích {template_path} (hàng {config_row}), không cần scroll")
+                logger.info(f"Đã nhìn thấy template máy đích {template_path} (hàng {config_row}), không cần scroll")
                 set_state(_row_to_state(config_row))
                 return True
 
@@ -250,7 +265,7 @@ def tim_may_v2(template_path, config_row, max_retry=2):
 
     if current_row is None:
         logger.warning("Không nhận diện được hàng, thử lại...")
-        _sleep(0.5)
+        _sleep(0.8)
         current_row = _detect_current_row(take_screenshot=True)
 
     if current_row is None:
@@ -318,18 +333,18 @@ def tim_may_v2(template_path, config_row, max_retry=2):
         return False
 
     # === BƯỚC 4: Verify — chụp lại kiểm tra ===
-    _sleep(0.5)
+    _sleep(0.8)
     for retry in range(max_retry):
         if _should_stop():
             return False
 
-        # Kiểm tra nhanh template đích nếu có
-        if template_path and os.path.exists(template_path):
+        # Kiểm tra nhanh template máy đích nếu có (không áp dụng cho số)
+        if template_path and not is_num_template and os.path.exists(template_path):
             scr = _get_screen(True)
             if scr is not None:
-                if img.find_template_color(template_path, threshold=0.75, color_threshold=0.5, screen_img=scr) or \
-                   img.find_template(template_path, threshold=0.72, screen_img=scr):
-                    logger.info(f"Verify OK: Thấy template {template_path} trên màn hình")
+                if img.find_template_color(template_path, threshold=THRESHOLD, color_threshold=0.6, screen_img=scr) or \
+                   img.find_template(template_path, threshold=0.80, screen_img=scr):
+                    logger.info(f"Verify OK: Thấy template máy {template_path} trên màn hình")
                     set_state(_row_to_state(config_row))
                     return True
 
@@ -337,7 +352,7 @@ def tim_may_v2(template_path, config_row, max_retry=2):
 
         if verify_row is None:
             logger.warning(f"Verify lần {retry+1}: không nhận diện được hàng, thử lại...")
-            _sleep(0.5)
+            _sleep(0.8)
             continue
 
         verify_level = _row_to_level(verify_row)
@@ -354,14 +369,14 @@ def tim_may_v2(template_path, config_row, max_retry=2):
             len_may(abs(micro))
         else:
             xuong_may(abs(micro))
-        _sleep(0.5)
+        _sleep(0.8)
 
-    # Kiểm tra lần cuối
-    if template_path and os.path.exists(template_path):
+    # Kiểm tra lần cuối cho template máy
+    if template_path and not is_num_template and os.path.exists(template_path):
         scr = _get_screen(True)
-        if scr is not None and (img.find_template_color(template_path, threshold=0.75, color_threshold=0.5, screen_img=scr) or \
-                                img.find_template(template_path, threshold=0.72, screen_img=scr)):
-            logger.info(f"Verify cuối cùng OK: Thấy template {template_path}")
+        if scr is not None and (img.find_template_color(template_path, threshold=THRESHOLD, color_threshold=0.6, screen_img=scr) or \
+                                img.find_template(template_path, threshold=0.80, screen_img=scr)):
+            logger.info(f"Verify cuối cùng OK: Thấy template máy {template_path}")
             return True
 
     final_row = _detect_current_row(take_screenshot=True)
@@ -377,12 +392,12 @@ def lay_toa_do_tu_indexs(indexs_list):
     return [INDEX_HANG[idx] for idx in indexs_list if idx in INDEX_HANG]
 
 
-def _len_1_may(duration: int=50):
+def _len_1_may(duration: int=70):
     adb = _get_adb()
-    adb.drag_smooth([(70, 450), (70, 500)], total_duration_ms=duration)
+    adb.scroll_up(450, 500, 70, duration)
 
 
-def len_2_may(count: int=1, duration: int=70, sleep: float=0.5):
+def len_2_may(count: int=1, duration: int=70, sleep: float=0.8):
     adb = _get_adb()
     set_state(PlayerState.DANG_SCROLL)
     for _ in range(count):
@@ -391,31 +406,25 @@ def len_2_may(count: int=1, duration: int=70, sleep: float=0.5):
         adb.tap(*TAB_LEN_2_HANG)
         _sleep(sleep)
 
-def len_may(count: int=1, duration: int=50, sleep: float=0.5): 
+def len_may(count: int=1, duration: int=70, sleep: float=0.8): 
     set_state(PlayerState.DANG_SCROLL)
-    len_2_count = count // 2
-    len_1_count = count % 2
-
-    if len_2_count:
-        len_2_may(len_2_count, sleep=sleep)
-
-    for _ in range(len_1_count):
+    for _ in range(count):
         if _should_stop():
             return
         _len_1_may(duration=duration)
         _sleep(sleep)
 
-def xuong_may(count: int=1, duration: int=50, sleep: float=0.5):
+def xuong_may(count: int=1, duration: int=70, sleep: float=0.8):
     adb = _get_adb()
     set_state(PlayerState.DANG_SCROLL)
     for _ in range(count):
         if _should_stop():
             return
-        adb.drag_smooth([(70, 500), (70, 450)], total_duration_ms=duration)
+        adb.scroll_down(500, 450, 70, duration)
         _sleep(sleep)
 
 
-def xuong_nha(duration: int=50, sleep: float=0.7, threshold=None):
+def xuong_nha(duration: int=70, sleep: float=0.8, threshold=None):
     adb = _get_adb()
     set_state(PlayerState.DANG_SCROLL)
     th = threshold or THRESHOLD
