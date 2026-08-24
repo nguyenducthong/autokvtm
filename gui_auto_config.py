@@ -366,9 +366,17 @@ class AutoConfigGUI:
         self._load_global_settings()
 
         # Status bar
-        self.status_label = tk.Label(self.root, text="Sẵn sàng", font=("Arial", 9),
+        self.status_bar_frame = tk.Frame(self.root, bg="#27ae60")
+        self.status_bar_frame.pack(fill=tk.X, side=tk.BOTTOM)
+
+        self.status_label = tk.Label(self.status_bar_frame, text="Sẵn sàng", font=("Arial", 9),
                                      bg="#27ae60", fg="white", anchor=tk.W, padx=10)
-        self.status_label.pack(fill=tk.X, side=tk.BOTTOM)
+        self.status_label.pack(side=tk.LEFT)
+
+        self.gemini_stats_lbl = tk.Label(self.status_bar_frame, text="🤖 Gemini AI: 0 reqs", font=("Arial", 9, "bold"),
+                                         bg="#8e44ad", fg="white", padx=12, pady=2, cursor="hand2")
+        self.gemini_stats_lbl.pack(side=tk.RIGHT)
+        self.gemini_stats_lbl.bind("<Button-1>", lambda e: self._open_gemini_log_dialog())
 
     # ----------------------------------------------------------------
     # TAB 1: AUTO
@@ -526,6 +534,8 @@ class AutoConfigGUI:
                   relief=tk.FLAT, cursor="hand2", padx=12, font=("Arial", 10)).pack(side=tk.LEFT, padx=4)
         tk.Button(top, text="Xóa file", command=self._delete_config_file, bg="#e74c3c", fg="white",
                   relief=tk.FLAT, cursor="hand2", padx=12, font=("Arial", 10)).pack(side=tk.LEFT, padx=4)
+        tk.Button(top, text="⚡ Chu trình tự động", command=self._open_smart_recipe_dialog, bg="#8e44ad", fg="white",
+                  relief=tk.FLAT, cursor="hand2", padx=12, font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=8)
 
         self.cfg_load_var = tk.StringVar()
         self.cfg_load_combo = ttk.Combobox(top, textvariable=self.cfg_load_var, state="readonly",
@@ -804,6 +814,8 @@ class AutoConfigGUI:
                   bg="#95a5a6", fg="white", relief=tk.FLAT, cursor="hand2", padx=10).pack(side=tk.LEFT, padx=4)
         tk.Button(btn_bar, text="Xuống", command=lambda: self._move_item(1),
                   bg="#95a5a6", fg="white", relief=tk.FLAT, cursor="hand2", padx=10).pack(side=tk.LEFT, padx=4)
+        tk.Button(btn_bar, text="⚡ Chu trình tự động", command=self._open_smart_recipe_dialog,
+                  bg="#8e44ad", fg="white", relief=tk.FLAT, cursor="hand2", padx=10, font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=8)
         tk.Button(btn_bar, text="Xóa tất cả", command=self._clear_list,
                   bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2", padx=10).pack(side=tk.RIGHT, padx=4)
 
@@ -2504,13 +2516,262 @@ class AutoConfigGUI:
 
                 # Cap nhat mini log (tab Auto)
                 self._update_mini_log(line)
+                self._update_gemini_stats_ui()
             except tk.TclError:
                 pass
 
         try:
             self.root.after(0, _write)
-        except RuntimeError:
+        except (RuntimeError, tk.TclError):
             pass
+
+    def _update_gemini_stats_ui(self):
+        """Cập nhật nhãn thống kê số lần gọi Gemini API real-time trên giao diện."""
+        try:
+            from core.ai_recovery import AIRecovery
+            st = AIRecovery.get_stats()
+            txt = f"🤖 Gemini AI: {st['total']} reqs ({st['success']} OK"
+            if st['ratelimit_429'] > 0:
+                txt += f" | {st['ratelimit_429']} lỗi 429"
+            if st['failed'] > 0:
+                txt += f" | {st['failed']} lỗi"
+            txt += ")"
+            if hasattr(self, 'gemini_stats_lbl'):
+                self.gemini_stats_lbl.config(text=txt)
+        except Exception:
+            pass
+
+    def _open_gemini_log_dialog(self):
+        """Mở popup xem nhật ký chi tiết các lượt gọi Gemini AI (Phân loại theo ngày, tự động xóa quá 3 ngày)."""
+        import csv
+        from core.ai_recovery import (
+            AIRecovery, GEMINI_LOG_DIR, list_gemini_log_files,
+            get_current_gemini_csv_path, cleanup_old_gemini_logs
+        )
+
+        # Dọn dẹp các file cũ hơn 3 ngày trước khi hiển thị
+        cleanup_old_gemini_logs(max_days=3)
+
+        popup = tk.Toplevel(self.root)
+        popup.title("📊 Nhật ký Yêu cầu Gemini AI (Gemini Logs theo ngày)")
+        popup.geometry("900x640")
+        popup.transient(self.root)
+        popup.grab_set()
+
+        # Header
+        hdr = tk.Frame(popup, bg="#8e44ad", height=45)
+        hdr.pack(fill=tk.X)
+        hdr.pack_propagate(False)
+
+        st = AIRecovery.get_stats()
+        hdr_lbl = tk.Label(hdr, text=f"🤖 NHẬT KÝ GỌI AI GEMINI | Hôm nay: {st['total']} reqs | OK: {st['success']} | Lỗi 429: {st['ratelimit_429']} | Lỗi khác: {st['failed']}",
+                           font=("Arial", 10, "bold"), fg="white", bg="#8e44ad")
+        hdr_lbl.pack(pady=12)
+
+        content = tk.Frame(popup, bg="#ecf0f1", padx=12, pady=10)
+        content.pack(fill=tk.BOTH, expand=True)
+
+        # Toolbar Lọc
+        fltr_frame = tk.Frame(content, bg="#ecf0f1")
+        fltr_frame.pack(fill=tk.X, pady=(0, 8))
+
+        # Chọn ngày
+        tk.Label(fltr_frame, text="Ngày log:", bg="#ecf0f1", font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        log_files = list_gemini_log_files()
+        selected_file_var = tk.StringVar()
+        if log_files:
+            selected_file_var.set(log_files[0])
+
+        date_combo = ttk.Combobox(fltr_frame, textvariable=selected_file_var, values=log_files,
+                                  state="readonly", width=18, font=("Arial", 9))
+        date_combo.pack(side=tk.LEFT, padx=(4, 15))
+
+        tk.Label(fltr_frame, text="Trạng thái:", bg="#ecf0f1", font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        status_fltr_var = tk.StringVar(value="TẤT CẢ")
+        status_combo = ttk.Combobox(fltr_frame, textvariable=status_fltr_var,
+                                    values=["TẤT CẢ", "SUCCESS", "RATELIMIT_429", "ERROR"],
+                                    state="readonly", width=14, font=("Arial", 9))
+        status_combo.pack(side=tk.LEFT, padx=(4, 15))
+
+        tk.Label(fltr_frame, text="(Tự động xóa nhật ký cũ hơn 3 ngày)", bg="#ecf0f1", fg="#7f8c8d",
+                 font=("Arial", 8, "italic")).pack(side=tk.RIGHT)
+
+        # Bảng Treeview
+        tree_frame = tk.Frame(content, bg="#ecf0f1")
+        tree_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+
+        cols = ("req_id", "timestamp", "device", "status", "http_code", "reason")
+        tree = ttk.Treeview(tree_frame, columns=cols, show="headings", height=12)
+
+        tree.heading("req_id", text="ID")
+        tree.heading("timestamp", text="Thời gian")
+        tree.heading("device", text="Thiết bị")
+        tree.heading("status", text="Trạng thái")
+        tree.heading("http_code", text="Mã HTTP")
+        tree.heading("reason", text="Mô tả / Nguyên nhân")
+
+        tree.column("req_id", width=55, anchor=tk.CENTER)
+        tree.column("timestamp", width=140, anchor=tk.CENTER)
+        tree.column("device", width=130, anchor=tk.W)
+        tree.column("status", width=110, anchor=tk.CENTER)
+        tree.column("http_code", width=75, anchor=tk.CENTER)
+        tree.column("reason", width=330, anchor=tk.W)
+
+        tree_scroll = tk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=tree_scroll.set)
+        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        # Tags màu sắc
+        tree.tag_configure("SUCCESS", foreground="#27ae60")
+        tree.tag_configure("RATELIMIT_429", foreground="#d35400")
+        tree.tag_configure("ERROR", foreground="#c0392b")
+
+        # Khung xem chi tiết lỗi / response raw bên dưới
+        detail_frame = tk.LabelFrame(content, text="Chi tiết phản hồi / Chi tiết lỗi", font=("Arial", 9, "bold"),
+                                     bg="#ecf0f1", padx=8, pady=6)
+        detail_frame.pack(fill=tk.X, pady=(0, 8))
+
+        detail_text = tk.Text(detail_frame, font=("Consolas", 9), bg="white", height=6, wrap=tk.WORD, relief=tk.SOLID, bd=1)
+        detail_scroll = tk.Scrollbar(detail_frame, command=detail_text.yview)
+        detail_text.config(yscrollcommand=detail_scroll.set)
+        detail_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        detail_text.pack(fill=tk.BOTH, expand=True)
+
+        loaded_entries = []
+
+        def load_logs_to_tree():
+            nonlocal loaded_entries
+            for item in tree.get_children():
+                tree.delete(item)
+
+            loaded_entries.clear()
+
+            # Cập nhật thống kê header và footer
+            st = AIRecovery.get_stats()
+            hdr_lbl.config(text=f"🤖 NHẬT KÝ GỌI AI GEMINI | Hôm nay: {st['total']} reqs | OK: {st['success']} | Lỗi 429: {st['ratelimit_429']} | Lỗi khác: {st['failed']}")
+            self._update_gemini_stats_ui()
+
+            # Lấy danh sách file log mới nhất
+            updated_files = list_gemini_log_files()
+            date_combo.config(values=updated_files)
+
+            curr_file = selected_file_var.get()
+            if not curr_file and updated_files:
+                curr_file = updated_files[0]
+                selected_file_var.set(curr_file)
+
+            if curr_file:
+                target_csv = os.path.join(GEMINI_LOG_DIR, curr_file)
+                if os.path.isfile(target_csv):
+                    try:
+                        with open(target_csv, mode="r", encoding="utf-8-sig") as f:
+                            reader = csv.DictReader(f)
+                            for row in reader:
+                                loaded_entries.append({
+                                    "req_id": row.get("RequestID", ""),
+                                    "timestamp": row.get("Timestamp", ""),
+                                    "device": row.get("Device", ""),
+                                    "status": row.get("Status", ""),
+                                    "http_code": row.get("HTTPCode", ""),
+                                    "reason": row.get("Reason", ""),
+                                    "error_details": row.get("ErrorDetails", ""),
+                                    "raw_response": ""
+                                })
+                    except Exception as ex:
+                        logger.error(f"Lỗi đọc CSV log: {ex}")
+
+            # Nếu không đọc được từ file mà bộ nhớ có thì nạp bộ nhớ
+            if not loaded_entries and AIRecovery.log_history:
+                loaded_entries = list(AIRecovery.log_history)
+
+            selected_st = status_fltr_var.get()
+            for idx, entry in enumerate(reversed(loaded_entries)):
+                st_name = entry.get("status", "")
+                if selected_st != "TẤT CẢ" and st_name != selected_st:
+                    continue
+
+                tree.insert("", tk.END, iid=str(idx), values=(
+                    entry.get("req_id", ""),
+                    entry.get("timestamp", ""),
+                    entry.get("device", ""),
+                    st_name,
+                    entry.get("http_code", ""),
+                    entry.get("reason", "")
+                ), tags=(st_name,))
+
+        def on_tree_select(event):
+            sel = tree.selection()
+            if not sel:
+                return
+            idx = int(sel[0])
+            reversed_list = list(reversed(loaded_entries))
+            if 0 <= idx < len(reversed_list):
+                entry = reversed_list[idx]
+                detail_text.config(state=tk.NORMAL)
+                detail_text.delete("1.0", tk.END)
+                detail_text.insert(tk.END, f"📌 [{entry.get('req_id')}] - Thiết bị: {entry.get('device')} ({entry.get('timestamp')})\n")
+                detail_text.insert(tk.END, f"Trạng thái: {entry.get('status')} | Mã HTTP: {entry.get('http_code')}\n")
+                detail_text.insert(tk.END, "━" * 65 + "\n")
+                if entry.get("error_details"):
+                    detail_text.insert(tk.END, f"❌ CHI TIẾT LỖI:\n{entry.get('error_details')}\n\n")
+                if entry.get("raw_response"):
+                    detail_text.insert(tk.END, f"💬 PHẢN HỒI GỐC (RAW):\n{entry.get('raw_response')}\n")
+                elif not entry.get("error_details"):
+                    detail_text.insert(tk.END, f"Nội dung / Nguyên nhân: {entry.get('reason')}\n")
+                detail_text.config(state=tk.DISABLED)
+
+        tree.bind("<<TreeviewSelect>>", on_tree_select)
+        date_combo.bind("<<ComboboxSelected>>", lambda e: load_logs_to_tree())
+        status_combo.bind("<<ComboboxSelected>>", lambda e: load_logs_to_tree())
+        load_logs_to_tree()
+
+        # Nút bấm hành động
+        btn_bar = tk.Frame(content, bg="#ecf0f1")
+        btn_bar.pack(fill=tk.X)
+
+        def open_csv_file():
+            curr_file = selected_file_var.get()
+            if curr_file:
+                target_csv = os.path.join(GEMINI_LOG_DIR, curr_file)
+                if os.path.isfile(target_csv):
+                    os.startfile(os.path.abspath(target_csv))
+                    return
+            messagebox.showinfo("Thông báo", "Chưa có file log CSV nào!")
+
+        def clear_logs():
+            if messagebox.askyesno("Xác nhận", "Xóa toàn bộ nhật ký Gemini log hiện tại?"):
+                AIRecovery.reset_stats()
+                curr_file = selected_file_var.get()
+                if curr_file:
+                    target_csv = os.path.join(GEMINI_LOG_DIR, curr_file)
+                    if os.path.isfile(target_csv):
+                        try:
+                            os.remove(target_csv)
+                        except Exception:
+                            pass
+                cleanup_old_gemini_logs(max_days=3)
+                load_logs_to_tree()
+                detail_text.config(state=tk.NORMAL)
+                detail_text.delete("1.0", tk.END)
+                detail_text.config(state=tk.DISABLED)
+                self._update_gemini_stats_ui()
+
+        tk.Button(btn_bar, text="📂 Mở file CSV ngày chọn", command=open_csv_file,
+                  bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=12, pady=4, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+
+        tk.Button(btn_bar, text="🔄 Làm mới", command=load_logs_to_tree,
+                  bg="#3498db", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=12, pady=4, font=("Arial", 9)).pack(side=tk.LEFT, padx=6)
+
+        tk.Button(btn_bar, text="🗑️ Xóa log ngày chọn", command=clear_logs,
+                  bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=12, pady=4, font=("Arial", 9)).pack(side=tk.LEFT)
+
+        tk.Button(btn_bar, text="Đóng", command=popup.destroy,
+                  bg="#95a5a6", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=16, pady=4, font=("Arial", 9)).pack(side=tk.RIGHT)
 
     def _trim_log_text_widget(self):
         """Giu Text widget khong vuot qua gioi han dong hien thi."""
@@ -4180,6 +4441,270 @@ class AutoConfigGUI:
         if idx < len(children):
             self.cfg_tree.selection_set(children[idx])
             self.cfg_tree.focus(children[idx])
+
+    def _open_smart_recipe_dialog(self):
+        """Mở popup tính toán & tự động tạo chu trình sản xuất (Hỗ trợ nhiều vật phẩm)."""
+        from core.recipe_builder import (
+            get_available_products, calculate_multi_requirements,
+            generate_multi_product_config, generate_plant_tasks, RECIPES, CROPS
+        )
+
+        popup = tk.Toplevel(self.root)
+        popup.title("⚡ Tạo chu trình tự động (Smart Recipe)")
+        popup.geometry("720x680")
+        popup.resizable(True, True)
+        popup.transient(self.root)
+        popup.grab_set()
+
+        # Header
+        hdr = tk.Frame(popup, bg="#8e44ad", height=45)
+        hdr.pack(fill=tk.X)
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="⚡ TỰ ĐỘNG TÍNH TOÁN & TẠO CHU TRÌNH SẢN XUẤT (ĐA VẬT PHẨM)",
+                 font=("Arial", 11, "bold"), fg="white", bg="#8e44ad").pack(pady=12)
+
+        content = tk.Frame(popup, bg="#ecf0f1", padx=15, pady=10)
+        content.pack(fill=tk.BOTH, expand=True)
+
+        # 1. Chọn sản phẩm & Thêm vào giỏ
+        f_select = tk.LabelFrame(content, text="1. Chọn thành phẩm & Số lượng", font=("Arial", 9, "bold"),
+                                 bg="#ecf0f1", padx=10, pady=8)
+        f_select.pack(fill=tk.X, pady=(0, 6))
+
+        r_p = tk.Frame(f_select, bg="#ecf0f1")
+        r_p.pack(fill=tk.X, pady=2)
+        tk.Label(r_p, text="Thành phẩm:", bg="#ecf0f1", width=12, anchor=tk.W, font=("Arial", 9)).pack(side=tk.LEFT)
+
+        products = get_available_products()
+        prod_dict = {name: key for key, name in products}
+        prod_names = [name for _, name in products]
+
+        selected_prod_name_var = tk.StringVar()
+        if prod_names:
+            selected_prod_name_var.set(prod_names[0])
+
+        prod_combo = ttk.Combobox(r_p, textvariable=selected_prod_name_var, values=prod_names,
+                                  state="readonly", width=32, font=("Arial", 9))
+        prod_combo.pack(side=tk.LEFT, padx=(0, 6))
+
+        # Preview ảnh thành phẩm
+        item_preview_f = tk.Frame(r_p, width=34, height=34, bg="white", relief=tk.SUNKEN, bd=1)
+        item_preview_f.pack_propagate(False)
+        item_preview_f.pack(side=tk.LEFT, padx=(0, 10))
+        prod_preview_lbl = tk.Label(item_preview_f, bg="white")
+        prod_preview_lbl.pack(expand=True)
+
+        tk.Label(r_p, text="SL:", bg="#ecf0f1", font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        qty_var = tk.StringVar(value="4")
+        qty_spin = tk.Spinbox(r_p, from_=1, to=999, textvariable=qty_var, width=5, font=("Arial", 9))
+        qty_spin.pack(side=tk.LEFT, padx=(4, 8))
+
+        # Danh sách giỏ hàng sản xuất
+        basket_items = []  # List of {"key": p_key, "name": p_name, "quantity": q}
+
+        # 2. Danh sách các món đã chọn
+        f_basket = tk.LabelFrame(content, text="2. Danh sách sản phẩm cần auto (Giỏ hàng)", font=("Arial", 9, "bold"),
+                                 bg="#ecf0f1", padx=10, pady=6)
+        f_basket.pack(fill=tk.X, pady=(0, 6))
+
+        basket_list_frame = tk.Frame(f_basket, bg="#ecf0f1")
+        basket_list_frame.pack(fill=tk.X)
+
+        basket_listbox = tk.Listbox(basket_list_frame, font=("Arial", 9), height=4, relief=tk.SOLID, bd=1)
+        basket_scroll = tk.Scrollbar(basket_list_frame, command=basket_listbox.yview)
+        basket_listbox.config(yscrollcommand=basket_scroll.set)
+        basket_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        basket_listbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        basket_btn_bar = tk.Frame(f_basket, bg="#ecf0f1")
+        basket_btn_bar.pack(fill=tk.X, pady=(4, 0))
+
+        # 3. Chi tiết tính toán
+        f_calc = tk.LabelFrame(content, text="3. Bảng tổng hợp nguyên liệu & các bước máy", font=("Arial", 9, "bold"),
+                               bg="#ecf0f1", padx=10, pady=6)
+        f_calc.pack(fill=tk.BOTH, expand=True, pady=(0, 6))
+
+        calc_text = tk.Text(f_calc, font=("Consolas", 9), bg="white", height=8, wrap=tk.WORD, relief=tk.SOLID, bd=1)
+        calc_scroll = tk.Scrollbar(f_calc, command=calc_text.yview)
+        calc_text.config(yscrollcommand=calc_scroll.set)
+        calc_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        calc_text.pack(fill=tk.BOTH, expand=True)
+
+        def update_calc_view(*_):
+            # Cập nhật preview ảnh món đang chọn
+            p_name = selected_prod_name_var.get()
+            p_key = prod_dict.get(p_name)
+            if p_key:
+                item_path = RECIPES[p_key]["path_item"]
+                photo = self._load_preview(item_path, max_size=30)
+                prod_preview_lbl.config(image=photo if photo else "", text="")
+                prod_preview_lbl.image = photo
+
+            # Nếu giỏ hàng có đồ thì tính theo giỏ hàng, nếu chưa có thì tính theo món đang chọn
+            current_items = list(basket_items)
+            if not current_items:
+                try:
+                    q = int(qty_var.get())
+                    if q <= 0:
+                        q = 1
+                except ValueError:
+                    q = 4
+                if p_key:
+                    current_items = [{"key": p_key, "name": p_name, "quantity": q}]
+
+            if not current_items:
+                calc_text.config(state=tk.NORMAL)
+                calc_text.delete("1.0", tk.END)
+                calc_text.insert(tk.END, "Chưa chọn sản phẩm nào.")
+                calc_text.config(state=tk.DISABLED)
+                return
+
+            try:
+                multi_reqs = calculate_multi_requirements(current_items)
+                total_crops = sum(multi_reqs["raw_crops"].values())
+
+                calc_text.config(state=tk.NORMAL)
+                calc_text.delete("1.0", tk.END)
+
+                calc_text.insert(tk.END, "🎯 MỤC TIÊU SẢN XUẤT:\n")
+                for itm in current_items:
+                    calc_text.insert(tk.END, f"   • {itm['name']} x {itm['quantity']}\n")
+
+                calc_text.insert(tk.END, "━" * 50 + "\n")
+                calc_text.insert(tk.END, f"🌾 TỔNG NGUYÊN LIỆU CÂY TRỒNG ({total_crops} chậu):\n")
+                for c_key, count in multi_reqs["raw_crops"].items():
+                    c_name = CROPS.get(c_key, {}).get("name", c_key)
+                    calc_text.insert(tk.END, f"   • Cây {c_name}: {count} cây\n")
+
+                calc_text.insert(tk.END, "\n🏭 CÁC BƯỚC MÁY SẢN XUẤT (THEO THỨ TỰ LOGIC):\n")
+                for idx_m, m in enumerate(multi_reqs["machines"], 1):
+                    item_file = os.path.basename(m["path_item"])
+                    calc_text.insert(tk.END, f"   {idx_m}. Máy {m['machine_row']} (Tầng {m['machine_row']}): {item_file} x{m['total']}\n")
+
+                calc_text.insert(tk.END, "\n☁️ PHÂN BỔ CỤM TẦNG MÂY:\n")
+                plant_tasks = generate_plant_tasks(multi_reqs["raw_crops"])
+                for pt in plant_tasks:
+                    c_file = os.path.basename(pt["path_item"])
+                    calc_text.insert(tk.END, f"   • Dừng Row {pt['row']}: Gieo {c_file} vào {len(pt['indexs'])} ô ({', '.join(pt['indexs'][:4])}...)\n")
+
+                calc_text.config(state=tk.DISABLED)
+            except Exception as ex:
+                calc_text.config(state=tk.NORMAL)
+                calc_text.delete("1.0", tk.END)
+                calc_text.insert(tk.END, f"Lỗi tính toán: {ex}")
+                calc_text.config(state=tk.DISABLED)
+
+        def add_to_basket():
+            p_name = selected_prod_name_var.get()
+            p_key = prod_dict.get(p_name)
+            if not p_key:
+                return
+            try:
+                q = int(qty_var.get())
+                if q <= 0:
+                    q = 1
+            except ValueError:
+                q = 4
+
+            # Nếu đã có trong giỏ thì cộng dồn số lượng
+            found = False
+            for itm in basket_items:
+                if itm["key"] == p_key:
+                    itm["quantity"] += q
+                    found = True
+                    break
+            if not found:
+                basket_items.append({"key": p_key, "name": p_name, "quantity": q})
+
+            _refresh_basket_listbox()
+            update_calc_view()
+
+        def remove_from_basket():
+            sel = basket_listbox.curselection()
+            if not sel:
+                return
+            idx = sel[0]
+            basket_items.pop(idx)
+            _refresh_basket_listbox()
+            update_calc_view()
+
+        def clear_basket():
+            basket_items.clear()
+            _refresh_basket_listbox()
+            update_calc_view()
+
+        def _refresh_basket_listbox():
+            basket_listbox.delete(0, tk.END)
+            for idx, itm in enumerate(basket_items, 1):
+                basket_listbox.insert(tk.END, f"{idx}. {itm['name']}  ───  Số lượng: {itm['quantity']}")
+
+        tk.Button(r_p, text="+ Thêm vào giỏ", command=add_to_basket,
+                  bg="#2980b9", fg="white", relief=tk.FLAT, cursor="hand2",
+                  font=("Arial", 9, "bold"), padx=10).pack(side=tk.LEFT)
+
+        tk.Button(basket_btn_bar, text="Xóa món chọn", command=remove_from_basket,
+                  bg="#e67e22", fg="white", relief=tk.FLAT, cursor="hand2",
+                  font=("Arial", 8), padx=8).pack(side=tk.LEFT)
+        tk.Button(basket_btn_bar, text="Xóa tất cả", command=clear_basket,
+                  bg="#e74c3c", fg="white", relief=tk.FLAT, cursor="hand2",
+                  font=("Arial", 8), padx=8).pack(side=tk.LEFT, padx=6)
+
+        selected_prod_name_var.trace_add("write", update_calc_view)
+        qty_var.trace_add("write", update_calc_view)
+        prod_combo.bind("<<ComboboxSelected>>", update_calc_view)
+        update_calc_view()
+
+        # 4. Chế độ áp dụng
+        f_mode = tk.Frame(content, bg="#ecf0f1")
+        f_mode.pack(fill=tk.X, pady=(0, 6))
+        mode_var = tk.StringVar(value="replace")
+        tk.Radiobutton(f_mode, text="Ghi đè danh sách công việc", variable=mode_var,
+                       value="replace", bg="#ecf0f1", font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        tk.Radiobutton(f_mode, text="Nối tiếp vào cuối danh sách", variable=mode_var,
+                       value="append", bg="#ecf0f1", font=("Arial", 9)).pack(side=tk.LEFT, padx=15)
+
+        # 5. Buttons
+        btn_bar = tk.Frame(content, bg="#ecf0f1")
+        btn_bar.pack(fill=tk.X, pady=(4, 0))
+
+        def apply_recipe():
+            current_items = list(basket_items)
+            if not current_items:
+                p_name = selected_prod_name_var.get()
+                p_key = prod_dict.get(p_name)
+                if not p_key:
+                    return
+                try:
+                    q = int(qty_var.get())
+                    if q <= 0:
+                        q = 1
+                except ValueError:
+                    q = 4
+                current_items = [{"key": p_key, "name": p_name, "quantity": q}]
+
+            new_tasks = generate_multi_product_config(current_items)
+            if not new_tasks:
+                messagebox.showerror("Lỗi", "Không thể tạo danh sách công việc!")
+                return
+
+            if mode_var.get() == "replace":
+                self.config_items = list(new_tasks)
+            else:
+                self.config_items.extend(new_tasks)
+
+            self._refresh_tree()
+            popup.destroy()
+            summary_str = ", ".join(f"{it['name']} x{it['quantity']}" for it in current_items)
+            messagebox.showinfo("Thành công", f"Đã tự động tạo {len(new_tasks)} công việc cho:\n{summary_str}!")
+
+        tk.Button(btn_bar, text="⚡ Áp dụng toàn bộ vào cấu hình", command=apply_recipe,
+                  bg="#27ae60", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=16, pady=6, font=("Arial", 10, "bold")).pack(side=tk.LEFT)
+
+        tk.Button(btn_bar, text="Đóng", command=popup.destroy,
+                  bg="#95a5a6", fg="white", relief=tk.FLAT, cursor="hand2",
+                  padx=16, pady=6, font=("Arial", 10)).pack(side=tk.RIGHT)
+
 
     def _save_config(self):
         name = self.cfg_name_entry.get().strip()

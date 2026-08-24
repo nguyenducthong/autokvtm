@@ -9,20 +9,162 @@ import base64
 import requests
 import json
 import logging
+import time
+import csv
+import datetime
+import os
 from typing import Tuple, Optional, Dict
 import config
 
 logger = logging.getLogger(__name__)
 
+GEMINI_LOG_DIR = "data/gemini_logs"
+
+
+def cleanup_old_gemini_logs(max_days: int = 3):
+    """Tự động xóa các file CSV nhật ký Gemini cũ hơn max_days (mặc định 3 ngày)."""
+    if not os.path.exists(GEMINI_LOG_DIR):
+        return
+    now = datetime.datetime.now()
+    cutoff_date = (now - datetime.timedelta(days=max_days)).date()
+
+    try:
+        for fname in os.listdir(GEMINI_LOG_DIR):
+            if fname.endswith(".csv"):
+                date_part = fname.replace(".csv", "").strip()
+                try:
+                    file_date = datetime.datetime.strptime(date_part, "%Y-%m-%d").date()
+                    if file_date < cutoff_date:
+                        fpath = os.path.join(GEMINI_LOG_DIR, fname)
+                        os.remove(fpath)
+                        logger.info(f"[AI_RECOVERY] Đã tự động xóa file log Gemini cũ quá 3 ngày: {fname}")
+                except ValueError:
+                    pass
+    except Exception as e:
+        logger.error(f"[AI_RECOVERY] Lỗi khi dọn dẹp file log Gemini cũ: {e}")
+
+
+def get_current_gemini_csv_path() -> str:
+    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    return os.path.join(GEMINI_LOG_DIR, f"{today_str}.csv")
+
+
+def list_gemini_log_files() -> list:
+    """Trả về danh sách file csv trong thư mục data/gemini_logs, sắp xếp mới nhất lên đầu."""
+    cleanup_old_gemini_logs(max_days=3)
+    if not os.path.exists(GEMINI_LOG_DIR):
+        return []
+    files = [f for f in os.listdir(GEMINI_LOG_DIR) if f.endswith(".csv")]
+    files.sort(reverse=True)
+    return files
+
+
+def log_gemini_request(device_name: str, req_id: int, status: str, http_code: int, reason: str = "", error_details: str = "", raw_response: str = ""):
+    """Ghi 1 dòng nhật ký request Gemini vào file CSV của ngày hôm nay và bộ nhớ."""
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    entry = {
+        "timestamp": now_str,
+        "device": device_name or "main",
+        "req_id": req_id,
+        "status": status,
+        "http_code": http_code,
+        "reason": reason,
+        "error_details": error_details,
+        "raw_response": raw_response
+    }
+
+    AIRecovery.log_history.append(entry)
+    if len(AIRecovery.log_history) > 500:
+        AIRecovery.log_history.pop(0)
+
+    # Cập nhật bộ đếm trong bộ nhớ
+    AIRecovery.total_requests += 1
+    st_upper = (status or "").upper()
+    if st_upper == "SUCCESS":
+        AIRecovery.successful_requests += 1
+    elif st_upper == "RATELIMIT_429" or http_code == 429:
+        AIRecovery.ratelimit_429_count += 1
+    else:
+        AIRecovery.failed_requests += 1
+
+    # Tự động dọn file cũ quá 3 ngày
+    cleanup_old_gemini_logs(max_days=3)
+
+    csv_path = get_current_gemini_csv_path()
+    try:
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+        file_exists = os.path.isfile(csv_path)
+        with open(csv_path, mode="a", newline="", encoding="utf-8-sig") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["Timestamp", "Device", "RequestID", "Status", "HTTPCode", "Reason", "ErrorDetails"])
+            writer.writerow([now_str, device_name or "main", f"#{req_id}", status, http_code, reason, error_details])
+    except Exception as e:
+        logger.error(f"[AI_RECOVERY] Lỗi khi ghi file CSV Gemini log: {e}")
+
 
 class AIRecovery:
+    _last_call_time: float = 0.0
+    _min_interval: float = 10.0  # Khoảng cách tối thiểu giữa 2 lần gọi (giây) để tránh HTTP 429
+
+    # Bộ đếm số lần Request tới Gemini AI
+    total_requests: int = 0
+    successful_requests: int = 0
+    failed_requests: int = 0
+    ratelimit_429_count: int = 0
+    log_history: list = []  # Lịch sử các request
+
+    @classmethod
+    def get_stats(cls) -> Dict[str, int]:
+        """Lấy thống kê request Gemini hôm nay (tự động đếm trực tiếp từ file CSV ngày hôm nay)."""
+        today_csv = get_current_gemini_csv_path()
+        if os.path.isfile(today_csv):
+            total = 0
+            success = 0
+            ratelimit_429 = 0
+            failed = 0
+            try:
+                with open(today_csv, mode="r", encoding="utf-8-sig") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        total += 1
+                        st = (row.get("Status") or "").upper()
+                        code = str(row.get("HTTPCode") or "")
+                        if st == "SUCCESS":
+                            success += 1
+                        elif st == "RATELIMIT_429" or code == "429":
+                            ratelimit_429 += 1
+                        else:
+                            failed += 1
+                cls.total_requests = total
+                cls.successful_requests = success
+                cls.ratelimit_429_count = ratelimit_429
+                cls.failed_requests = failed
+            except Exception as e:
+                logger.error(f"[AI_RECOVERY] Lỗi đếm stats từ CSV: {e}")
+
+        return {
+            "total": cls.total_requests,
+            "success": cls.successful_requests,
+            "failed": cls.failed_requests,
+            "ratelimit_429": cls.ratelimit_429_count
+        }
+
+    @classmethod
+    def reset_stats(cls):
+        cls.total_requests = 0
+        cls.successful_requests = 0
+        cls.failed_requests = 0
+        cls.ratelimit_429_count = 0
+        cls.log_history.clear()
+
     def __init__(self, api_key: str = None):
         self.api_key = api_key or getattr(config, "GEMINI_API_KEY", "")
         
     def is_enabled(self) -> bool:
         return bool(self.api_key and getattr(config, "ENABLE_AI_RECOVERY", False))
 
-    def analyze_and_recover(self, screenshot: np.ndarray) -> Optional[Dict]:
+    def analyze_and_recover(self, screenshot: np.ndarray, device_name: str = None) -> Optional[Dict]:
         """
         Gửi ảnh chụp màn hình tới Gemini để phân tích trạng thái kẹt.
         Nếu phát hiện bị kẹt, trả về thông tin hành động và tọa độ click thực tế (đã scale lại).
@@ -34,6 +176,13 @@ class AIRecovery:
         if screenshot is None:
             logger.warning("[AI_RECOVERY] Ảnh screenshot đầu vào là None.")
             return None
+
+        if not device_name:
+            try:
+                from utils.utils import get_device_name
+                device_name = get_device_name() or "main"
+            except Exception:
+                device_name = "main"
 
         # 1. Resize ảnh để giảm dung lượng mạng và chuẩn hóa tọa độ nhận diện
         h, w = screenshot.shape[:2]
@@ -66,11 +215,11 @@ class AIRecovery:
             '  "description": "Mô tả nút/hành động cần bấm"\n'
             "}\n\n"
             f"CHÚ Ý: Tọa độ target_coords [x, y] phải nằm trong kích thước ảnh này: Chiều rộng {target_width}px, Chiều cao {target_height}px. "
-            "Trực quan hóa hệ tọa độ với gốc [0,0] là góc trên cùng bên trái. "
+            "Trực quan hóa hệ tọa độ với gốc [0,0] là gốc trên cùng bên trái. "
             "Hãy ước lượng thật chính xác tâm của nút cần click."
         )
 
-        # 3. Gọi Gemini API qua direct HTTP requests
+        # 3. Gọi Gemini API với cơ chế Retry Exponential Backoff (Tối ưu cho tài khoản Pro khi bị burst request)
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={self.api_key}"
         headers = {"Content-Type": "application/json"}
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
@@ -95,35 +244,77 @@ class AIRecovery:
             }
         }
 
-        logger.info("[AI_RECOVERY] Đang gửi yêu cầu phân tích kẹt tới Gemini API...")
-        try:
-            response = requests.post(url, headers=headers, json=payload, timeout=25)
-            response.raise_for_status()
-            res_json = response.json()
-            
-            # Trích xuất text phản hồi
-            resp_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-            logger.info(f"[AI_RECOVERY] Phản hồi từ Gemini: {resp_text}")
-            
-            # Parse JSON kết quả
-            data = json.loads(resp_text)
-            
-            # 4. Map tọa độ ngược lại kích thước màn hình gốc nếu có click action
-            if data.get("is_stuck") and data.get("action") == "click" and data.get("target_coords"):
-                tx, ty = data["target_coords"]
-                # Scale lại tọa độ gốc
-                orig_x = int(tx / scale)
-                orig_y = int(ty / scale)
-                data["original_coords"] = [orig_x, orig_y]
-                logger.info(f"[AI_RECOVERY] Phát hiện kẹt: {data['reason']}. Đề xuất click tọa độ gốc: ({orig_x}, {orig_y})")
-            else:
-                logger.info("[AI_RECOVERY] Gemini đánh giá không bị kẹt hoặc không cần hành động click.")
-                
-            return data
+        # Tăng bộ đếm Request
+        AIRecovery.total_requests += 1
+        req_id = AIRecovery.total_requests
+        logger.info(f"[AI_RECOVERY] [Gemini Request #{req_id}] [{device_name}] Đang gửi yêu cầu phân tích kẹt tới Gemini API...")
 
-        except Exception as e:
-            logger.error(f"[AI_RECOVERY] Lỗi khi gọi Gemini API hoặc parse kết quả: {e}")
-            return None
+        max_retries = 3
+        backoff_delays = [1.0, 2.0, 4.0]
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.post(url, headers=headers, json=payload, timeout=25)
+
+                if response.status_code == 429:
+                    AIRecovery.ratelimit_429_count += 1
+                    log_gemini_request(device_name, req_id, "RATELIMIT_429", 429, reason="Vượt quá hạn mức request (Rate Limit)", error_details=f"HTTP 429 Too Many Requests (Thử lại lần {attempt + 1})")
+                    if attempt < max_retries:
+                        delay = backoff_delays[attempt]
+                        logger.warning(f"[AI_RECOVERY] [Request #{req_id}] Gặp HTTP 429. Retry lần {attempt + 1} sau {delay}s...")
+                        time.sleep(delay)
+                        continue
+                    else:
+                        AIRecovery.failed_requests += 1
+                        logger.error(f"[AI_RECOVERY] [Request #{req_id}] Vẫn gặp lỗi 429 sau 3 lần thử lại.")
+                        return None
+
+                response.raise_for_status()
+                res_json = response.json()
+
+                AIRecovery.successful_requests += 1
+
+                # Trích xuất text phản hồi
+                resp_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+                logger.info(f"[AI_RECOVERY] [Request #{req_id}] Phản hồi thành công từ Gemini: {resp_text}")
+
+                # Parse JSON kết quả
+                data = json.loads(resp_text)
+                reason_str = data.get("reason", "Phân tích xong")
+
+                log_gemini_request(device_name, req_id, "SUCCESS", 200, reason=reason_str, error_details="", raw_response=resp_text)
+
+                # 4. Map tọa độ ngược lại kích thước màn hình gốc nếu có click action
+                if data.get("is_stuck") and data.get("action") == "click" and data.get("target_coords"):
+                    tx, ty = data["target_coords"]
+                    orig_x = int(tx / scale)
+                    orig_y = int(ty / scale)
+                    data["original_coords"] = [orig_x, orig_y]
+                    logger.info(f"[AI_RECOVERY] [Request #{req_id}] Phát hiện kẹt: {data['reason']}. Đề xuất click tọa độ gốc: ({orig_x}, {orig_y})")
+                else:
+                    logger.info(f"[AI_RECOVERY] [Request #{req_id}] Gemini đánh giá không bị kẹt hoặc không cần hành động click.")
+
+                return data
+
+            except requests.exceptions.HTTPError as http_err:
+                code = response.status_code if 'response' in locals() and hasattr(response, 'status_code') else 500
+                if code == 429:
+                    AIRecovery.ratelimit_429_count += 1
+                    log_gemini_request(device_name, req_id, "RATELIMIT_429", 429, reason="Lỗi 429 quá tải", error_details=str(http_err))
+                    if attempt < max_retries:
+                        delay = backoff_delays[attempt]
+                        logger.warning(f"[AI_RECOVERY] [Request #{req_id}] Gặp HTTP 429. Retry lần {attempt + 1} sau {delay}s...")
+                        time.sleep(delay)
+                        continue
+                AIRecovery.failed_requests += 1
+                log_gemini_request(device_name, req_id, "ERROR", code, reason="Lỗi HTTP API", error_details=str(http_err))
+                logger.error(f"[AI_RECOVERY] [Request #{req_id}] Lỗi HTTP API: {http_err}")
+                return None
+            except Exception as e:
+                AIRecovery.failed_requests += 1
+                log_gemini_request(device_name, req_id, "ERROR", 500, reason="Lỗi xử lý Exception", error_details=str(e))
+                logger.error(f"[AI_RECOVERY] [Request #{req_id}] Lỗi khi gọi Gemini API hoặc parse kết quả: {e}")
+                return None
 
 
 if __name__ == "__main__":

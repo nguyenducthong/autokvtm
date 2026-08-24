@@ -26,6 +26,26 @@ def get_resource_path(path: str) -> str:
             return bundled_path
     return path
 
+
+def load_cv2_image(path: str, flags=cv2.IMREAD_UNCHANGED) -> Optional[np.ndarray]:
+    """Tải ảnh cv2 an toàn hỗ trợ cả đường dẫn tương đối, tuyệt đối, tiếng Việt và đóng gói PyInstaller .exe."""
+    if not path:
+        return None
+    resolved = get_resource_path(str(path))
+    if not resolved or not os.path.exists(resolved):
+        return None
+    try:
+        img_bytes = np.fromfile(resolved, dtype=np.uint8)
+        img = cv2.imdecode(img_bytes, flags)
+        if img is not None:
+            return img
+    except Exception:
+        pass
+    try:
+        return cv2.imread(resolved, flags)
+    except Exception:
+        return None
+
 # adb = ADBController(serial=DEVICE_SERIAL)  
 tesseract_bin = os.path.join("tools", "tesseract", "tesseract.exe")
 pytesseract.pytesseract.tesseract_cmd = get_resource_path(tesseract_bin)
@@ -152,7 +172,7 @@ class ImageProcessor:
             return None
 
         # Load template (giữ alpha nếu có)
-        template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
+        template = load_cv2_image(template_path, cv2.IMREAD_UNCHANGED)
         if template is None:
             logger.warning(f"Không tải được ảnh mẫu: {template_path}")
             return None
@@ -315,7 +335,7 @@ class ImageProcessor:
             logger.warning("Can truyen screen_path hoac screen_img")
             return None
 
-        template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
+        template = load_cv2_image(template_path, cv2.IMREAD_UNCHANGED)
         if template is None:
             logger.warning(f"Khong tai duoc anh mau: {template_path}")
             return None

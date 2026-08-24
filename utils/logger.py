@@ -1,6 +1,9 @@
+import os
 import time
 import logging
 from functools import wraps
+
+os.makedirs("logs", exist_ok=True)
 
 # Cấu hình logging
 logging.basicConfig(
