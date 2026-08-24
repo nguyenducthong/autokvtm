@@ -125,6 +125,8 @@ def _doi_trang_thai_sau_khi_tap_tom(adb, timeout=6, stop_event=None):
         if _should_stop(stop_event):
             return None, None
         if _tim_anh(adb, DAY_DI_MA_TEMPLATE, threshold=0.82):
+            adb.tap(*INDEX_THOAT_SAN_XUAT_MAC_DINH)
+            _sleep(0.5, stop_event)
             return "day_di_ma", None
         pos_tim_hang = _tim_anh(adb, TIM_HANG_TEMPLATE, threshold=0.82)
         if pos_tim_hang:

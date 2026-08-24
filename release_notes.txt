@@ -1,3 +1,2 @@
-- Tối ưu nhận diện mây tầng bằng thuật toán best-match (chọn khớp có độ chính xác cao nhất)
-- Sửa lỗi và tối ưu cuộn tầng lên/xuống mượt mà bằng native swipe ADB
-- Đồng bộ cơ chế setup_thread toàn bộ các module và nâng cao độ ổn định luồng
+- Tự động đóng popup giao tôm khi phát hiện trạng thái 'Đầy đi mà' (core_day_di_ma.png)
+- Tối ưu cơ chế AI Recovery thành hàm dùng chung và bổ sung gọi gỡ kẹt tự động sau khi tim_may_v2 thất bại

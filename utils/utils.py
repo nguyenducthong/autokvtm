@@ -231,6 +231,37 @@ def _detect_current_row(take_screenshot=True, threshold=None):
     return None
 
 
+def _try_ai_recovery(reason=""):
+    """Thử dùng Gemini AI VLM để phát hiện và gỡ kẹt popup/quảng cáo nếu được bật trong config.
+    Trả về row mới nhận diện được sau khi gỡ kẹt (hoặc None).
+    """
+    import config
+    if not (getattr(config, "ENABLE_AI_RECOVERY", False) and getattr(config, "GEMINI_API_KEY", "").strip()):
+        return None
+
+    try:
+        adb = _get_adb()
+        if not adb:
+            return None
+
+        reason_str = f" ({reason})" if reason else ""
+        logger.warning(f"[AI_RECOVERY] Nghi ngờ màn hình bị kẹt popup/quảng cáo{reason_str}. Đang gọi Gemini VLM để giải cứu...")
+        from core.ai_recovery import AIRecovery
+        ai_rec = AIRecovery()
+        screen = adb.screenshot_full()
+        rec_data = ai_rec.analyze_and_recover(screen)
+        if rec_data and rec_data.get("is_stuck") and rec_data.get("action") == "click" and rec_data.get("original_coords"):
+            orig_x, orig_y = rec_data["original_coords"]
+            logger.info(f"[AI_RECOVERY] Phát hiện kẹt: '{rec_data.get('reason', '')}'. Click đóng tại ({orig_x}, {orig_y})")
+            adb.tap(orig_x, orig_y)
+            _sleep(1.5)
+            # Chụp và thử nhận diện lại hàng
+            return _detect_current_row(take_screenshot=True)
+    except Exception as ai_err:
+        logger.error(f"[AI_RECOVERY] Gặp lỗi khi gọi AI gỡ kẹt: {ai_err}")
+    return None
+
+
 def tim_may_v2(template_path, config_row, max_retry=2):
     """Tìm và di chuyển đến hàng config_row.
 
@@ -270,25 +301,7 @@ def tim_may_v2(template_path, config_row, max_retry=2):
 
     if current_row is None:
         # Nếu không nhận diện được hàng, có thể màn hình bị kẹt bởi popup/quảng cáo. Thử dùng AI gỡ kẹt.
-        import config
-        if getattr(config, "ENABLE_AI_RECOVERY", False) and getattr(config, "GEMINI_API_KEY", "").strip():
-            try:
-                adb = _get_adb()
-                if adb:
-                    logger.warning("[AI_RECOVERY] Nghi ngờ màn hình bị kẹt popup/quảng cáo. Đang gọi Gemini VLM để giải cứu...")
-                    from core.ai_recovery import AIRecovery
-                    ai_rec = AIRecovery()
-                    screen = adb.screenshot_full()
-                    rec_data = ai_rec.analyze_and_recover(screen)
-                    if rec_data and rec_data.get("is_stuck") and rec_data.get("action") == "click" and rec_data.get("original_coords"):
-                        orig_x, orig_y = rec_data["original_coords"]
-                        logger.info(f"[AI_RECOVERY] Phát hiện kẹt: '{rec_data['reason']}'. Click đóng tại ({orig_x}, {orig_y})")
-                        adb.tap(orig_x, orig_y)
-                        _sleep(1.5)
-                        # Chụp và thử nhận diện lại hàng
-                        current_row = _detect_current_row(take_screenshot=True)
-            except Exception as ai_err:
-                logger.error(f"[AI_RECOVERY] Gặp lỗi khi gọi AI gỡ kẹt: {ai_err}")
+        current_row = _try_ai_recovery(reason=f"không nhận diện được hàng để đến hàng {config_row}")
 
     if current_row is None:
         logger.error(f"Không thể nhận diện hàng hiện tại sau các lần chụp để đến hàng {config_row}")
@@ -385,6 +398,10 @@ def tim_may_v2(template_path, config_row, max_retry=2):
         return True
 
     logger.error(f"Không thể đến máy {config_row} (đang ở hàng {final_row})")
+    recovered_row = _try_ai_recovery(reason=f"không thể đến máy {config_row} (đang ở hàng {final_row})")
+    if recovered_row is not None and _row_to_level(recovered_row) == target_level:
+        logger.info(f"[AI_RECOVERY] Sau gỡ kẹt đã ở đúng hàng {recovered_row} (level {target_level})")
+        return True
     return False
 
 
