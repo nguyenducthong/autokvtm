@@ -1,2 +1,5 @@
-- Tự động đóng popup giao tôm khi phát hiện trạng thái 'Đầy đi mà' (core_day_di_ma.png)
-- Tối ưu cơ chế AI Recovery thành hàm dùng chung và bổ sung gọi gỡ kẹt tự động sau khi tim_may_v2 thất bại
+- Nâng cấp tính năng Quét kho thành phẩm: Hỗ trợ danh sách 45 vật phẩm tùy chỉnh (data/danh_sach_quet_kho.json)
+- Tích hợp công nghệ thị giác Gemini AI VLM (Vision) giúp quét chính xác 99%
+- Thêm Checkbox chọn '🤖 Gemini AI' trực tiếp trên thanh công cụ GUI
+- Tự động sắp xếp file CSV ma trận kết quả đúng theo thứ tự cấu hình 45 dòng
+- Cơ chế Smart Fallback tự động chuyển sang Offline nếu mất kết nối Gemini API

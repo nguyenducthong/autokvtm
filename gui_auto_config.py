@@ -26,6 +26,7 @@ from core.adb import ADBController
 from core.trong_cay import main_tc
 from core.image import ImageProcessor, get_resource_path
 from PIL import Image, ImageTk
+import config
 from config import CONFIG_LOAI_KHO, REGION_PRESETS, REGION_FROM_CROP, CURRENT_VERSION, GITHUB_API_URL
 from utils.daily_stats import format_daily_counts
 
@@ -432,6 +433,9 @@ class AutoConfigGUI:
         tk.Button(dev_toolbar, text="Quét kho TP", command=self._scan_kho_thanh_pham_all,
                   bg="#8e44ad", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=10, font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=4)
+        self.use_gemini_kho_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(dev_toolbar, text="🤖 Gemini AI", variable=self.use_gemini_kho_var,
+                       bg="#ecf0f1", font=("Arial", 8, "bold")).pack(side=tk.LEFT, padx=(0, 4))
         tk.Button(dev_toolbar, text="Tải CSV kho TP", command=self._download_kho_thanh_pham_csv,
                   bg="#16a085", fg="white", relief=tk.FLAT, cursor="hand2",
                   padx=10, font=("Arial", 9)).pack(side=tk.LEFT, padx=4)
@@ -2317,10 +2321,11 @@ class AutoConfigGUI:
                 from core.adb import ADBController
                 from core.kho_thanh_pham import scan_kho_thanh_pham, export_kho_thanh_pham_csv
 
+                use_gemini = self.use_gemini_kho_var.get() if hasattr(self, 'use_gemini_kho_var') else False
                 for serial, name in targets:
                     self._set_card_status(serial, "Quét kho thành phẩm...", "#8e44ad")
                     adb_inst = ADBController(serial=serial)
-                    data = scan_kho_thanh_pham(adb_inst, device_name=name)
+                    data = scan_kho_thanh_pham(adb_inst, device_name=name, use_gemini=use_gemini)
                     results[name] = data
                     self._set_card_status(serial, f"Đã quét kho TP: {len(data)} SP", "#27ae60")
 
@@ -2600,22 +2605,24 @@ class AutoConfigGUI:
         tree_frame = tk.Frame(content, bg="#ecf0f1")
         tree_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
-        cols = ("req_id", "timestamp", "device", "status", "http_code", "reason")
+        cols = ("req_id", "timestamp", "device", "model", "status", "http_code", "reason")
         tree = ttk.Treeview(tree_frame, columns=cols, show="headings", height=12)
 
         tree.heading("req_id", text="ID")
         tree.heading("timestamp", text="Thời gian")
         tree.heading("device", text="Thiết bị")
+        tree.heading("model", text="Model AI")
         tree.heading("status", text="Trạng thái")
         tree.heading("http_code", text="Mã HTTP")
         tree.heading("reason", text="Mô tả / Nguyên nhân")
 
-        tree.column("req_id", width=55, anchor=tk.CENTER)
-        tree.column("timestamp", width=140, anchor=tk.CENTER)
-        tree.column("device", width=130, anchor=tk.W)
-        tree.column("status", width=110, anchor=tk.CENTER)
-        tree.column("http_code", width=75, anchor=tk.CENTER)
-        tree.column("reason", width=330, anchor=tk.W)
+        tree.column("req_id", width=50, anchor=tk.CENTER)
+        tree.column("timestamp", width=130, anchor=tk.CENTER)
+        tree.column("device", width=100, anchor=tk.W)
+        tree.column("model", width=130, anchor=tk.CENTER)
+        tree.column("status", width=100, anchor=tk.CENTER)
+        tree.column("http_code", width=65, anchor=tk.CENTER)
+        tree.column("reason", width=250, anchor=tk.W)
 
         tree_scroll = tk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=tree.yview)
         tree.configure(yscrollcommand=tree_scroll.set)
@@ -2672,6 +2679,7 @@ class AutoConfigGUI:
                                     "req_id": row.get("RequestID", ""),
                                     "timestamp": row.get("Timestamp", ""),
                                     "device": row.get("Device", ""),
+                                    "model": (row.get("Model") or "").strip(),
                                     "status": row.get("Status", ""),
                                     "http_code": row.get("HTTPCode", ""),
                                     "reason": row.get("Reason", ""),
@@ -2695,6 +2703,7 @@ class AutoConfigGUI:
                     entry.get("req_id", ""),
                     entry.get("timestamp", ""),
                     entry.get("device", ""),
+                    entry.get("model") or "—",
                     st_name,
                     entry.get("http_code", ""),
                     entry.get("reason", "")
@@ -2710,8 +2719,11 @@ class AutoConfigGUI:
                 entry = reversed_list[idx]
                 detail_text.config(state=tk.NORMAL)
                 detail_text.delete("1.0", tk.END)
+                model_used = entry.get('model') or "Không xác định"
+                api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_used}:generateContent" if entry.get('model') else "—"
                 detail_text.insert(tk.END, f"📌 [{entry.get('req_id')}] - Thiết bị: {entry.get('device')} ({entry.get('timestamp')})\n")
-                detail_text.insert(tk.END, f"Trạng thái: {entry.get('status')} | Mã HTTP: {entry.get('http_code')}\n")
+                detail_text.insert(tk.END, f"🤖 Model AI (thời điểm gọi): {model_used} | Trạng thái: {entry.get('status')} | Mã HTTP: {entry.get('http_code')}\n")
+                detail_text.insert(tk.END, f"🔗 API URL: {api_url}\n")
                 detail_text.insert(tk.END, "━" * 65 + "\n")
                 if entry.get("error_details"):
                     detail_text.insert(tk.END, f"❌ CHI TIẾT LỖI:\n{entry.get('error_details')}\n\n")
@@ -2913,6 +2925,25 @@ class AutoConfigGUI:
                              width=2, relief=tk.FLAT, cursor="hand2", title_text="Hướng dẫn tạo API Key" if hasattr(tk.Button, 'title_text') else None)
         help_btn.pack(side=tk.LEFT, padx=2)
 
+        model_row = tk.Frame(ai_frame, bg="#ecf0f1")
+        model_row.pack(fill=tk.X, pady=4)
+        tk.Label(model_row, text="Gemini AI Model:", bg="#ecf0f1", width=20, anchor=tk.W, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        self.gemini_model_var = tk.StringVar(value=getattr(config, "GEMINI_MODEL", "gemini-3.5-flash-lite"))
+        model_options = [
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-3.7-flash"
+        ]
+        self.gemini_model_cb = ttk.Combobox(model_row, textvariable=self.gemini_model_var, values=model_options, width=24, state="readonly")
+        self.gemini_model_cb.pack(side=tk.LEFT, padx=(0, 6))
+
+        fetch_btn = tk.Button(model_row, text="🔄 Tải danh sách Model từ API Key", command=self._fetch_gemini_models_from_api,
+                              bg="#27ae60", fg="white", font=("Arial", 8, "bold"),
+                              relief=tk.FLAT, cursor="hand2", padx=6, pady=2)
+        fetch_btn.pack(side=tk.LEFT, padx=(0, 6))
+
         # 2. YOLO Frame
         yolo_frame = tk.LabelFrame(pad, text="Cấu hình YOLO Detection (Quầy hàng)", font=("Arial", 10, "bold"),
                                     bg="#ecf0f1", fg="#27ae60", padx=15, pady=12)
@@ -2936,14 +2967,63 @@ class AutoConfigGUI:
         # Tự động lưu cấu hình chung khi có bất kỳ thay đổi nào
         self.bat_ai_recovery_var.trace_add("write", lambda *args: self._save_global_settings())
         self.gemini_api_key_var.trace_add("write", lambda *args: self._save_global_settings())
+        self.gemini_model_var.trace_add("write", lambda *args: self._save_global_settings())
         self.bat_yolo_var.trace_add("write", lambda *args: self._save_global_settings())
         self.yolo_model_path_var.trace_add("write", lambda *args: self._save_global_settings())
+
+    def _fetch_gemini_models_from_api(self):
+        """Tải danh sách mô hình AI khả dụng từ API Key của Google Gemini."""
+        api_key = self.gemini_api_key_var.get().strip()
+        if not api_key:
+            messagebox.showwarning("Thiếu API Key", "Vui lòng nhập Gemini API Key trước khi tải danh sách Model!")
+            return
+
+        def task():
+            try:
+                import requests
+                url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+                res = requests.get(url, timeout=10)
+                if res.status_code == 200:
+                    data = res.json()
+                    raw_models = data.get("models", [])
+                    fetched = []
+                    for m in raw_models:
+                        methods = m.get("supportedGenerationMethods", [])
+                        if "generateContent" in methods:
+                            name = m.get("name", "").replace("models/", "").strip()
+                            if name:
+                                fetched.append(name)
+
+                    if fetched:
+                        unique_fetched = list(dict.fromkeys(fetched))
+                        def update_ui():
+                            curr = self.gemini_model_var.get().strip()
+                            self.gemini_model_cb['values'] = unique_fetched
+                            if curr in unique_fetched:
+                                self.gemini_model_var.set(curr)
+                            elif "gemini-3.5-flash-lite" in unique_fetched:
+                                self.gemini_model_var.set("gemini-3.5-flash-lite")
+                            else:
+                                self.gemini_model_var.set(unique_fetched[0])
+                            messagebox.showinfo("Thành công", f"Đã tải thành công {len(unique_fetched)} mô hình Gemini từ API Key của bạn!")
+
+                        self.root.after(0, update_ui)
+                    else:
+                        self.root.after(0, lambda: messagebox.showwarning("Thông báo", "Không tìm thấy mô hình generateContent nào khả dụng cho API Key này."))
+                else:
+                    err_msg = res.text
+                    self.root.after(0, lambda: messagebox.showerror("Lỗi API", f"Không thể lấy danh sách Model (Mã lỗi {res.status_code}):\n{err_msg[:200]}"))
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror("Lỗi kết nối", f"Lỗi kết nối khi tải danh sách Model: {e}"))
+
+        threading.Thread(target=task, daemon=True).start()
 
     def _save_global_settings(self):
         """Lưu cấu hình chung (API Key, YOLO) vào file global_settings.json."""
         GLOBAL_SETTINGS_FILE = "configs/global_settings.json"
         data = {
             "gemini_api_key": self.gemini_api_key_var.get().strip(),
+            "gemini_model": self.gemini_model_var.get().strip() or "gemini-3.5-flash-lite",
             "bat_ai_recovery": self.bat_ai_recovery_var.get(),
             "bat_yolo": self.bat_yolo_var.get(),
             "yolo_model_path": self.yolo_model_path_var.get().strip()
@@ -2963,6 +3043,7 @@ class AutoConfigGUI:
         
         data = {
             "gemini_api_key": getattr(config, "GEMINI_API_KEY", "") or default_key,
+            "gemini_model": getattr(config, "GEMINI_MODEL", "gemini-3.5-flash-lite"),
             "bat_ai_recovery": getattr(config, "ENABLE_AI_RECOVERY", True),
             "bat_yolo": getattr(config, "ENABLE_YOLO", False),
             "yolo_model_path": getattr(config, "YOLO_MODEL_PATH", "configs/kvtm_yolo.onnx")
@@ -2978,12 +3059,14 @@ class AutoConfigGUI:
                 pass
                 
         self.gemini_api_key_var.set(data["gemini_api_key"])
+        self.gemini_model_var.set(data.get("gemini_model", "gemini-3.6-flash"))
         self.bat_ai_recovery_var.set(data["bat_ai_recovery"])
         self.bat_yolo_var.set(data["bat_yolo"])
         self.yolo_model_path_var.set(data["yolo_model_path"])
         
         # Đồng bộ trực tiếp vào module config
         config.GEMINI_API_KEY = data["gemini_api_key"]
+        config.GEMINI_MODEL = data.get("gemini_model", "gemini-3.6-flash")
         config.ENABLE_AI_RECOVERY = data["bat_ai_recovery"]
         config.ENABLE_YOLO = data["bat_yolo"]
         config.YOLO_MODEL_PATH = data["yolo_model_path"]
@@ -3439,9 +3522,11 @@ class AutoConfigGUI:
             import config
             old_val = config.ENABLE_AI_RECOVERY
             old_key = config.GEMINI_API_KEY
+            old_model = getattr(config, "GEMINI_MODEL", "gemini-3.5-flash-lite")
             try:
                 config.ENABLE_AI_RECOVERY = True
                 config.GEMINI_API_KEY = api_key
+                config.GEMINI_MODEL = self.gemini_model_var.get().strip() or old_model
                 
                 ai_rec = AIRecovery()
                 self.root.after(0, lambda: self.status_label.config(text="Đang gửi ảnh tới Gemini VLM...", bg="#f39c12"))
@@ -3454,6 +3539,7 @@ class AutoConfigGUI:
             finally:
                 config.ENABLE_AI_RECOVERY = old_val
                 config.GEMINI_API_KEY = old_key
+                config.GEMINI_MODEL = old_model
 
         threading.Thread(target=run, daemon=True).start()
 

@@ -1,10 +1,12 @@
 import csv
 import glob
+import json
 import logging
 import os
 import time
 from datetime import datetime
 
+import config
 from config import CONFIG_LOAI_KHO, INDEX_NHA_KHO_MAC_DINH
 from core.adb import ADBController
 from core.image import ImageProcessor
@@ -101,6 +103,43 @@ def _open_kho_thanh_pham(adb, stop_event=None):
     return True
 
 
+def load_danh_sach_quet_kho():
+    """Load data/danh_sach_quet_kho.json -> (templates_mapping dict {display_name: path}, ordered_display_names list)."""
+    import sys
+    json_path = os.path.join("data", "danh_sach_quet_kho.json")
+    if not os.path.exists(json_path):
+        return {}, []
+
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        logger.error("[KHO TP] Lỗi đọc file danh_sach_quet_kho.json: %s", e)
+        return {}, []
+
+    base_dir = os.path.abspath('.')
+    is_frozen = getattr(sys, 'frozen', False)
+    mei_dir = getattr(sys, '_MEIPASS', base_dir) if is_frozen else base_dir
+
+    templates_mapping = {}
+    ordered_items = []
+
+    for display_name, img_name in data.items():
+        ordered_items.append(display_name)
+        p1 = os.path.join(base_dir, "assets", "items", img_name)
+        if os.path.exists(p1):
+            templates_mapping[display_name] = p1
+            continue
+        if is_frozen:
+            p2 = os.path.join(mei_dir, "assets", "items", img_name)
+            if os.path.exists(p2):
+                templates_mapping[display_name] = p2
+                continue
+        logger.warning("[KHO TP] Không tìm thấy file ảnh '%s' cho '%s'", img_name, display_name)
+
+    return templates_mapping, ordered_items
+
+
 def list_kho_thanh_pham_templates():
     import sys
     excluded = {
@@ -116,11 +155,9 @@ def list_kho_thanh_pham_templates():
     base_dir = os.path.abspath('.')
     is_frozen = getattr(sys, 'frozen', False)
     
-    # 1. Thử tìm ở thư mục ngoài trước
     search_pattern = os.path.join(base_dir, "assets", "items", "kho_*.png")
     paths = glob.glob(search_pattern)
     
-    # 2. Nếu không có ở ngoài và đang chạy đóng gói .exe, tìm trong thư mục tạm của PyInstaller
     if not paths and is_frozen:
         mei_dir = getattr(sys, '_MEIPASS', base_dir)
         search_pattern_mei = os.path.join(mei_dir, "assets", "items", "kho_*.png")
@@ -141,7 +178,14 @@ def _scan_visible_page(adb, templates, threshold=0.82, color_threshold=0.6):
     if screen is None:
         return results
 
-    for template_path in templates:
+    if isinstance(templates, dict):
+        items_to_scan = templates.items()
+    elif isinstance(templates, list) and templates and isinstance(templates[0], tuple):
+        items_to_scan = templates
+    else:
+        items_to_scan = [(os.path.splitext(os.path.basename(p))[0], p) for p in templates]
+
+    for item_name, template_path in items_to_scan:
         pos = _find_on_screen(
             screen,
             template_path,
@@ -153,20 +197,110 @@ def _scan_visible_page(adb, templates, threshold=0.82, color_threshold=0.6):
             continue
         stock = _read_stock_number_near_item(screen, pos)
         if stock is None:
-            logger.info("[KHO TP] Thay %s tai %s nhung chua doc duoc so",
-                        os.path.basename(template_path), pos)
+            logger.info("[KHO TP] Thấy %s tại %s nhưng chưa đọc được số", item_name, pos)
             continue
-        item_name = os.path.splitext(os.path.basename(template_path))[0]
         results[item_name] = stock
         logger.info("[KHO TP] %s=%s", item_name, stock)
     return results
 
 
+def _scan_visible_page_gemini(adb, ordered_items, api_key=None, model_name=None, device_name=None):
+    """Gửi ảnh chụp màn hình bảng kho cho Gemini AI VLM để đọc tên vật phẩm và số lượng tương ứng."""
+    api_key = api_key or getattr(config, "GEMINI_API_KEY", "")
+    if not api_key:
+        logger.warning("[KHO TP GEMINI] Thiếu Gemini API Key trong config")
+        return {}
+
+    screen = adb.screenshot_full()
+    if screen is None:
+        return {}
+
+    try:
+        import cv2
+        import base64
+        import requests
+        from core.ai_recovery import log_gemini_request
+
+        h, w = screen.shape[:2]
+        crop_y1, crop_y2 = max(0, int(h * 0.25)), min(h, int(h * 0.95))
+        crop_img = screen[crop_y1:crop_y2, :]
+
+        success, encoded_img = cv2.imencode(".jpg", crop_img, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+        if not success:
+            return {}
+        image_b64 = base64.b64encode(encoded_img.tobytes()).decode("utf-8")
+
+        target_str = ", ".join(ordered_items[:45])
+        prompt = (
+            "Đây là ảnh chụp phần giao diện Kho Thành Phẩm của game Khu Vườn Trên Mây.\n"
+            "Mỗi ô vật phẩm hiển thị hình ảnh sản phẩm và con số ghi số lượng nằm ở góc sản phẩm.\n"
+            f"Danh sách các vật phẩm cần kiểm tra (tiếng Việt): [{target_str}].\n\n"
+            "Hãy nhìn thật kỹ từng ô vật phẩm đang xuất hiện trên màn hình và đọc chính xác số lượng tương ứng.\n"
+            "Trả về duy nhất định dạng JSON chuẩn (không chứa các ký tự ```json):\n"
+            "{\n"
+            '  "items": [\n'
+            '    {"name": "tên vật phẩm chuẩn trong danh sách", "quantity": số_lượng_chính_xác_đọc_được}\n'
+            '  ]\n'
+            "}"
+        )
+
+        model_str = model_name or getattr(config, "GEMINI_MODEL", "gemini-3.5-flash-lite") or "gemini-3.5-flash-lite"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_str}:generateContent?key={api_key}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt},
+                        {
+                            "inlineData": {
+                                "mimeType": "image/jpeg",
+                                "data": image_b64
+                            }
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "temperature": 0.1
+            }
+        }
+
+        response = requests.post(url, headers=headers, json=payload, timeout=25)
+        if response.status_code == 200:
+            res_json = response.json()
+            resp_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+            data = json.loads(resp_text)
+            parsed_results = {}
+            for item in data.get("items", []):
+                name = item.get("name")
+                qty = item.get("quantity")
+                if name and isinstance(qty, (int, float)):
+                    parsed_results[name] = int(qty)
+                    logger.info("[KHO TP GEMINI] %s = %s", name, qty)
+            log_gemini_request(device_name or "main", 0, "SUCCESS", 200, reason="Quét kho Gemini", raw_response=resp_text, model=model_str)
+            return parsed_results
+        else:
+            logger.error("[KHO TP GEMINI] Error HTTP %s: %s", response.status_code, response.text)
+            log_gemini_request(device_name or "main", 0, "ERROR", response.status_code, reason=f"HTTP {response.status_code}", model=model_str)
+    except Exception as e:
+        logger.error("[KHO TP GEMINI] Exception: %s", e)
+
+    return {}
+
+
 def scan_kho_thanh_pham(adb: ADBController, device_name=None, stop_event=None,
-                        templates=None):
+                        templates=None, use_gemini=False, api_key=None):
     """Open KTP and scan stock. Returns {item_name: count}."""
     setup_thread(adb, stop_event, device_name=device_name)
-    templates = templates or list_kho_thanh_pham_templates()
+    
+    custom_mapping, ordered_items = load_danh_sach_quet_kho()
+    if custom_mapping:
+        scan_items = custom_mapping
+    else:
+        scan_items = templates or list_kho_thanh_pham_templates()
+
     if not _open_kho_thanh_pham(adb, stop_event=stop_event):
         return {}
 
@@ -175,13 +309,22 @@ def scan_kho_thanh_pham(adb: ADBController, device_name=None, stop_event=None,
     for page in range(MAX_SCAN_PAGES):
         if _should_stop(stop_event):
             break
-        page_results = _scan_visible_page(adb, templates)
+
+        page_results = {}
+        if use_gemini:
+            logger.info("[KHO TP] Đang quét trang %s bằng Gemini AI...", page + 1)
+            page_results = _scan_visible_page_gemini(adb, ordered_items or list(custom_mapping.keys()), api_key=api_key, device_name=device_name)
+
+        if not page_results:
+            logger.info("[KHO TP] Đang quét trang %s bằng OpenCV Offline...", page + 1)
+            page_results = _scan_visible_page(adb, scan_items)
+
         before = len(results)
         for k, v in page_results.items():
             if k not in results:
                 results[k] = v
         new_count = len(results) - before
-        logger.info("[KHO TP] Page %s: %s item moi", page + 1, new_count)
+        logger.info("[KHO TP] Page %s: %s item mới", page + 1, new_count)
 
         if new_count <= 0:
             no_new_pages += 1
@@ -203,18 +346,23 @@ def export_kho_thanh_pham_csv(results_by_device, output_path=None):
         output_path = get_today_kho_thanh_pham_csv_path()
 
     devices = list(results_by_device.keys())
-    all_items = sorted({
-        item
-        for result in results_by_device.values()
-        for item in result.keys()
-    })
+    
+    custom_mapping, ordered_items = load_danh_sach_quet_kho()
+    if ordered_items:
+        all_items = ordered_items
+    else:
+        all_items = sorted({
+            item
+            for result in results_by_device.values()
+            for item in result.keys()
+        })
 
     with open(output_path, "w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["item"] + devices)
         for item in all_items:
             writer.writerow([item] + [
-                results_by_device.get(device, {}).get(item, "")
+                results_by_device.get(device, {}).get(item, 0)
                 for device in devices
             ])
 
@@ -224,3 +372,4 @@ def export_kho_thanh_pham_csv(results_by_device, output_path=None):
 def get_today_kho_thanh_pham_csv_path():
     date_text = datetime.now().strftime("%Y-%m-%d")
     return os.path.join(OUTPUT_DIR, f"kho_thanh_pham_{date_text}.csv")
+

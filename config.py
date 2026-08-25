@@ -10,13 +10,14 @@ AUTO_OPEN_GAME_AFTER_LD_START = True
 
 # Cấu hình AI nâng cấp
 GEMINI_API_KEY = ""
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 ENABLE_AI_RECOVERY = True
 YOLO_MODEL_PATH = "configs/kvtm_yolo.onnx"
 ENABLE_YOLO = False
 ENABLE_GEMINI_STOCK = False
 
 # Cấu hình phiên bản và tự động cập nhật
-CURRENT_VERSION = "1.0.17"
+CURRENT_VERSION = "1.0.18"
 GITHUB_API_URL = "https://api.github.com/repos/nguyenducthong/autokvtm/releases/latest"
 
 GARDEN_REGION = (100, 380, 880, 1100)

@@ -26,7 +26,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='gui_auto_config',
+    name='autokvtm_pro',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

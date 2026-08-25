@@ -1,5 +1,6 @@
 {
   "gemini_api_key": "",
+  "gemini_model": "gemini-3.6-flash",
   "bat_ai_recovery": true,
   "bat_yolo": true,
   "yolo_model_path": "configs/kvtm_yolo.onnx"

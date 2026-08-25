@@ -59,13 +59,15 @@ def list_gemini_log_files() -> list:
     return files
 
 
-def log_gemini_request(device_name: str, req_id: int, status: str, http_code: int, reason: str = "", error_details: str = "", raw_response: str = ""):
+def log_gemini_request(device_name: str, req_id: int, status: str, http_code: int, reason: str = "", error_details: str = "", raw_response: str = "", model: str = ""):
     """Ghi 1 dòng nhật ký request Gemini vào file CSV của ngày hôm nay và bộ nhớ."""
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    model_str = model or getattr(config, "GEMINI_MODEL", "gemini-3.5-flash-lite") or "gemini-3.5-flash-lite"
     entry = {
         "timestamp": now_str,
         "device": device_name or "main",
         "req_id": req_id,
+        "model": model_str,
         "status": status,
         "http_code": http_code,
         "reason": reason,
@@ -97,8 +99,8 @@ def log_gemini_request(device_name: str, req_id: int, status: str, http_code: in
         with open(csv_path, mode="a", newline="", encoding="utf-8-sig") as f:
             writer = csv.writer(f)
             if not file_exists:
-                writer.writerow(["Timestamp", "Device", "RequestID", "Status", "HTTPCode", "Reason", "ErrorDetails"])
-            writer.writerow([now_str, device_name or "main", f"#{req_id}", status, http_code, reason, error_details])
+                writer.writerow(["Timestamp", "Device", "RequestID", "Model", "Status", "HTTPCode", "Reason", "ErrorDetails"])
+            writer.writerow([now_str, device_name or "main", f"#{req_id}", model_str, status, http_code, reason, error_details])
     except Exception as e:
         logger.error(f"[AI_RECOVERY] Lỗi khi ghi file CSV Gemini log: {e}")
 
@@ -220,7 +222,8 @@ class AIRecovery:
         )
 
         # 3. Gọi Gemini API với cơ chế Retry Exponential Backoff (Tối ưu cho tài khoản Pro khi bị burst request)
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={self.api_key}"
+        model_name = getattr(config, "GEMINI_MODEL", "gemini-3.5-flash-lite") or "gemini-3.5-flash-lite"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.api_key}"
         headers = {"Content-Type": "application/json"}
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
@@ -247,7 +250,8 @@ class AIRecovery:
         # Tăng bộ đếm Request
         AIRecovery.total_requests += 1
         req_id = AIRecovery.total_requests
-        logger.info(f"[AI_RECOVERY] [Gemini Request #{req_id}] [{device_name}] Đang gửi yêu cầu phân tích kẹt tới Gemini API...")
+        clean_url_endpoint = url.split("?key=")[0] if "?key=" in url else url
+        logger.info(f"[AI_RECOVERY] [Gemini Request #{req_id}] [{device_name}] [Model: {model_name}] Đang gửi yêu cầu phân tích kẹt tới URL: {clean_url_endpoint}...")
 
         max_retries = 3
         backoff_delays = [1.0, 2.0, 4.0]
@@ -258,7 +262,7 @@ class AIRecovery:
 
                 if response.status_code == 429:
                     AIRecovery.ratelimit_429_count += 1
-                    log_gemini_request(device_name, req_id, "RATELIMIT_429", 429, reason="Vượt quá hạn mức request (Rate Limit)", error_details=f"HTTP 429 Too Many Requests (Thử lại lần {attempt + 1})")
+                    log_gemini_request(device_name, req_id, "RATELIMIT_429", 429, reason="Vượt quá hạn mức request (Rate Limit)", error_details=f"HTTP 429 Too Many Requests (Thử lại lần {attempt + 1})", model=model_name)
                     if attempt < max_retries:
                         delay = backoff_delays[attempt]
                         logger.warning(f"[AI_RECOVERY] [Request #{req_id}] Gặp HTTP 429. Retry lần {attempt + 1} sau {delay}s...")
@@ -276,13 +280,13 @@ class AIRecovery:
 
                 # Trích xuất text phản hồi
                 resp_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-                logger.info(f"[AI_RECOVERY] [Request #{req_id}] Phản hồi thành công từ Gemini: {resp_text}")
+                logger.info(f"[AI_RECOVERY] [Request #{req_id}] Phản hồi thành công từ Gemini ({model_name}): {resp_text}")
 
                 # Parse JSON kết quả
                 data = json.loads(resp_text)
                 reason_str = data.get("reason", "Phân tích xong")
 
-                log_gemini_request(device_name, req_id, "SUCCESS", 200, reason=reason_str, error_details="", raw_response=resp_text)
+                log_gemini_request(device_name, req_id, "SUCCESS", 200, reason=reason_str, error_details="", raw_response=resp_text, model=model_name)
 
                 # 4. Map tọa độ ngược lại kích thước màn hình gốc nếu có click action
                 if data.get("is_stuck") and data.get("action") == "click" and data.get("target_coords"):
@@ -300,20 +304,20 @@ class AIRecovery:
                 code = response.status_code if 'response' in locals() and hasattr(response, 'status_code') else 500
                 if code == 429:
                     AIRecovery.ratelimit_429_count += 1
-                    log_gemini_request(device_name, req_id, "RATELIMIT_429", 429, reason="Lỗi 429 quá tải", error_details=str(http_err))
+                    log_gemini_request(device_name, req_id, "RATELIMIT_429", 429, reason="Lỗi 429 quá tải", error_details=str(http_err), model=model_name)
                     if attempt < max_retries:
                         delay = backoff_delays[attempt]
                         logger.warning(f"[AI_RECOVERY] [Request #{req_id}] Gặp HTTP 429. Retry lần {attempt + 1} sau {delay}s...")
                         time.sleep(delay)
                         continue
                 AIRecovery.failed_requests += 1
-                log_gemini_request(device_name, req_id, "ERROR", code, reason="Lỗi HTTP API", error_details=str(http_err))
-                logger.error(f"[AI_RECOVERY] [Request #{req_id}] Lỗi HTTP API: {http_err}")
+                log_gemini_request(device_name, req_id, "ERROR", code, reason="Lỗi HTTP API", error_details=str(http_err), model=model_name)
+                logger.error(f"[AI_RECOVERY] [Request #{req_id}] Lỗi HTTP API ({model_name}): {http_err}")
                 return None
             except Exception as e:
                 AIRecovery.failed_requests += 1
-                log_gemini_request(device_name, req_id, "ERROR", 500, reason="Lỗi xử lý Exception", error_details=str(e))
-                logger.error(f"[AI_RECOVERY] [Request #{req_id}] Lỗi khi gọi Gemini API hoặc parse kết quả: {e}")
+                log_gemini_request(device_name, req_id, "ERROR", 500, reason="Lỗi xử lý Exception", error_details=str(e), model=model_name)
+                logger.error(f"[AI_RECOVERY] [Request #{req_id}] Lỗi khi gọi Gemini API ({model_name}) hoặc parse kết quả: {e}")
                 return None
 
 
