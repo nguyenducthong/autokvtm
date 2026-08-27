@@ -86,10 +86,10 @@ def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None
                 continue
 
             listIndex = lay_toa_do_tu_indexs(item['indexs'])
-            tap = listIndex[3]
+            tap = listIndex[0]
             x, y = tap
             adb.tap(x, y)
-            _sleep(TIME_SLEEP_SHORT)
+            _sleep(0.8)
             check_trong = check_trong_cay(threshold=item_threshold, is_retry=True, tap=(x, y))
             if check_trong == "chua_chin":
                 logger.info("Cây chưa chín, bỏ qua thu hoạch")

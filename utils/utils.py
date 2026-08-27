@@ -373,7 +373,8 @@ def tim_may_v2(template_path, config_row, max_retry=2):
             logger.info(f"Verify OK: đang ở hàng {verify_row} (level {verify_level}), "
                         f"cùng khung với máy {config_row}")
             return True
-
+        adb = _get_adb()
+        adb.tap(*INDEX_THOAT_SAN_XUAT_MAC_DINH)
         # Chưa đúng level → micro-adjust theo level
         micro = target_level - verify_level
         logger.warning(f"Verify lần {retry+1}: hàng {verify_row} (level {verify_level}), "

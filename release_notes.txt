@@ -1,5 +1,4 @@
-- Nâng cấp tính năng Quét kho thành phẩm: Hỗ trợ danh sách 45 vật phẩm tùy chỉnh (data/danh_sach_quet_kho.json)
-- Tích hợp công nghệ thị giác Gemini AI VLM (Vision) giúp quét chính xác 99%
-- Thêm Checkbox chọn '🤖 Gemini AI' trực tiếp trên thanh công cụ GUI
-- Tự động sắp xếp file CSV ma trận kết quả đúng theo thứ tự cấu hình 45 dòng
-- Cơ chế Smart Fallback tự động chuyển sang Offline nếu mất kết nối Gemini API
+Phiên bản v1.0.19:
+- Tối ưu hóa kiểm tra và thu hoạch trồng cây (chỉnh tọa độ tap và độ trễ).
+- Bổ sung thao tác thoát sản xuất mặc định trước khi micro-adjust máy sản xuất.
+- Cập nhật mặc định mô hình Gemini 3.5 Flash Lite trong cài đặt hệ thống.
