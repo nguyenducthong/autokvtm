@@ -1,4 +1,3 @@
-Phiên bản v1.0.19:
-- Tối ưu hóa kiểm tra và thu hoạch trồng cây (chỉnh tọa độ tap và độ trễ).
-- Bổ sung thao tác thoát sản xuất mặc định trước khi micro-adjust máy sản xuất.
-- Cập nhật mặc định mô hình Gemini 3.5 Flash Lite trong cài đặt hệ thống.
+Cập nhật v1.0.20:
+- Sửa lỗi quy đổi tọa độ Gemini AI Recovery theo hệ chuẩn hóa 0-1000.
+- Bổ sung fallback thoát dialog khi AI Recovery không kích hoạt.

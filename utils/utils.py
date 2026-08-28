@@ -257,6 +257,11 @@ def _try_ai_recovery(reason=""):
             _sleep(1.5)
             # Chụp và thử nhận diện lại hàng
             return _detect_current_row(take_screenshot=True)
+        else:
+            # Gỡ kẹt bằng cách thoát dialog
+            adb.tap(*INDEX_THOAT_SAN_XUAT_MAC_DINH)
+            _sleep(0.5)
+            return _detect_current_row(take_screenshot=True)
     except Exception as ai_err:
         logger.error(f"[AI_RECOVERY] Gặp lỗi khi gọi AI gỡ kẹt: {ai_err}")
     return None
@@ -373,8 +378,7 @@ def tim_may_v2(template_path, config_row, max_retry=2):
             logger.info(f"Verify OK: đang ở hàng {verify_row} (level {verify_level}), "
                         f"cùng khung với máy {config_row}")
             return True
-        adb = _get_adb()
-        adb.tap(*INDEX_THOAT_SAN_XUAT_MAC_DINH)
+
         # Chưa đúng level → micro-adjust theo level
         micro = target_level - verify_level
         logger.warning(f"Verify lần {retry+1}: hàng {verify_row} (level {verify_level}), "

@@ -216,7 +216,7 @@ class AIRecovery:
             '  "target_coords": [x, y],\n'
             '  "description": "Mô tả nút/hành động cần bấm"\n'
             "}\n\n"
-            f"CHÚ Ý: Tọa độ target_coords [x, y] phải nằm trong kích thước ảnh này: Chiều rộng {target_width}px, Chiều cao {target_height}px. "
+            f"CHÚ Ý TỌA ĐỘ: Tọa độ target_coords [x, y] BẮT BUỘC dùng hệ tọa độ chuẩn hóa từ 0 đến 1000 (normalized scale [0, 1000]). Trong đó x từ 0 (mép trái) đến 1000 (mép phải), y từ 0 (mép trên) đến 1000 (mép dưới). "
             "Trực quan hóa hệ tọa độ với gốc [0,0] là gốc trên cùng bên trái. "
             "Hãy ước lượng thật chính xác tâm của nút cần click."
         )
@@ -291,10 +291,15 @@ class AIRecovery:
                 # 4. Map tọa độ ngược lại kích thước màn hình gốc nếu có click action
                 if data.get("is_stuck") and data.get("action") == "click" and data.get("target_coords"):
                     tx, ty = data["target_coords"]
-                    orig_x = int(tx / scale)
-                    orig_y = int(ty / scale)
+                    # Xử lý tọa độ Gemini: ưu tiên chuẩn hóa 0..1000 -> scale sang kích thước thật (w, h)
+                    if tx <= 1000 and ty <= 1000:
+                        orig_x = int((tx / 1000.0) * w)
+                        orig_y = int((ty / 1000.0) * h)
+                    else:
+                        orig_x = int(tx / scale)
+                        orig_y = int(ty / scale)
                     data["original_coords"] = [orig_x, orig_y]
-                    logger.info(f"[AI_RECOVERY] [Request #{req_id}] Phát hiện kẹt: {data['reason']}. Đề xuất click tọa độ gốc: ({orig_x}, {orig_y})")
+                    logger.info(f"[AI_RECOVERY] [Request #{req_id}] Phát hiện kẹt: {data['reason']}. Tọa độ AI ({tx}, {ty}) -> Tọa độ click màn hình ({w}x{h}): ({orig_x}, {orig_y})")
                 else:
                     logger.info(f"[AI_RECOVERY] [Request #{req_id}] Gemini đánh giá không bị kẹt hoặc không cần hành động click.")
 
