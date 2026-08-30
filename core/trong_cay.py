@@ -86,10 +86,10 @@ def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None
                 continue
 
             listIndex = lay_toa_do_tu_indexs(item['indexs'])
-            tap = listIndex[0]
+            tap = listIndex[3]
             x, y = tap
             adb.tap(x, y)
-            _sleep(0.8)
+            _sleep(TIME_SLEEP_SHORT)
             check_trong = check_trong_cay(threshold=item_threshold, is_retry=True, tap=(x, y))
             if check_trong == "chua_chin":
                 logger.info("Cây chưa chín, bỏ qua thu hoạch")
@@ -105,9 +105,6 @@ def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None
                 logger.info("Tìm thấy giỏ hàng, tiến hành thu hoạch")
                 set_state(PlayerState.THU_HOACH)
                 thuhoach(listIndex, tap, threshold=item_threshold)
-                # Đợi giỏ thu hoạch biến mất trước khi tap để mở menu trồng
-                img.wait_for_template_disappear("assets/items/core_thu_hoach.png", adb, threshold=item_threshold, timeout_sec=1.5)
-                img.wait_for_template_disappear("assets/items/core_thu_hoach_1.png", adb, threshold=item_threshold, timeout_sec=0.5)
                 adb.tap(x, y)
                 _sleep(TIME_SLEEP_SHORT)
                 set_state(PlayerState.TRONG_CAY)
@@ -145,11 +142,7 @@ def tim_cay_trong(template_path, template_path_default=None, count=1,
     if screen is None:
         return None
 
-    plant_name = os.path.basename(template_path).replace(".png", "").replace("cay_", "").replace("seed_", "")
-
-    # 2. Dự phòng: Tìm bằng OpenCV Template Matching
-    # Chọn template cần tìm và hạ nhẹ threshold qua mỗi lần tìm kiếm thất bại để tăng độ nhạy
-    current_threshold = max(0.65, threshold - (count - 1) * 0.04)
+    # Chọn template cần tìm
     if count <= 3:
         search_path = template_path
         label = tpl_name
@@ -158,10 +151,10 @@ def tim_cay_trong(template_path, template_path_default=None, count=1,
         label = "default"
 
     # Tìm cây trên screenshot đã chụp (không retry, không chụp lại)
-    pos = img.find_template_color(search_path, threshold=current_threshold, screen_img=screen,
+    pos = img.find_template_color(search_path, threshold=threshold, screen_img=screen,
                                   region=region)
     if pos:
-        logger.info(f"Tìm được {label} tại {pos} (lần {count}, threshold={current_threshold:.2f})")
+        logger.info(f"Tìm được {label} tại {pos} (lần {count}, threshold={threshold})")
         return pos
 
     # Không thấy cây → tìm nút next_gieo trên cùng screenshot
@@ -185,83 +178,49 @@ def trong_cay(template_path, template_path_default, points: list, tap,
     adb = _get_adb()
     x, y = tap
 
-    # Đảm bảo menu trồng cây đã mở (chứa nút next_gieo) trước khi tìm hạt giống
-    menu_open = False
-    for attempt in range(3):
-        screen = adb.screenshot_full()
-        pos_next = img.find_template_color("assets/items/core_next_gieo.png", threshold=threshold, screen_img=screen)
-        if pos_next:
-            menu_open = True
-            break
-        logger.info(f"Menu gieo hạt chưa mở, tap lại tại ({x}, {y}) (lần {attempt+1}/3)")
-        adb.tap(x, y)
-        _sleep(0.3)
-
-    if not menu_open:
-        logger.warning(f"Không thể mở menu gieo hạt tại ({x}, {y})")
-        return
-
     pos = tim_cay_trong(template_path, template_path_default, threshold=threshold,
                         region=region)
     logger.info(f"Tìm cây tại: {pos}")
 
     if pos:
-        drag_points = list(points)
-        drag_points.insert(0, pos)
-        logger.info(f"Kéo cây từ {pos} qua {len(drag_points)-1} vị trí")
-        adb.drag_smooth(drag_points, total_duration_ms=duration_ms)
-        # Đợi menu đóng lại (nút next_gieo biến mất), tức là gieo hạt xong và giao diện trở về vườn
-        img.wait_for_template_disappear("assets/items/core_next_gieo.png", adb, threshold=threshold, timeout_sec=2.0)
+        points.insert(0, pos)
+        logger.info(f"Kéo cây từ {pos} qua {len(points)-1} vị trí")
+        adb.drag_smooth(points, total_duration_ms=duration_ms)
     else:
         logger.warning("Không tìm thấy loại cây, tap lại")
         adb.tap(*INDEX_THOAT_SAN_XUAT_MAC_DINH)
 
 
-def check_trong_cay(threshold=None, is_retry = True, tap = None):
+def check_trong_cay(threshold=None, is_retry = False, tap = None):
     """Kiểm tra trạng thái cây: giỏ hàng / next_gieo / chưa chín.
-    Tối ưu: chụp 1 screenshot, tìm tất cả template trên cùng ảnh đó.
-    Cải tiến: Đợi động lên tới 1.5s để giao diện phản hồi."""
+    Tối ưu: chụp 1 screenshot, tìm tất cả template trên cùng ảnh đó."""
     th = threshold or THRESHOLD
     adb = _get_adb()
-    if adb is None:
-        logger.error("ADB controller is None trong check_trong_cay")
+    screen = adb.screenshot_full()
+    if screen is None:
         return "chua_chin"
 
-    start_time = time.time()
-    while time.time() - start_time < 1.5:
-        try:
-            screen = adb.screenshot_full()
-        except Exception as e:
-            logger.warning(f"Lỗi chụp màn hình trong check_trong_cay: {e}")
-            _sleep(0.15)
-            continue
-        if screen is None:
-            _sleep(0.15)
-            continue
-
-        pos_TH = img.find_template_color("assets/items/core_thu_hoach.png", threshold=th, screen_img=screen)
-        if not pos_TH:
-            pos_TH = img.find_template_color("assets/items/core_thu_hoach_1.png", threshold=th, screen_img=screen)
-        if pos_TH:
-            logger.info("Tìm được giỏ hàng (thu_hoach)")
-            return "gio_hang"
-
-        pos = img.find_template_color("assets/items/core_next_gieo.png", threshold=th, screen_img=screen)
-        if pos:
-            logger.info("Tìm được nút next gieo")
-            return "next_gieo"
-
-        pos_cay_chin = img.find_template_color("assets/items/core_cay_chua_chin.png", threshold=th, screen_img=screen)
-        if pos_cay_chin:
-            logger.info("Tìm được cây chưa chín")
-            return "chua_chin"
-
-        _sleep(0.15)
-
-    if is_retry and tap:
-        logger.info("Chưa mở được menu chậu cây sau 1.5s, tiến hành tap lại...")
+    # Tìm tất cả trên cùng 1 screenshot (không retry, không chụp lại)
+    pos_TH = img.find_template_color("assets/items/core_thu_hoach.png", threshold=th, screen_img=screen)
+    if pos_TH:
+        logger.info("Tìm được giỏ hàng (thu_hoach)")
+        return "gio_hang"
+    pos_TH = img.find_template_color("assets/items/core_thu_hoach_1.png", threshold=th, screen_img=screen)
+    if pos_TH:
+        logger.info("Tìm được giỏ hàng (thu_hoach_1)")
+        return "gio_hang"
+    pos = img.find_template_color("assets/items/core_next_gieo.png", threshold=th, screen_img=screen)
+    if pos:
+        logger.info("Tìm được nút next gieo")
+        return "next_gieo"
+    pos_cay_chin = img.find_template_color("assets/items/core_cay_chua_chin.png", threshold=th, screen_img=screen)
+    if pos_cay_chin:
+        logger.info("Tìm được cây chưa chín")
+        return "chua_chin"
+    if is_retry:
+        logger.info("Chưa ấn vào cây, tiến hành ấn vào cây")
         adb.tap(tap[0], tap[1])
-        _sleep(0.3)
+        _sleep(TIME_SLEEP_SHORT)
         return check_trong_cay(threshold=th, is_retry=False, tap=tap)
     return "chua_chin"
 
