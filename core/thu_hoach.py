@@ -29,9 +29,10 @@ def thuhoach(points: list, tap, duration_ms: int = 800, threshold: float = None)
     x, y = tap
     pos = tim_gio_thu_hoach(threshold=threshold)
     if pos:
-        points.insert(0, pos)
-        logger.info(f"Tìm thấy giỏ tại {pos}, kéo qua {len(points)} điểm")
-        adb.drag_smooth(points, total_duration_ms=duration_ms)
+        drag_points = list(points)
+        drag_points.insert(0, pos)
+        logger.info(f"Tìm thấy giỏ tại {pos}, kéo qua {len(drag_points)} điểm")
+        adb.drag_smooth(drag_points, total_duration_ms=duration_ms)
     else:
         logger.warning("Không tìm thấy giỏ, tap lại vị trí đầu")
         adb.tap(x, y)

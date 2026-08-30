@@ -206,9 +206,10 @@ def trong_cay(template_path, template_path_default, points: list, tap,
     logger.info(f"Tìm cây tại: {pos}")
 
     if pos:
-        points.insert(0, pos)
-        logger.info(f"Kéo cây từ {pos} qua {len(points)-1} vị trí")
-        adb.drag_smooth(points, total_duration_ms=duration_ms)
+        drag_points = list(points)
+        drag_points.insert(0, pos)
+        logger.info(f"Kéo cây từ {pos} qua {len(drag_points)-1} vị trí")
+        adb.drag_smooth(drag_points, total_duration_ms=duration_ms)
         # Đợi menu đóng lại (nút next_gieo biến mất), tức là gieo hạt xong và giao diện trở về vườn
         img.wait_for_template_disappear("assets/items/core_next_gieo.png", adb, threshold=threshold, timeout_sec=2.0)
     else:
