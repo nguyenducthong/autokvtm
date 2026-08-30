@@ -1,3 +1,5 @@
-Cập nhật v1.0.20:
-- Sửa lỗi quy đổi tọa độ Gemini AI Recovery theo hệ chuẩn hóa 0-1000.
-- Bổ sung fallback thoát dialog khi AI Recovery không kích hoạt.
+Phiên bản v1.0.21:
+
+- Khôi phục module Trồng Cây (trong_cay.py) và Thu Hoạch (thu_hoach.py) về phiên bản gốc hoạt động ổn định nhất.
+- Tối ưu đường kéo gieo hạt & thu hoạch, đảm bảo không bị lệch tọa độ ô đất.
+- Cải tiến hiệu năng và độ ổn định tổng thể của ứng dụng.
