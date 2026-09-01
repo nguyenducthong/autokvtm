@@ -86,7 +86,7 @@ def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None
                 continue
 
             listIndex = lay_toa_do_tu_indexs(item['indexs'])
-            tap = listIndex[0]
+            tap = listIndex[3]
             x, y = tap
             adb.tap(x, y)
             _sleep(TIME_SLEEP)
@@ -106,7 +106,7 @@ def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None
                 set_state(PlayerState.THU_HOACH)
                 thuhoach(listIndex, tap, threshold=item_threshold)
                 adb.tap(x, y)
-                _sleep(TIME_SLEEP_SHORT)
+                _sleep(TIME_SLEEP)
                 set_state(PlayerState.TRONG_CAY)
                 trong_cay(path_cay, path_cay_default, listIndex, tap,
                           threshold=item_threshold, region=region)

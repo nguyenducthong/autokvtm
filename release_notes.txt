@@ -1,5 +1,4 @@
-Phiên bản v1.0.21:
+Phiên bản v1.0.22:
 
-- Khôi phục module Trồng Cây (trong_cay.py) và Thu Hoạch (thu_hoach.py) về phiên bản gốc hoạt động ổn định nhất.
-- Tối ưu đường kéo gieo hạt & thu hoạch, đảm bảo không bị lệch tọa độ ô đất.
-- Cải tiến hiệu năng và độ ổn định tổng thể của ứng dụng.
+- Cập nhật vị trí tap và thời gian chờ khi thao tác trong module Trồng Cây (trong_cay.py).
+- Cải thiện độ ổn định và chính xác khi gieo trồng liên tục.

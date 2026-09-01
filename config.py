@@ -17,7 +17,7 @@ ENABLE_YOLO = False
 ENABLE_GEMINI_STOCK = False
 
 # Cấu hình phiên bản và tự động cập nhật
-CURRENT_VERSION = "1.0.21"
+CURRENT_VERSION = "1.0.22"
 GITHUB_API_URL = "https://api.github.com/repos/nguyenducthong/autokvtm/releases/latest"
 
 GARDEN_REGION = (100, 380, 880, 1100)
