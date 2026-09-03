@@ -1,8 +1,10 @@
 import logging
 import time
-from config import INDEX_THOAT_SAN_XUAT_MAC_DINH, INDEX_SXCAM
+from config import INDEX_THOAT_SAN_XUAT_MAC_DINH, INDEX_SXCAM, TIME_SLEEP_SXCAM
 from core.image import ImageProcessor
 from utils.utils import tim_may_v2, xuong_nha, setup_thread, get_device_name
+from core.san_xuat import keo_vat_pham
+
 
 logger = logging.getLogger(__name__)
 img = ImageProcessor()
@@ -115,8 +117,10 @@ def run_sxcam(adb, serial: str = None, force: bool = False, stop_event=None) -> 
         x_lm, y_lm = pos_luami
         x_sx, y_sx = INDEX_SXCAM
         
-        adb.swipe(x_lm, y_lm, x_sx, y_sx, 200)
-        _sleep(0.5, stop_event)
+        keo_vat_pham(adb, (x_lm, y_lm), (x_sx, y_sx))
+        _sleep(TIME_SLEEP_SXCAM, stop_event)
+
+
     else:
         logger.warning("[SXCAM] Không tìm thấy sxcam_luami.png để sản xuất")
 

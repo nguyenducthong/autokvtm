@@ -21,12 +21,22 @@ import subprocess
 import webbrowser
 import sys
 
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    if os.getcwd() != BASE_DIR:
+        os.chdir(BASE_DIR)
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
 from core.adb_helper import get_adb_helper, ADBHelper
 from core.adb import ADBController
 from core.trong_cay import main_tc
 from core.image import ImageProcessor, get_resource_path
 from PIL import Image, ImageTk
 import config
+
 from config import CONFIG_LOAI_KHO, REGION_PRESETS, REGION_FROM_CROP, CURRENT_VERSION, GITHUB_API_URL
 from utils.daily_stats import format_daily_counts
 
@@ -186,9 +196,11 @@ class AutocompleteCombobox(ttk.Combobox):
         self._popup = None
         self._listbox = None
 
-CONFIG_DIR = "configs"
-SELECTED_DEVICE_FILE = "selected_device.json"
-ITEMS_DIR = "assets/items"
+from config import get_configs_dir
+CONFIG_DIR = get_configs_dir()
+SELECTED_DEVICE_FILE = os.path.join(BASE_DIR, "selected_device.json")
+ITEMS_DIR = os.path.join(BASE_DIR, "assets", "items")
+
 
 def scan_all_templates():
     """Scan all *.png in assets/items/"""
@@ -1860,11 +1872,20 @@ class AutoConfigGUI:
 
     def _refresh_configs(self):
         files = glob_mod.glob(os.path.join(CONFIG_DIR, "*.json"))
-        names = [os.path.splitext(os.path.basename(f))[0] for f in files]
+        # Lọc bỏ global_settings vì đây là file cấu hình hệ thống, không phải bài chạy nhiệm vụ
+        names = sorted([
+            os.path.splitext(os.path.basename(f))[0]
+            for f in files
+            if not os.path.basename(f).startswith("global_setting")
+        ])
         self.config_combo["values"] = names
         if names:
-            self.config_combo.current(0)
+            if "mac_dinh" in names:
+                self.config_combo.set("mac_dinh")
+            else:
+                self.config_combo.current(0)
             self._preview_config()
+
 
     def _preview_config(self):
         name = self.config_var.get()
@@ -2964,12 +2985,59 @@ class AutoConfigGUI:
         self.yolo_model_path_entry = tk.Entry(path_row, textvariable=self.yolo_model_path_var, width=55, font=("Arial", 9))
         self.yolo_model_path_entry.pack(side=tk.LEFT)
 
+        # 3. Delay Frame (Cấu hình Thời Gian Chờ cho từng tác vụ)
+        delay_frame = tk.LabelFrame(pad, text="Cấu hình Thời Gian Chờ & Delay (Đơn vị: Giây)", font=("Arial", 10, "bold"),
+                                    bg="#ecf0f1", fg="#8e44ad", padx=15, pady=12)
+        delay_frame.pack(fill=tk.X, pady=8)
+
+        # Hàng 1: Trồng cây (core/trong_cay.py)
+        row_tc = tk.Frame(delay_frame, bg="#ecf0f1")
+        row_tc.pack(fill=tk.X, pady=4)
+        tk.Label(row_tc, text="[Trồng cây] TIME_SLEEP (s):", bg="#ecf0f1", width=25, anchor=tk.W, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        self.time_sleep_trong_cay_var = tk.StringVar(value=str(getattr(config, "TIME_SLEEP_TRONG_CAY", 0.5)))
+        tk.Entry(row_tc, textvariable=self.time_sleep_trong_cay_var, width=8, font=("Arial", 9)).pack(side=tk.LEFT, padx=(0, 20))
+        tk.Label(row_tc, text="TIME_SLEEP_SHORT (s):", bg="#ecf0f1", width=22, anchor=tk.W, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        self.time_sleep_short_trong_cay_var = tk.StringVar(value=str(getattr(config, "TIME_SLEEP_SHORT_TRONG_CAY", 0.3)))
+        tk.Entry(row_tc, textvariable=self.time_sleep_short_trong_cay_var, width=8, font=("Arial", 9)).pack(side=tk.LEFT, padx=(0, 10))
+        tk.Label(row_tc, text="(Chờ cập nhật cây chín, mở giỏ hạt, lật trang)", bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8, "italic")).pack(side=tk.LEFT)
+
+        # Hàng 2: Máy Sản Xuất (core/san_xuat.py)
+        row_sx = tk.Frame(delay_frame, bg="#ecf0f1")
+        row_sx.pack(fill=tk.X, pady=4)
+        tk.Label(row_sx, text="[Sản xuất] TIME_SLEEP (s):", bg="#ecf0f1", width=25, anchor=tk.W, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        self.time_sleep_san_xuat_var = tk.StringVar(value=str(getattr(config, "TIME_SLEEP_SAN_XUAT", 0.15)))
+        tk.Entry(row_sx, textvariable=self.time_sleep_san_xuat_var, width=8, font=("Arial", 9)).pack(side=tk.LEFT, padx=(0, 20))
+        tk.Label(row_sx, text="TIME_SLEEP_SHORT (s):", bg="#ecf0f1", width=22, anchor=tk.W, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        self.time_sleep_short_san_xuat_var = tk.StringVar(value=str(getattr(config, "TIME_SLEEP_SHORT_SAN_XUAT", 0.3)))
+        tk.Entry(row_sx, textvariable=self.time_sleep_short_san_xuat_var, width=8, font=("Arial", 9)).pack(side=tk.LEFT, padx=(0, 10))
+        tk.Label(row_sx, text="(Nghỉ giữa các lượt kéo vào ô, mở popup máy)", bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8, "italic")).pack(side=tk.LEFT)
+
+        # Hàng 3: Thu hoạch, Cám, Bán đồ
+        row_khac = tk.Frame(delay_frame, bg="#ecf0f1")
+        row_khac.pack(fill=tk.X, pady=4)
+        tk.Label(row_khac, text="[Thu hoạch] CLICK_DELAY (s):", bg="#ecf0f1", width=25, anchor=tk.W, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        self.click_delay_thu_hoach_var = tk.StringVar(value=str(getattr(config, "CLICK_DELAY_THU_HOACH", 0.35)))
+        tk.Entry(row_khac, textvariable=self.click_delay_thu_hoach_var, width=8, font=("Arial", 9)).pack(side=tk.LEFT, padx=(0, 20))
+        tk.Label(row_khac, text="[Cám] TIME_SLEEP (s):", bg="#ecf0f1", width=22, anchor=tk.W, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        self.time_sleep_sxcam_var = tk.StringVar(value=str(getattr(config, "TIME_SLEEP_SXCAM", 0.35)))
+        tk.Entry(row_khac, textvariable=self.time_sleep_sxcam_var, width=8, font=("Arial", 9)).pack(side=tk.LEFT, padx=(0, 10))
+        tk.Label(row_khac, text="[Bán đồ] DELAY (s):", bg="#ecf0f1", width=18, anchor=tk.W, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        self.click_delay_ban_do_var = tk.StringVar(value=str(getattr(config, "CLICK_DELAY_BAN_DO", 1.0)))
+        tk.Entry(row_khac, textvariable=self.click_delay_ban_do_var, width=8, font=("Arial", 9)).pack(side=tk.LEFT)
+
         # Tự động lưu cấu hình chung khi có bất kỳ thay đổi nào
         self.bat_ai_recovery_var.trace_add("write", lambda *args: self._save_global_settings())
         self.gemini_api_key_var.trace_add("write", lambda *args: self._save_global_settings())
         self.gemini_model_var.trace_add("write", lambda *args: self._save_global_settings())
         self.bat_yolo_var.trace_add("write", lambda *args: self._save_global_settings())
         self.yolo_model_path_var.trace_add("write", lambda *args: self._save_global_settings())
+        self.time_sleep_trong_cay_var.trace_add("write", lambda *args: self._save_global_settings())
+        self.time_sleep_short_trong_cay_var.trace_add("write", lambda *args: self._save_global_settings())
+        self.time_sleep_san_xuat_var.trace_add("write", lambda *args: self._save_global_settings())
+        self.time_sleep_short_san_xuat_var.trace_add("write", lambda *args: self._save_global_settings())
+        self.click_delay_thu_hoach_var.trace_add("write", lambda *args: self._save_global_settings())
+        self.time_sleep_sxcam_var.trace_add("write", lambda *args: self._save_global_settings())
+        self.click_delay_ban_do_var.trace_add("write", lambda *args: self._save_global_settings())
 
     def _fetch_gemini_models_from_api(self):
         """Tải danh sách mô hình AI khả dụng từ API Key của Google Gemini."""
@@ -3019,25 +3087,64 @@ class AutoConfigGUI:
         threading.Thread(target=task, daemon=True).start()
 
     def _save_global_settings(self):
-        """Lưu cấu hình chung (API Key, YOLO) vào file global_settings.json."""
-        GLOBAL_SETTINGS_FILE = "configs/global_settings.json"
-        data = {
-            "gemini_api_key": self.gemini_api_key_var.get().strip(),
-            "gemini_model": self.gemini_model_var.get().strip() or "gemini-3.5-flash-lite",
-            "bat_ai_recovery": self.bat_ai_recovery_var.get(),
-            "bat_yolo": self.bat_yolo_var.get(),
-            "yolo_model_path": self.yolo_model_path_var.get().strip()
-        }
+        """Lưu cấu hình chung (API Key, YOLO, Time Delays) vào file global_settings.json mà không làm mất các cài đặt khác."""
+        GLOBAL_SETTINGS_FILE = os.path.join(CONFIG_DIR, "global_settings.json")
+        existing = {}
+        if os.path.exists(GLOBAL_SETTINGS_FILE):
+            try:
+                with open(GLOBAL_SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                    existing = json.load(f) or {}
+            except Exception:
+                pass
+        existing["gemini_api_key"] = self.gemini_api_key_var.get().strip()
+        existing["gemini_model"] = self.gemini_model_var.get().strip() or "gemini-3.5-flash-lite"
+        existing["bat_ai_recovery"] = self.bat_ai_recovery_var.get()
+        existing["bat_yolo"] = self.bat_yolo_var.get()
+        existing["yolo_model_path"] = self.yolo_model_path_var.get().strip()
+
+        # Lưu time_delays
+        time_delays = existing.get("time_delays", {})
+        if not isinstance(time_delays, dict):
+            time_delays = {}
+
+        def _safe_float(var, default_val):
+            try:
+                return float(var.get().strip())
+            except Exception:
+                return default_val
+
+        import config
+        time_delays["time_sleep_trong_cay"] = _safe_float(self.time_sleep_trong_cay_var, 0.5)
+        time_delays["time_sleep_short_trong_cay"] = _safe_float(self.time_sleep_short_trong_cay_var, 0.3)
+        time_delays["time_sleep_san_xuat"] = _safe_float(self.time_sleep_san_xuat_var, 0.15)
+        time_delays["time_sleep_short_san_xuat"] = _safe_float(self.time_sleep_short_san_xuat_var, 0.3)
+        time_delays["click_delay_thu_hoach"] = _safe_float(self.click_delay_thu_hoach_var, 0.35)
+        time_delays["time_sleep_sxcam"] = _safe_float(self.time_sleep_sxcam_var, 0.35)
+        time_delays["click_delay_ban_do"] = _safe_float(self.click_delay_ban_do_var, 1.0)
+        existing["time_delays"] = time_delays
+
+        # Đồng bộ trực tiếp vào module config đang chạy
+        config.TIME_SLEEP_TRONG_CAY = time_delays["time_sleep_trong_cay"]
+        config.TIME_SLEEP_SHORT_TRONG_CAY = time_delays["time_sleep_short_trong_cay"]
+        config.TIME_SLEEP_SAN_XUAT = time_delays["time_sleep_san_xuat"]
+        config.TIME_SLEEP_SHORT_SAN_XUAT = time_delays["time_sleep_short_san_xuat"]
+        config.CLICK_DELAY_THU_HOACH = time_delays["click_delay_thu_hoach"]
+        config.TIME_SLEEP_SXCAM = time_delays["time_sleep_sxcam"]
+        config.CLICK_DELAY_BAN_DO = time_delays["click_delay_ban_do"]
+        config.TIME_SLEEP = time_delays["time_sleep_trong_cay"]
+        config.TIME_SLEEP_SHORT = time_delays["time_sleep_short_trong_cay"]
+
         try:
             os.makedirs(os.path.dirname(GLOBAL_SETTINGS_FILE), exist_ok=True)
             with open(GLOBAL_SETTINGS_FILE, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+                json.dump(existing, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.exception(f"Lỗi khi lưu cấu hình chung: {e}")
 
+
     def _load_global_settings(self):
         """Tải cấu hình chung từ file global_settings.json hoặc từ config.py mặc định."""
-        GLOBAL_SETTINGS_FILE = "configs/global_settings.json"
+        GLOBAL_SETTINGS_FILE = os.path.join(CONFIG_DIR, "global_settings.json")
         import config
         default_key = ""
         
@@ -3070,6 +3177,37 @@ class AutoConfigGUI:
         config.ENABLE_AI_RECOVERY = data["bat_ai_recovery"]
         config.ENABLE_YOLO = data["bat_yolo"]
         config.YOLO_MODEL_PATH = data["yolo_model_path"]
+
+        # Tải time_delays
+        delays = data.get("time_delays", {})
+        if not isinstance(delays, dict):
+            delays = {}
+        ts_tc = float(delays.get("time_sleep_trong_cay", getattr(config, "TIME_SLEEP_TRONG_CAY", 0.5)))
+        tss_tc = float(delays.get("time_sleep_short_trong_cay", getattr(config, "TIME_SLEEP_SHORT_TRONG_CAY", 0.3)))
+        ts_sx = float(delays.get("time_sleep_san_xuat", getattr(config, "TIME_SLEEP_SAN_XUAT", 0.15)))
+        tss_sx = float(delays.get("time_sleep_short_san_xuat", getattr(config, "TIME_SLEEP_SHORT_SAN_XUAT", 0.3)))
+        cd_th = float(delays.get("click_delay_thu_hoach", getattr(config, "CLICK_DELAY_THU_HOACH", 0.35)))
+        ts_cam = float(delays.get("time_sleep_sxcam", getattr(config, "TIME_SLEEP_SXCAM", 0.35)))
+        cd_bd = float(delays.get("click_delay_ban_do", getattr(config, "CLICK_DELAY_BAN_DO", 1.0)))
+
+        self.time_sleep_trong_cay_var.set(str(ts_tc))
+        self.time_sleep_short_trong_cay_var.set(str(tss_tc))
+        self.time_sleep_san_xuat_var.set(str(ts_sx))
+        self.time_sleep_short_san_xuat_var.set(str(tss_sx))
+        self.click_delay_thu_hoach_var.set(str(cd_th))
+        self.time_sleep_sxcam_var.set(str(ts_cam))
+        self.click_delay_ban_do_var.set(str(cd_bd))
+
+        config.TIME_SLEEP_TRONG_CAY = ts_tc
+        config.TIME_SLEEP_SHORT_TRONG_CAY = tss_tc
+        config.TIME_SLEEP_SAN_XUAT = ts_sx
+        config.TIME_SLEEP_SHORT_SAN_XUAT = tss_sx
+        config.CLICK_DELAY_THU_HOACH = cd_th
+        config.TIME_SLEEP_SXCAM = ts_cam
+        config.CLICK_DELAY_BAN_DO = cd_bd
+        config.TIME_SLEEP = ts_tc
+        config.TIME_SLEEP_SHORT = tss_tc
+
 
     def _show_gemini_guide_popup(self):
         """Hiển thị popup hướng dẫn cách tạo và lấy API Key miễn phí từ Google Gemini."""
@@ -4824,10 +4962,18 @@ class AutoConfigGUI:
 
     def _refresh_cfg_load_combo(self):
         files = glob_mod.glob(os.path.join(CONFIG_DIR, "*.json"))
-        names = [os.path.splitext(os.path.basename(f))[0] for f in files]
+        names = sorted([
+            os.path.splitext(os.path.basename(f))[0]
+            for f in files
+            if not os.path.basename(f).startswith("global_setting")
+        ])
         self.cfg_load_combo["values"] = names
         if names:
-            self.cfg_load_combo.current(0)
+            if "mac_dinh" in names:
+                self.cfg_load_combo.set("mac_dinh")
+            else:
+                self.cfg_load_combo.current(0)
+
 
     def _load_config_to_editor(self):
         name = self.cfg_load_var.get()

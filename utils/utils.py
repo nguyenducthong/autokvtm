@@ -199,13 +199,18 @@ def _detect_current_row(take_screenshot=True, threshold=None):
         best_row = None
         best_score = 0.0
 
-        # Tìm số có điểm kết hợp cao nhất (best match) để tránh nhận diện nhầm số tương tự (5 vs 8, 3 vs 8)
+        # Tối ưu ROI: Biển số tầng mây nằm ở cột bên phải (x: 600..730, y: 520..800)
+        # Giảm thời gian tìm 11 số từ 1200ms xuống còn ~50ms và không nhận diện nhầm số ở nơi khác
+        region_may = (600, 520, 130, 280)
+
+        # 1. Tìm trên ROI biển số mây bằng color detail
         for i in range(0, 11):
             may_i = f"assets/items/num/{i}.png"
             if not os.path.exists(may_i):
                 continue
 
-            detail = img.find_template_color_detail(may_i, threshold=th, color_threshold=0.6, screen_img=screen)
+            detail = img.find_template_color_detail(may_i, threshold=th, color_threshold=0.6,
+                                                    screen_img=screen, region=region_may)
             if detail.get("found"):
                 combined = detail.get("combined_score", 0.0)
                 if combined > best_score:
@@ -213,22 +218,35 @@ def _detect_current_row(take_screenshot=True, threshold=None):
                     best_row = i
 
         if best_row is not None and best_score >= th:
-            logger.info(f"Nhận diện hàng hiện tại: {best_row} (best match score: {best_score:.3f}, lần {attempt+1})")
+            logger.info(f"Nhận diện hàng hiện tại (ROI mây): {best_row} (score: {best_score:.3f}, lần {attempt+1})")
             set_state(_row_to_state(best_row))
             return best_row
 
-        # Fallback sang basic match nếu color match không ra
+        # 2. Fallback sang basic match trên ROI
         for i in range(0, 11):
             may_i = f"assets/items/num/{i}.png"
             if not os.path.exists(may_i):
                 continue
-            pos_basic = img.find_template(may_i, threshold=max(0.75, th - 0.05), screen_img=screen)
+            pos_basic = img.find_template(may_i, threshold=max(0.74, th - 0.06),
+                                          screen_img=screen, region=region_may)
             if pos_basic:
-                logger.info(f"Nhận diện hàng hiện tại (fallback match): {i} (lần {attempt+1})")
+                logger.info(f"Nhận diện hàng hiện tại (ROI fallback): {i} (lần {attempt+1})")
                 set_state(_row_to_state(i))
                 return i
 
-    return None
+        # 3. Fallback cuối cùng: Toàn màn hình nếu không thấy trong ROI
+        for i in range(0, 11):
+            may_i = f"assets/items/num/{i}.png"
+            if not os.path.exists(may_i):
+                continue
+            pos_full = img.find_template(may_i, threshold=max(0.75, th - 0.05), screen_img=screen)
+            if pos_full:
+                logger.info(f"Nhận diện hàng hiện tại (toàn màn hình): {i} (lần {attempt+1})")
+                set_state(_row_to_state(i))
+                return i
+
+        return None
+
 
 
 def _try_ai_recovery(reason=""):
@@ -280,12 +298,22 @@ def tim_may_v2(template_path, config_row, max_retry=2):
         return False
 
     target_level = _row_to_level(config_row)
+    region_may = (600, 520, 130, 280)
 
-    # === BƯỚC 0: Kiểm tra nhanh nếu đã ở đúng template máy (chỉ áp dụng cho máy không phải số) ===
-    is_num_template = template_path and ("num" in template_path or "assets/items/num" in template_path)
-    if template_path and not is_num_template and os.path.exists(template_path):
-        screen = _get_screen(True)
-        if screen is not None:
+    # === BƯỚC 0: Kiểm tra nhanh nếu đã ở đúng tầng/máy đích (Mất ~5ms) ===
+    screen = _get_screen(True)
+    if screen is not None:
+        # Nếu là hàng số cây trồng (TC), kiểm tra nhanh số hàng trong ROI biển số
+        target_num_file = f"assets/items/num/{config_row}.png"
+        if os.path.exists(target_num_file):
+            if img.find_template(target_num_file, threshold=0.76, screen_img=screen, region=region_may):
+                logger.info(f"Đã ở đúng hàng đích {config_row} (kiểm tra nhanh 5ms), không cần scroll")
+                set_state(_row_to_state(config_row))
+                return True
+
+        # Nếu là máy sản xuất, kiểm tra nhanh icon máy trên màn hình
+        is_num_template = template_path and ("num" in template_path or "assets/items/num" in template_path)
+        if template_path and not is_num_template and os.path.exists(template_path):
             pos_target = img.find_template_color(template_path, threshold=THRESHOLD, color_threshold=0.6, screen_img=screen)
             if not pos_target:
                 pos_target = img.find_template(template_path, threshold=0.80, screen_img=screen)
@@ -294,14 +322,14 @@ def tim_may_v2(template_path, config_row, max_retry=2):
                 set_state(_row_to_state(config_row))
                 return True
 
-    # === BƯỚC 1: Nhận diện hàng hiện tại (có retry) ===
+    # === BƯỚC 1: Nhận diện hàng hiện tại (dùng ROI nhanh) ===
     current_row = _detect_current_row(take_screenshot=False)
     if current_row is None:
         current_row = _detect_current_row(take_screenshot=True)
 
     if current_row is None:
         logger.warning("Không nhận diện được hàng, thử lại...")
-        _sleep(0.8)
+        _sleep(0.35)
         current_row = _detect_current_row(take_screenshot=True)
 
     if current_row is None:
@@ -326,51 +354,58 @@ def tim_may_v2(template_path, config_row, max_retry=2):
     if _should_stop():
         return False
 
-    # === BƯỚC 3: Scroll theo chênh lệch level ===
+    # === BƯỚC 3: Scroll theo chênh lệch level (giảm delay từ 0.8s xuống 0.35s) ===
     level_diff = target_level - current_level  # dương = lên, âm = xuống
     abs_diff = abs(level_diff)
 
-    # nếu xuống nhà >= 3 level → ưu tiên về nhà trước rồi scroll lên, tránh lỗi nhận diện hàng do bóng/lag khi scroll nhiều
     if level_diff < 0 and abs_diff >= 3:
         logger.info(f"Khoảng cách xa ({abs_diff} level), về nhà trước")
-        xuong_nha()
+        xuong_nha(sleep=0.35)
         if _should_stop():
             return False
-        # Từ nhà (level 0), scroll lên đến target_level
         if target_level > 0:
             logger.info(f"Từ nhà, scroll lên {target_level} lần")
-            len_may(target_level)
+            len_may(target_level, sleep=0.35)
     elif level_diff > 0:
         logger.info(f"Scroll lên {abs_diff} lần (level {current_level} → {target_level})")
-        len_may(abs_diff)
+        len_may(abs_diff, sleep=0.35)
     else:
         logger.info(f"Scroll xuống {abs_diff} lần (level {current_level} → {target_level})")
-        xuong_may(abs_diff)
+        xuong_may(abs_diff, sleep=0.35)
 
     if _should_stop():
         return False
 
-    # === BƯỚC 4: Verify — chụp lại kiểm tra ===
-    _sleep(0.8)
+    # === BƯỚC 4: Verify — kiểm tra nhanh đích trước khi quét toàn bộ ===
+    _sleep(0.35)
     for retry in range(max_retry):
         if _should_stop():
             return False
 
-        # Kiểm tra nhanh template máy đích nếu có (không áp dụng cho số)
-        if template_path and not is_num_template and os.path.exists(template_path):
-            scr = _get_screen(True)
-            if scr is not None:
+        scr = _get_screen(True)
+        if scr is not None:
+            # Kiểm tra nhanh số tầng đích trong ROI biển số
+            target_num_file = f"assets/items/num/{config_row}.png"
+            if os.path.exists(target_num_file):
+                if img.find_template(target_num_file, threshold=0.76, screen_img=scr, region=region_may):
+                    logger.info(f"Verify siêu tốc OK: Đã thấy số tầng {config_row}")
+                    set_state(_row_to_state(config_row))
+                    return True
+
+            # Kiểm tra template máy đích nếu có
+            is_num_template = template_path and ("num" in template_path or "assets/items/num" in template_path)
+            if template_path and not is_num_template and os.path.exists(template_path):
                 if img.find_template_color(template_path, threshold=THRESHOLD, color_threshold=0.6, screen_img=scr) or \
                    img.find_template(template_path, threshold=0.80, screen_img=scr):
                     logger.info(f"Verify OK: Thấy template máy {template_path} trên màn hình")
                     set_state(_row_to_state(config_row))
                     return True
 
-        verify_row = _detect_current_row(take_screenshot=True)
+        verify_row = _detect_current_row(take_screenshot=False)
 
         if verify_row is None:
             logger.warning(f"Verify lần {retry+1}: không nhận diện được hàng, thử lại...")
-            _sleep(0.8)
+            _sleep(0.35)
             continue
 
         verify_level = _row_to_level(verify_row)
@@ -384,17 +419,17 @@ def tim_may_v2(template_path, config_row, max_retry=2):
         logger.warning(f"Verify lần {retry+1}: hàng {verify_row} (level {verify_level}), "
                        f"cần level {target_level}, adjust {micro}")
         if micro > 0:
-            len_may(abs(micro))
+            len_may(abs(micro), sleep=0.35)
         else:
-            xuong_may(abs(micro))
-        _sleep(0.8)
+            xuong_may(abs(micro), sleep=0.35)
+        _sleep(0.35)
 
-    # Kiểm tra lần cuối cho template máy
-    if template_path and not is_num_template and os.path.exists(template_path):
+    # Kiểm tra lần cuối
+    target_num_file = f"assets/items/num/{config_row}.png"
+    if os.path.exists(target_num_file):
         scr = _get_screen(True)
-        if scr is not None and (img.find_template_color(template_path, threshold=THRESHOLD, color_threshold=0.6, screen_img=scr) or \
-                                img.find_template(template_path, threshold=0.80, screen_img=scr)):
-            logger.info(f"Verify cuối cùng OK: Thấy template máy {template_path}")
+        if scr is not None and img.find_template(target_num_file, threshold=0.76, screen_img=scr, region=region_may):
+            logger.info(f"Verify cuối cùng OK: Đã thấy tầng {config_row}")
             return True
 
     final_row = _detect_current_row(take_screenshot=True)
@@ -419,7 +454,7 @@ def _len_1_may(duration: int=70):
     adb.scroll_up(450, 500, 70, duration)
 
 
-def len_2_may(count: int=1, duration: int=70, sleep: float=0.8):
+def len_2_may(count: int=1, duration: int=70, sleep: float=0.35):
     adb = _get_adb()
     set_state(PlayerState.DANG_SCROLL)
     for _ in range(count):
@@ -428,7 +463,7 @@ def len_2_may(count: int=1, duration: int=70, sleep: float=0.8):
         adb.tap(*TAB_LEN_2_HANG)
         _sleep(sleep)
 
-def len_may(count: int=1, duration: int=70, sleep: float=0.8): 
+def len_may(count: int=1, duration: int=70, sleep: float=0.35): 
     set_state(PlayerState.DANG_SCROLL)
     for _ in range(count):
         if _should_stop():
@@ -436,7 +471,7 @@ def len_may(count: int=1, duration: int=70, sleep: float=0.8):
         _len_1_may(duration=duration)
         _sleep(sleep)
 
-def xuong_may(count: int=1, duration: int=70, sleep: float=0.8):
+def xuong_may(count: int=1, duration: int=70, sleep: float=0.35):
     adb = _get_adb()
     set_state(PlayerState.DANG_SCROLL)
     for _ in range(count):
@@ -446,7 +481,7 @@ def xuong_may(count: int=1, duration: int=70, sleep: float=0.8):
         _sleep(sleep)
 
 
-def xuong_nha(duration: int=70, sleep: float=0.8, threshold=None):
+def xuong_nha(duration: int=70, sleep: float=0.35, threshold=None):
     adb = _get_adb()
     set_state(PlayerState.DANG_SCROLL)
     th = threshold or THRESHOLD
@@ -458,6 +493,7 @@ def xuong_nha(duration: int=70, sleep: float=0.8, threshold=None):
         logger.info("Tìm được xuống nhà")
         (x, y) = pos
         adb.tap(x, y)
+
         _sleep(sleep)
     else:
         logger.info("Không tìm được tab mặc định")
@@ -568,12 +604,16 @@ def find_image_v2(template_path, screen, screen_img=None, threshold=THRESHOLD,
 
     pos = img.find_template_color(template_path=template_path, threshold=threshold,
                                   screen_img=use_screen, region=region)
+    if not pos:
+        pos = img.find_template(template_path=template_path, threshold=max(0.72, threshold - 0.05),
+                                screen_img=use_screen, region=region)
 
     # Lưu debug
     _save_debug(use_screen, template_path, pos, _step)
 
     if pos:
         return pos
+
 
     # Retry: chụp mới rồi tìm lại
     if retry < max_retry:

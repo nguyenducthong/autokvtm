@@ -15,11 +15,7 @@
     "bat_sang_ban_be": false,
     "bat_cap_nhat_khoi_dong": true,
     "bat_khoi_dong_lai_ld": false,
-    "thoi_gian_khoi_dong_lai": 5.0,
-    "bat_ai_recovery": true,
-    "gemini_api_key": "",
-    "bat_yolo": true,
-    "yolo_model_path": "configs/kvtm_yolo.onnx"
+    "thoi_gian_khoi_dong_lai": 5.0
   },
   "tasks": [
     {
@@ -371,7 +367,7 @@
         "path": "assets/items/kho_vai_vang.png"
       }
     ],
-    "xoa_kc": true,
+    "xoa_kc": false,
     "dat_quang_cao": true,
     "check_stock": false,
     "qc_templates": [
@@ -388,10 +384,10 @@
     "threshold": 0.85,
     "color_threshold": 0.85,
     "region": [
-      630,
-      571,
-      51,
-      225
+      12,
+      216,
+      682,
+      374
     ]
   }
 }

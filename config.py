@@ -1,5 +1,6 @@
 import json as _json
 import os as _os
+import sys as _sys
 
 # DEVICE_SERIAL sẽ được chọn từ GUI mỗi khi chạy
 # Không có giá trị mặc định - người dùng phải chọn thiết bị
@@ -349,7 +350,7 @@ INDEX_MAY = {
 }
 
 INDEX_XUONG_NHA_MAC_DINH = (402, 784)
-INDEX_SAN_XUAT_MAC_DINH = (319, 576)
+INDEX_SAN_XUAT_MAC_DINH = (319, 600)
 INDEX_THOAT_SAN_XUAT_MAC_DINH = (735, 420)
 INDEX_NEXT_SAN_XUAT_MAC_DINH = (514, 511)
 INDEX_CUA_HANG_MAC_DINH = (513, 690)
@@ -383,6 +384,46 @@ INDEX_DAT_BAN = (618, 550)
 #sxcam
 INDEX_SXCAM = (178, 471)
 
+# ==============================================================================
+# CẤU HÌNH THỜI GIAN CHỜ (TIME_SLEEP & TIME_SLEEP_SHORT) CHO TỪNG FILE
+# ==============================================================================
+
+# --- [File: core/trong_cay.py] Trồng cây & Thu hoạch chậu ---
+# TIME_SLEEP_TRONG_CAY: Thời gian chờ chính giữa các bước (chờ game cập nhật cây chín, mở giỏ thu hoạch)
+TIME_SLEEP_TRONG_CAY = 0.5
+
+# TIME_SLEEP_SHORT_TRONG_CAY: Thời gian chờ cho các thao tác nhanh (lật trang túi hạt giống, tap vào chậu)
+TIME_SLEEP_SHORT_TRONG_CAY = 0.3
+
+
+# --- [File: core/san_xuat.py] Máy Sản Xuất ---
+# TIME_SLEEP_SAN_XUAT: Thời gian nghỉ giữa các lượt kéo vật phẩm vào lò/ô sản xuất (kéo nhanh 0.15s)
+TIME_SLEEP_SAN_XUAT = 0.15
+
+# TIME_SLEEP_SHORT_SAN_XUAT: Thời gian chờ thao tác ngắn (mở máy, bấm nút next trang nguyên liệu, đóng nút X)
+TIME_SLEEP_SHORT_SAN_XUAT = 0.3
+
+
+# --- [File: core/thu_hoach.py] Thu hoạch chậu cây ---
+# CLICK_DELAY_THU_HOACH: Thời gian chờ sau khi tap vào chậu để mở giỏ thu hoạch (nếu chưa thấy giỏ ngay)
+CLICK_DELAY_THU_HOACH = 0.35
+
+
+# --- [File: core/sxcam.py] Sản xuất cám ---
+# TIME_SLEEP_SXCAM: Thời gian chờ sau khi kéo lúa mì vào cối xay cám
+TIME_SLEEP_SXCAM = 0.35
+
+
+# --- [File: core/ban_do.py] Bán đồ ---
+# CLICK_DELAY_BAN_DO: Thời gian chờ giữa các thao tác bấm chọn vật phẩm và đăng bán
+CLICK_DELAY_BAN_DO = 1.0
+
+
+# --- Alias mặc định tương thích ngược ---
+TIME_SLEEP = TIME_SLEEP_TRONG_CAY
+TIME_SLEEP_SHORT = TIME_SLEEP_SHORT_TRONG_CAY
+
+
 def _deep_merge_config(default_value, override_value):
     if isinstance(default_value, dict) and isinstance(override_value, dict):
         merged = dict(default_value)
@@ -395,33 +436,131 @@ def _deep_merge_config(default_value, override_value):
     return override_value
 
 
+def get_configs_dir() -> str:
+    """
+    Lấy đường dẫn thư mục configs:
+    Ưu tiên số 1: Thư mục 'configs' ở BÊN NGOÀI:
+      - Cùng cấp với file .exe (nếu chạy bản đóng gói .exe): os.path.join(os.path.dirname(sys.executable), "configs")
+      - Thư mục 'configs' trong thư mục làm việc hiện tại (cwd)
+      - Biến môi trường AUTOKVTM_CONFIG_DIR (nếu có)
+    Nếu thư mục bên ngoài tồn tại, MẶC ĐỊNH lấy thư mục bên ngoài đó.
+    Chỉ khi bên ngoài không có mới fallback vào thư mục nội bộ (bên trong source / MEIPASS).
+    """
+    # 0. Biến môi trường
+    env_dir = _os.environ.get("AUTOKVTM_CONFIG_DIR")
+    if env_dir and _os.path.isdir(env_dir):
+        return _os.path.abspath(env_dir)
+
+    # 1. Thư mục configs bên ngoài cạnh file thực thi .exe (khi đóng gói PyInstaller)
+    if getattr(_sys, 'frozen', False):
+        exe_dir = _os.path.dirname(_sys.executable)
+        outside_exe_configs = _os.path.join(exe_dir, "configs")
+        if _os.path.isdir(outside_exe_configs):
+            return _os.path.abspath(outside_exe_configs)
+
+    # 2. Thư mục configs ở thư mục làm việc hiện tại (cwd) - bên ngoài
+    cwd_configs = _os.path.join(_os.getcwd(), "configs")
+    if _os.path.isdir(cwd_configs):
+        return _os.path.abspath(cwd_configs)
+
+    # 3. Thư mục configs cạnh file config.py (source code)
+    source_dir = _os.path.dirname(_os.path.abspath(__file__))
+    source_configs = _os.path.join(source_dir, "configs")
+    if _os.path.isdir(source_configs):
+        return _os.path.abspath(source_configs)
+
+    # 4. Fallback thư mục tạm đóng gói (_MEIPASS)
+    if getattr(_sys, 'frozen', False):
+        meipass = getattr(_sys, '_MEIPASS', '')
+        if meipass:
+            bundled = _os.path.join(meipass, "configs")
+            if _os.path.isdir(bundled):
+                return _os.path.abspath(bundled)
+
+    # Mặc định: Nếu chưa có thì ưu tiên bên ngoài
+    if getattr(_sys, 'frozen', False):
+        return _os.path.abspath(_os.path.join(_os.path.dirname(_sys.executable), "configs"))
+    return _os.path.abspath(cwd_configs)
+
+
+CONFIG_DIR = get_configs_dir()
+CONFIGS_DIR = CONFIG_DIR
+
+
 def _external_config_candidates():
     env_path = _os.environ.get("AUTOKVTM_APP_CONFIG")
     if env_path:
         return [env_path]
-    base_dir = _os.path.dirname(_os.path.abspath(__file__))
-    return [
-        _os.path.join(base_dir, "app_config.json"),
-        _os.path.join(base_dir, "configs", "app_config.json"),
+    configs_dir = get_configs_dir()
+    candidates = [
+        _os.path.join(configs_dir, "global_settings.json"),
+        _os.path.join(configs_dir, "app_config.json"),
     ]
+    if getattr(_sys, 'frozen', False):
+        exe_dir = _os.path.dirname(_sys.executable)
+        candidates.append(_os.path.join(exe_dir, "global_settings.json"))
+        candidates.append(_os.path.join(exe_dir, "app_config.json"))
+    base_dir = _os.path.dirname(_os.path.abspath(__file__))
+    candidates.append(_os.path.join(base_dir, "configs", "global_settings.json"))
+    candidates.append(_os.path.join(base_dir, "app_config.json"))
+    return candidates
 
 
 def _load_external_config():
     for path in _external_config_candidates():
         if not path or not _os.path.exists(path):
             continue
-        with open(path, "r", encoding="utf-8") as f:
-            data = _json.load(f)
-        if not isinstance(data, dict):
-            raise ValueError(f"External config phai la JSON object: {path}")
-        for key, value in data.items():
-            if key.startswith("_") or key not in globals():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = _json.load(f)
+            if not isinstance(data, dict):
                 continue
-            globals()[key] = _deep_merge_config(globals()[key], value)
-        globals()["EXTERNAL_CONFIG_PATH"] = path
-        return path
+            
+            # Map global_settings sang config vars nếu có
+            if "gemini_api_key" in data:
+                globals()["GEMINI_API_KEY"] = data["gemini_api_key"]
+            if "gemini_model" in data:
+                globals()["GEMINI_MODEL"] = data["gemini_model"]
+            if "bat_ai_recovery" in data:
+                globals()["ENABLE_AI_RECOVERY"] = bool(data["bat_ai_recovery"])
+            if "bat_yolo" in data:
+                globals()["ENABLE_YOLO"] = bool(data["bat_yolo"])
+            if "device_profile" in data and isinstance(data["device_profile"], dict):
+                size_ref = data["device_profile"].get("touch_size_ref") or data["device_profile"].get("width")
+                if size_ref:
+                    globals()["SIZE"] = int(size_ref)
+
+            if "time_delays" in data and isinstance(data["time_delays"], dict):
+                delays = data["time_delays"]
+                if "time_sleep_trong_cay" in delays:
+                    globals()["TIME_SLEEP_TRONG_CAY"] = float(delays["time_sleep_trong_cay"])
+                if "time_sleep_short_trong_cay" in delays:
+                    globals()["TIME_SLEEP_SHORT_TRONG_CAY"] = float(delays["time_sleep_short_trong_cay"])
+                if "time_sleep_san_xuat" in delays:
+                    globals()["TIME_SLEEP_SAN_XUAT"] = float(delays["time_sleep_san_xuat"])
+                if "time_sleep_short_san_xuat" in delays:
+                    globals()["TIME_SLEEP_SHORT_SAN_XUAT"] = float(delays["time_sleep_short_san_xuat"])
+                if "click_delay_thu_hoach" in delays:
+                    globals()["CLICK_DELAY_THU_HOACH"] = float(delays["click_delay_thu_hoach"])
+                if "time_sleep_sxcam" in delays:
+                    globals()["TIME_SLEEP_SXCAM"] = float(delays["time_sleep_sxcam"])
+                if "click_delay_ban_do" in delays:
+                    globals()["CLICK_DELAY_BAN_DO"] = float(delays["click_delay_ban_do"])
+                globals()["TIME_SLEEP"] = globals()["TIME_SLEEP_TRONG_CAY"]
+                globals()["TIME_SLEEP_SHORT"] = globals()["TIME_SLEEP_SHORT_TRONG_CAY"]
+
+
+            for key, value in data.items():
+                if key.startswith("_") or key not in globals():
+                    continue
+                globals()[key] = _deep_merge_config(globals()[key], value)
+            globals()["EXTERNAL_CONFIG_PATH"] = path
+            return path
+        except Exception:
+            pass
     globals()["EXTERNAL_CONFIG_PATH"] = None
     return None
+
 
 
 _load_external_config()

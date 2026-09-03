@@ -1,7 +1,30 @@
 {
+  "device_profile": {
+    "width": 800,
+    "height": 800,
+    "dpi": 240,
+    "touch_device": "/dev/input/event2",
+    "touch_rotation": 90,
+    "touch_size_ref": 800,
+    "touch_hold_ms": 120
+  },
+  "vision_settings": {
+    "vision_threshold": 0.75,
+    "color_threshold": 0.6,
+    "multi_scale": true
+  },
   "gemini_api_key": "",
   "gemini_model": "gemini-3.5-flash-lite",
   "bat_ai_recovery": true,
   "bat_yolo": true,
-  "yolo_model_path": "configs/kvtm_yolo.onnx"
+  "yolo_model_path": "configs/kvtm_yolo.onnx",
+  "time_delays": {
+    "time_sleep_trong_cay": 0.5,
+    "time_sleep_short_trong_cay": 0.3,
+    "time_sleep_san_xuat": 0.15,
+    "time_sleep_short_san_xuat": 0.3,
+    "click_delay_thu_hoach": 0.35,
+    "time_sleep_sxcam": 0.35,
+    "click_delay_ban_do": 1.0
+  }
 }

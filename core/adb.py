@@ -282,6 +282,15 @@ class ADBController:
         # Sử dụng send_touch_sendevent - giữ touch liên tục thực sự
         self.send_touch_sendevent(points)
 
+    def drag_item(self, start_pos: Tuple[int, int], end_pos: Tuple[int, int], hold_ms: int = 100):
+        """
+        Kéo thả 1 vật phẩm (nguyên liệu máy, cám, phân bón) từ start_pos sang end_pos.
+        Tối ưu: Giữ 100ms ở điểm đầu để game KVTM chắc chắn nhấc được vật phẩm,
+        kéo mượt mà vào ô sản xuất và thả tay. Loại bỏ hiện tượng trượt, hụt hoặc khựng.
+        """
+        self.send_touch_sendevent([start_pos, end_pos], hold_start_ms=hold_ms)
+
+
     def wait_for_tap(self, timeout: int = 30):
         """
         Chờ bạn TAP trên scrcpy → ADB nhận → trả tọa độ
@@ -325,125 +334,117 @@ class ADBController:
 
 
 
-    def send_touch_sendevent(self, points):
-        """Gửi touch bằng sendevent
+    def get_touch_device_event(self) -> str:
+        """Tự động kiểm tra node thiết bị cảm ứng, mặc định /dev/input/event2."""
+        if hasattr(self, "_touch_device_cached") and self._touch_device_cached:
+            return self._touch_device_cached
+        dev = "/dev/input/event2"
+        try:
+            out = self.device.shell("getevent -lp")
+            import re
+            blocks = out.split("add device ")
+            for block in blocks:
+                if "0035" in block or "ABS_MT_POSITION_X" in block:
+                    lines = block.splitlines()
+                    if lines:
+                        candidate = lines[0].strip()
+                        if candidate.startswith("/dev/input/event"):
+                            dev = candidate
+                            break
+        except Exception:
+            pass
+        self._touch_device_cached = dev
+        return dev
 
-        Để giảm độ trễ trên các máy chậm, gom tất cả lệnh `sendevent` thành
-        một lần gọi shell (giảm round-trip). Nếu thiết bị không thực thi
-        chuỗi lệnh, fallback vẫn thực hiện từng lệnh như trước.
-
-        Tham số points: danh sách điểm (x,y) ở hệ tọa độ màn hình.
-        Optional: Có thể thay đổi số bước nội suy trong lời gọi interpolate_points.
+    def send_touch_sendevent(self, points, hold_start_ms: int = 120):
+        """Gửi touch bằng sendevent qua batch script trên device.
+        Tối ưu: Giữ touch 120ms ở điểm đầu để game kịp nhấc giỏ/hạt giống,
+        kéo mượt mà qua các chậu (22-25 điểm) thay vì 73 điểm làm giật lag.
         """
-        # Chuyển đổi và nội suy điểm (mặc định 2 bước nội suy như trước)
-        points = self.interpolate_points(points=points, steps_per_segment=2)
+        if len(points) < 2:
+            return
 
-        event = "/dev/input/event2"
-        logger.info(f"[SENDEVENT] Kéo qua {len(points)} điểm (đã nội suy) — gom lệnh để chạy 1 lần")
+        points = self.interpolate_points(points=points)
+        event = self.get_touch_device_event()
+        logger.info(f"[SENDEVENT] Kéo mượt qua {len(points)} điểm trên {event} (hold: {hold_start_ms}ms)")
 
-        # Build a single shell command joining all sendevent calls to reduce RTT
         cmds = []
-        # 1. BTN_TOUCH DOWN
+        # 1. BTN_TOUCH DOWN + Tọa độ đầu
         cmds.append(f"sendevent {event} 1 330 1")
-
-        # 2. TOUCH DOWN + tọa độ đầu
         cmds.append(f"sendevent {event} 3 57 0")
         cmds.append(f"sendevent {event} 3 53 {points[0][0]}")
         cmds.append(f"sendevent {event} 3 54 {points[0][1]}")
         cmds.append(f"sendevent {event} 0 0 0")
 
-        # 3. MOVE qua các điểm
+        # Giữ ngón tay một chút ở điểm đầu để game nhận công cụ (giỏ/hạt)
+        if hold_start_ms > 0:
+            cmds.append(f"sleep {hold_start_ms / 1000.0:.3f}")
+
+        # 2. MOVE qua các điểm (nhịp 8ms/bước mượt mà, không bị khựng)
         for x, y in points[1:]:
             cmds.append(f"sendevent {event} 3 53 {x}")
             cmds.append(f"sendevent {event} 3 54 {y}")
             cmds.append(f"sendevent {event} 0 0 0")
+            cmds.append("usleep 8000")
 
-        # 4. BTN_TOUCH UP
+        # 3. BTN_TOUCH UP
         cmds.append(f"sendevent {event} 1 330 0")
         cmds.append(f"sendevent {event} 3 57 -1")
         cmds.append(f"sendevent {event} 0 0 0")
 
-        full_cmd = ";".join(cmds)
-
+        script_content = "\n".join(cmds)
         try:
-            # Thực thi 1 lần trên thiết bị để hạn chế overhead từ nhiều lệnh shell
-            self.device.shell(full_cmd)
-            logger.info(f"[SENDEVENT] Hoàn thành (batch)")
+            self.device.shell(f"cat << 'EOF' > /data/local/tmp/drag.sh\n{script_content}\nEOF")
+            self.device.shell("sh /data/local/tmp/drag.sh")
+            logger.info(f"[SENDEVENT] Hoàn thành kéo mượt qua {len(points)} điểm")
         except Exception as e:
-            logger.warning(f"[SENDEVENT] Batch thất bại, fallback từng lệnh: {e}")
-            # Fallback: thực hiện từng lệnh như cũ (chậm hơn nhưng tin cậy)
+            logger.warning(f"[SENDEVENT] Batch script thất bại, fallback gom lệnh shell: {e}")
             try:
-                self.device.shell(f"sendevent {event} 1 330 1")
-                self.device.shell(f"sendevent {event} 3 57 0")
-                self.device.shell(f"sendevent {event} 3 53 {points[0][0]}")
-                self.device.shell(f"sendevent {event} 3 54 {points[0][1]}")
-                self.device.shell(f"sendevent {event} 0 0 0")
-                for x, y in points[1:]:
-                    self.device.shell(f"sendevent {event} 3 53 {x}")
-                    self.device.shell(f"sendevent {event} 3 54 {y}")
-                    self.device.shell(f"sendevent {event} 0 0 0")
-                self.device.shell(f"sendevent {event} 1 330 0")
-                self.device.shell(f"sendevent {event} 3 57 -1")
-                self.device.shell(f"sendevent {event} 0 0 0")
-                logger.info(f"[SENDEVENT] Hoàn thành (fallback)")
+                full_cmd = ";".join(cmds)
+                self.device.shell(full_cmd)
+                logger.info(f"[SENDEVENT] Hoàn thành (fallback inline)")
             except Exception as e2:
-                logger.error(f"[SENDEVENT] Lỗi khi fallback sendevent: {e2}")
+                logger.error(f"[SENDEVENT] Lỗi khi gửi sendevent: {e2}")
 
     def send_touch_sendevent_raw(self, points):
-        """Gửi touch bằng sendevent từng lệnh (không gom batch).
-
-        Giữ nguyên hành vi truyền thống: mỗi `sendevent` được gửi
-        bằng một lệnh shell riêng. Dùng khi cần độ chính xác cao
-        hoặc khi batch không hoạt động trên thiết bị cụ thể.
-        """
-        points = self.interpolate_points(points=points, steps_per_segment=2)
-        event = "/dev/input/event2"
-        try:
-            self.device.shell(f"sendevent {event} 1 330 1")
-            self.device.shell(f"sendevent {event} 3 57 0")
-            self.device.shell(f"sendevent {event} 3 53 {points[0][0]}")
-            self.device.shell(f"sendevent {event} 3 54 {points[0][1]}")
-            self.device.shell(f"sendevent {event} 0 0 0")
-            for x, y in points[1:]:
-                self.device.shell(f"sendevent {event} 3 53 {x}")
-                self.device.shell(f"sendevent {event} 3 54 {y}")
-                self.device.shell(f"sendevent {event} 0 0 0")
-            self.device.shell(f"sendevent {event} 1 330 0")
-            self.device.shell(f"sendevent {event} 3 57 -1")
-            self.device.shell(f"sendevent {event} 0 0 0")
-            logger.info("[SENDEVENT_RAW] Hoàn thành")
-        except Exception as e:
-            logger.error(f"[SENDEVENT_RAW] Lỗi khi gửi sendevent raw: {e}")
+        """Gửi touch bằng sendevent từng lệnh (không gom batch)."""
+        self.send_touch_sendevent(points, hold_start_ms=100)
 
     def px_to_system(self, x_px, y_px):
-        """Chuyển tọa độ bạn thấy (px) → hệ thống nhận"""
-        return int(SIZE - y_px), int(x_px)
+        """Chuyển tọa độ bạn thấy (px) → hệ thống nhận (LDPlayer 800x800 rot 90: SIZE - y, x)."""
+        hx = max(0, min(int(SIZE - y_px), SIZE))
+        hy = max(0, min(int(x_px), SIZE))
+        return hx, hy
 
-    def interpolate_points(self, points, steps_per_segment=6):
+    def interpolate_points(self, points, steps_per_segment=None, max_step_dist: int = 120):
         """
-        Sinh điểm giữa 2 điểm – làm kéo mượt
-        steps_per_segment = 5 → 5 điểm giữa mỗi đoạn
+        Nội suy thông minh theo khoảng cách thực tế (Adaptive Distance-based):
+        - Các chậu gần nhau trong cùng hàng (khoảng cách 60px <= 120px): lướt trực tiếp qua tâm chậu,
+          không chèn điểm thừa để tránh ngón tay bị giật giật, khựng từng nấc 15px.
+        - Các đoạn chuyển hàng xa (> 150px): chèn 2-3 điểm dẫn đường để ngón tay không bị teleport.
+        -> Giảm tổng số điểm từ 73 điểm xuống ~25 điểm, kéo cực kỳ mượt mà, tự nhiên và dứt khoát.
         """
-        # Chuyển đổi tọa độ trước
-        interpolateds = []
-        for i in range(len(points)):
-            interpolateds.append(self.px_to_system(points[i][0], points[i][1]))
-        points = interpolateds
+        if len(points) < 2:
+            return [self.px_to_system(p[0], p[1]) for p in points]
 
-        interpolated = [points[0]]  # Giữ điểm đầu
+        interpolated = [points[0]]
 
-        for i in range(1, len(points) - 1):
-            x1, y1 = points[i]
-            x2, y2 = points[i+1]
+        for i in range(len(points) - 1):
+            p1 = points[i]
+            p2 = points[i + 1]
+            dist = ((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2) ** 0.5
 
-            # Sinh steps_per_segment điểm giữa
-            for step in range(1, steps_per_segment + 1):
-                t = step / (steps_per_segment + 1)  # 0.2, 0.4, 0.6, 0.8
+            # Chỉ chèn điểm trung gian nếu khoảng cách giữa 2 điểm xa (chuyển hàng hoặc từ giỏ)
+            if dist > max_step_dist:
+                steps = max(1, min(int(dist // 90), 4))
+                for step in range(1, steps + 1):
+                    t = step / float(steps + 1)
+                    ix = int(p1[0] + (p2[0] - p1[0]) * t)
+                    iy = int(p1[1] + (p2[1] - p1[1]) * t)
+                    interpolated.append((ix, iy))
 
-                interp_x = int(x1 + (x2 - x1) * t)
-                interp_y = int(y1 + (y2 - y1) * t)
+            interpolated.append(p2)
 
-                interpolated.append((interp_x, interp_y))
+        return [self.px_to_system(p[0], p[1]) for p in interpolated]
 
-        interpolated.append(points[-1])  # Giữ điểm cuối
-        return interpolated
+

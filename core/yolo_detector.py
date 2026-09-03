@@ -17,6 +17,11 @@ class YOLODetector:
     def __init__(self, model_path: str = None, conf_threshold: float = 0.3, nms_threshold: float = 0.4):
         import sys
         raw_path = model_path or getattr(config, "YOLO_MODEL_PATH", "configs/kvtm_yolo.onnx")
+        if not os.path.exists(raw_path):
+            from config import get_configs_dir
+            candidate = os.path.join(get_configs_dir(), os.path.basename(raw_path))
+            if os.path.exists(candidate):
+                raw_path = candidate
         if not os.path.exists(raw_path) and hasattr(sys, "_MEIPASS"):
             mei_path = os.path.join(sys._MEIPASS, raw_path)
             if os.path.exists(mei_path):
