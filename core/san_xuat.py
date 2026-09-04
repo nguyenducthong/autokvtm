@@ -19,7 +19,7 @@ from .adb import ADBController
 from .image import ImageProcessor
 from utils.utils import (
     find_image_v2, _should_stop, _sleep, _get_adb,
-    set_state, PlayerState
+    set_state, PlayerState, save_debug_image, is_debug_mode, set_thread_status
 )
 from config import (
     INDEX_MAY, INDEX_SAN_XUAT_MAC_DINH,
@@ -33,9 +33,27 @@ logger = logging.getLogger(__name__)
 img = ImageProcessor()
 THRESHOLD = 0.85
 
+DEBUG_MODE = False
+DEBUG_DIR = "debug/san_xuat"
+
+def set_debug_mode(enabled: bool):
+    """Bật/tắt debug mode lưu ảnh cho phần sản xuất."""
+    global DEBUG_MODE
+    DEBUG_MODE = enabled
+    if enabled:
+        os.makedirs(DEBUG_DIR, exist_ok=True)
+        logger.info(f"[DEBUG] San xuat debug mode ON — lưu ảnh tại {DEBUG_DIR}/")
+
+def _save_debug_screenshot(screen, template_path, pos, step_name, region=None):
+    """Lưu ảnh debug nếu debug mode bật."""
+    if not (DEBUG_MODE or is_debug_mode()) or screen is None:
+        return
+    save_debug_image(screen, template_path, pos, step_name=step_name, debug_dir=DEBUG_DIR, region=region)
+
+
 
 def keo_vat_pham(adb: ADBController, start_pos: Tuple[int, int], end_pos: Tuple[int, int],
-                 hold_start_ms: int = 48, hold_end_ms: int = 40, duration_ms: int = 72) -> bool:
+                 hold_start_ms: int = 20, hold_end_ms: int = 20, duration_ms: int = 48) -> bool:
     """
     Kéo thả 1 vật phẩm từ start_pos (icon nguyên liệu) vào end_pos (ô sản xuất):
     - Tối ưu siêu tốc (nhanh hơn 20%): hold_start: 48ms, lướt 72ms (3 bước), hold_end: 40ms.
@@ -45,7 +63,7 @@ def keo_vat_pham(adb: ADBController, start_pos: Tuple[int, int], end_pos: Tuple[
     try:
         event = adb.get_touch_device_event()
 
-        num_steps = max(3, int(duration_ms / 25))
+        num_steps = max(2, int(duration_ms / 25))
         step_delay_us = int((duration_ms * 1000) / num_steps)
 
         sys_start = adb.px_to_system(start_pos[0], start_pos[1])
@@ -110,6 +128,7 @@ def tim_vp(template_path: str, count: int = 1, threshold: float = THRESHOLD, reg
         return None
 
     pos = img.find_template_color(template_path, threshold=threshold, screen_img=screen, region=region)
+    _save_debug_screenshot(screen, template_path, pos, f"tim_vp_lan_{count}", region=region)
     if pos:
         logger.info(f"[SAN_XUAT] Tìm được {template_path} tại {pos}")
         return pos
@@ -123,9 +142,15 @@ def tim_vp(template_path: str, count: int = 1, threshold: float = THRESHOLD, reg
 
 def sua_may(threshold: float = THRESHOLD):
     """Xử lý sửa máy khi máy sản xuất bị hỏng."""
+    set_thread_status("Đang kiểm tra sửa máy...")
     adb = _get_adb()
     set_state(PlayerState.SUA_MAY)
-    pos_sua = find_image_v2("assets/items/core_sua_may.png", True, threshold=threshold, max_retry=0)
+    screen = adb.screenshot_full() if adb else None
+    if screen is not None:
+        pos_sua = img.find_template_color("assets/items/core_sua_may.png", threshold=threshold, screen_img=screen)
+        _save_debug_screenshot(screen, "assets/items/core_sua_may.png", pos_sua, "sua_may_icon")
+    else:
+        pos_sua = find_image_v2("assets/items/core_sua_may.png", True, threshold=threshold, max_retry=0)
     if pos_sua:
         x_sua, y_sua = pos_sua
         adb.tap(x_sua, y_sua)
@@ -136,7 +161,12 @@ def sua_may(threshold: float = THRESHOLD):
             _sleep(TIME_SLEEP_SHORT)
             logger.info("[SAN_XUAT] Sửa máy thành công")
         else:    
-            pos_vang = find_image_v2("assets/items/core_sua_may_vang.png", True, threshold=threshold, max_retry=0)
+            scr2 = adb.screenshot_full() if adb else None
+            if scr2 is not None:
+                pos_vang = img.find_template_color("assets/items/core_sua_may_vang.png", threshold=threshold, screen_img=scr2)
+                _save_debug_screenshot(scr2, "assets/items/core_sua_may_vang.png", pos_vang, "sua_may_vang")
+            else:
+                pos_vang = find_image_v2("assets/items/core_sua_may_vang.png", True, threshold=threshold, max_retry=0)
             if pos_vang:
                 x_vang, y_vang = pos_vang
                 adb.tap(x_vang, y_vang)
@@ -165,6 +195,7 @@ def xu_ly_may(config_may: dict, threshold: float = THRESHOLD, is_sua_may: bool =
 
     x_may, y_may = INDEX_MAY[row]
     logger.info(f"[SAN_XUAT] Xử lý máy hàng {row} tại ({x_may}, {y_may})")
+    set_thread_status(f"Mở máy hàng {row}...")
 
     max_tap = 3
     for i in range(max_tap):
@@ -179,11 +210,13 @@ def xu_ly_may(config_may: dict, threshold: float = THRESHOLD, is_sua_may: bool =
             continue
 
         pos_slot = img.find_template_color("assets/items/core_sanxuat_vp.png", threshold=threshold, screen_img=screen)
+        _save_debug_screenshot(screen, "assets/items/core_sanxuat_vp.png", pos_slot, f"mo_may_check_slot_tap_{i+1}")
         if pos_slot:
             logger.info(f"[SAN_XUAT] Máy rảnh sau {i+1} lần tap")
             break
 
         pos_next_sx = img.find_template_color("assets/items/core_next_sanxuat.png", threshold=threshold, screen_img=screen)
+        _save_debug_screenshot(screen, "assets/items/core_next_sanxuat.png", pos_next_sx, f"mo_may_check_next_tap_{i+1}")
         if pos_next_sx:
             logger.info(f"[SAN_XUAT] Tìm thấy next_sanxuat sau {i+1} lần tap")
             break
@@ -199,6 +232,8 @@ def xu_ly_may(config_may: dict, threshold: float = THRESHOLD, is_sua_may: bool =
         total = item_data.get('total', 1)
 
         set_state(PlayerState.SAN_XUAT)
+        item_name = os.path.basename(path_item).replace(".png", "").replace("may_", "").replace("core_", "")
+        set_thread_status(f"SX {item_name} hàng {row} ({total} cái)...")
         logger.info(f"[SAN_XUAT] Bắt đầu sản xuất {total} x {path_item}")
 
         pos_item = tim_vp(path_item, threshold=threshold, region=region)
@@ -226,6 +261,7 @@ def xu_ly_may(config_may: dict, threshold: float = THRESHOLD, is_sua_may: bool =
         if screen is not None:
             pos_nut_x = img.find_template_color("assets/items/core_nut_x.png",
                                                 threshold=threshold, screen_img=screen)
+            _save_debug_screenshot(screen, "assets/items/core_nut_x.png", pos_nut_x, "kiem_tra_het_nl_nut_x")
             if pos_nut_x:
                 logger.info("[SAN_XUAT] Phát hiện popup hết nguyên liệu, đóng popup")
                 x_x, y_x = pos_nut_x

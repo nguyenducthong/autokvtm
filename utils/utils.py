@@ -91,8 +91,8 @@ def _get_stop_event():
     return getattr(_ctx, 'stop_event', None)
 
 
-def setup_thread(adb_instance, stop_event=None, device_name=None):
-    """Gọi đầu mỗi thread để set ADB + stop_event + tên thiết bị + state cho thread đó."""
+def setup_thread(adb_instance, stop_event=None, device_name=None, status_callback=None):
+    """Gọi đầu mỗi thread để set ADB + stop_event + tên thiết bị + state + status_callback cho thread đó."""
     if adb_instance is not None:
         _ctx.adb = adb_instance
     if stop_event is not None:
@@ -102,6 +102,10 @@ def setup_thread(adb_instance, stop_event=None, device_name=None):
         _ctx.device_name = device_name
     elif not hasattr(_ctx, 'device_name'):
         _ctx.device_name = None
+    if status_callback is not None:
+        _ctx.status_callback = status_callback
+    elif not hasattr(_ctx, 'status_callback'):
+        _ctx.status_callback = None
     if not hasattr(_ctx, 'state') or _ctx.state is None:
         _ctx.state = PlayerState.UNKNOWN
 
@@ -109,6 +113,16 @@ def setup_thread(adb_instance, stop_event=None, device_name=None):
 def get_device_name():
     """Lấy tên thiết bị của thread hiện tại."""
     return getattr(_ctx, 'device_name', None)
+
+
+def set_thread_status(status_msg: str, color: str = "#e67e22"):
+    """Cập nhật trạng thái card tác vụ trên GUI từ thread hiện tại."""
+    cb = getattr(_ctx, 'status_callback', None)
+    if cb:
+        try:
+            cb(status_msg, color)
+        except Exception:
+            pass
 
 
 def _should_stop():
@@ -208,9 +222,10 @@ def _detect_current_row(take_screenshot=True, threshold=None):
             may_i = f"assets/items/num/{i}.png"
             if not os.path.exists(may_i):
                 continue
-
-            detail = img.find_template_color_detail(may_i, threshold=th, color_threshold=0.6,
-                                                    screen_img=screen, region=region_may)
+            if (i == 0):
+                detail = img.find_template_color_detail(may_i, threshold=th, color_threshold=0.6, screen_img=screen)
+            else:
+                detail = img.find_template_color_detail(may_i, threshold=th, color_threshold=0.6, screen_img=screen, region=region_may)
             if detail.get("found"):
                 combined = detail.get("combined_score", 0.0)
                 if combined > best_score:
@@ -227,8 +242,10 @@ def _detect_current_row(take_screenshot=True, threshold=None):
             may_i = f"assets/items/num/{i}.png"
             if not os.path.exists(may_i):
                 continue
-            pos_basic = img.find_template(may_i, threshold=max(0.74, th - 0.06),
-                                          screen_img=screen, region=region_may)
+            if (i == 0):
+                pos_basic = img.find_template(may_i, threshold=max(0.74, th - 0.06), screen_img=screen)
+            else:
+                pos_basic = img.find_template(may_i, threshold=max(0.74, th - 0.06), screen_img=screen, region=region_may)
             if pos_basic:
                 logger.info(f"Nhận diện hàng hiện tại (ROI fallback): {i} (lần {attempt+1})")
                 set_state(_row_to_state(i))
@@ -516,49 +533,92 @@ def find_image(template_path, screen, screen_img=None, region=None):
 _debug_mode = False
 _DEBUG_DIR = "debug/utils"
 
+def is_debug_mode() -> bool:
+    """Kiểm tra trạng thái bật/tắt chế độ debug toàn cục."""
+    return _debug_mode
+
 def set_debug_mode(enabled: bool):
+    """Bật/tắt chế độ debug, đồng thời đồng bộ tới các phân hệ nếu có."""
     global _debug_mode
     _debug_mode = enabled
     if enabled:
         os.makedirs(_DEBUG_DIR, exist_ok=True)
         logger.info(f"[DEBUG] Utils debug mode ON — lưu ảnh tại {_DEBUG_DIR}/")
 
+    # Đồng bộ sang các module khác (dùng try-except tránh import vòng)
+    for mod_name in ("core.ban_do", "core.trong_cay", "core.thu_hoach", "core.san_xuat", "core.sxcam"):
+        try:
+            mod = sys.modules.get(mod_name)
+            if mod and hasattr(mod, "set_debug_mode"):
+                mod.set_debug_mode(enabled)
+        except Exception:
+            pass
 
-def _save_debug(screen, template_path, pos, step_name="find"):
-    """Lưu screenshot debug nếu debug mode bật."""
-    if not _debug_mode or screen is None:
-        return
+
+def save_debug_image(screen, template_path, pos, step_name="find", debug_dir=_DEBUG_DIR, region=None):
+    """Lưu screenshot debug với khung match (hoặc NOT FOUND).
+    Dùng chung cho ban_do, trong_cay, thu_hoach, san_xuat, sxcam, utils...
+    """
     try:
         import cv2
         from datetime import datetime
-        os.makedirs(_DEBUG_DIR, exist_ok=True)
+        os.makedirs(debug_dir, exist_ok=True)
         ts = datetime.now().strftime("%H%M%S_%f")[:-3]
-        tpl_name = os.path.basename(template_path).replace(".png", "")
+        tpl_name = os.path.basename(str(template_path)).replace(".png", "") if template_path else "unknown"
         status = "FOUND" if pos else "NOT_FOUND"
         filename = f"{ts}_{step_name}_{tpl_name}_{status}.png"
-        save_path = os.path.join(_DEBUG_DIR, filename)
+        save_path = os.path.join(debug_dir, filename)
 
         debug_img = screen.copy()
+
+        # Nếu có vẽ vùng giới hạn tìm kiếm (region)
+        if region:
+            rx, ry, rw, rh = region
+            cv2.rectangle(debug_img, (rx, ry), (rx + rw, ry + rh), (255, 255, 0), 1)
+
         if pos:
-            template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
+            # Vẽ khung xanh lá quanh vị trí tìm thấy
+            template = None
+            if template_path and os.path.exists(str(template_path)):
+                template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
+            cx, cy = pos
             if template is not None:
                 th, tw = template.shape[:2]
-                cx, cy = pos
                 cv2.rectangle(debug_img,
                               (cx - tw // 2, cy - th // 2),
                               (cx + tw // 2, cy + th // 2),
                               (0, 255, 0), 2)
                 cv2.putText(debug_img, f"FOUND ({cx},{cy})",
-                            (cx - tw // 2, cy - th // 2 - 8),
+                            (cx - tw // 2, max(12, cy - th // 2 - 8)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            else:
+                cv2.circle(debug_img, (cx, cy), 15, (0, 255, 0), 2)
+                cv2.putText(debug_img, f"FOUND ({cx},{cy})",
+                            (max(10, cx - 30), max(15, cy - 20)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
         else:
+            # Vẽ chữ đỏ NOT FOUND
             cv2.putText(debug_img, f"NOT FOUND: {tpl_name}",
                         (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
+        # Ghi tên step + thời gian
+        cv2.putText(debug_img, f"[{step_name}] {ts}",
+                    (10, debug_img.shape[0] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+
         cv2.imwrite(save_path, debug_img)
         logger.debug(f"[DEBUG] Saved: {save_path}")
+        return save_path
     except Exception as e:
         logger.debug(f"[DEBUG] Lỗi lưu debug: {e}")
+        return None
+
+
+def _save_debug(screen, template_path, pos, step_name="find"):
+    """Lưu screenshot debug nếu debug mode bật (backward-compatible cho utils)."""
+    if not _debug_mode or screen is None:
+        return
+    save_debug_image(screen, template_path, pos, step_name=step_name, debug_dir=_DEBUG_DIR)
 
 
 def _get_screen(screen_flag, screen_img=None):

@@ -15,11 +15,7 @@
     "bat_sang_ban_be": false,
     "bat_cap_nhat_khoi_dong": false,
     "bat_khoi_dong_lai_ld": false,
-    "thoi_gian_khoi_dong_lai": 0.02,
-    "bat_ai_recovery": true,
-    "gemini_api_key": "",
-    "bat_yolo": true,
-    "yolo_model_path": "configs/kvtm_yolo.onnx"
+    "thoi_gian_khoi_dong_lai": 0.02
   },
   "tasks": [],
   "ban_do": {

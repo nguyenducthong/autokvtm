@@ -1,8 +1,12 @@
+import os
 import logging
 import time
 from config import INDEX_THOAT_SAN_XUAT_MAC_DINH, INDEX_SXCAM, TIME_SLEEP_SXCAM
 from core.image import ImageProcessor
-from utils.utils import tim_may_v2, xuong_nha, setup_thread, get_device_name
+from utils.utils import (
+    tim_may_v2, xuong_nha, setup_thread, get_device_name,
+    save_debug_image, is_debug_mode, set_thread_status
+)
 from core.san_xuat import keo_vat_pham
 
 
@@ -11,6 +15,23 @@ img = ImageProcessor()
 
 SXCAM_INTERVAL_SECONDS = 30 * 60  # 30 minutes
 _last_run_at = {}
+
+DEBUG_MODE = False
+DEBUG_DIR = "debug/sxcam"
+
+def set_debug_mode(enabled: bool):
+    """Bật/tắt debug mode lưu ảnh cho sản xuất cám."""
+    global DEBUG_MODE
+    DEBUG_MODE = enabled
+    if enabled:
+        os.makedirs(DEBUG_DIR, exist_ok=True)
+        logger.info(f"[DEBUG] SX Cam debug mode ON — lưu ảnh tại {DEBUG_DIR}/")
+
+def _save_debug_screenshot(screen, template_path, pos, step_name):
+    """Lưu ảnh debug nếu debug mode bật."""
+    if not (DEBUG_MODE or is_debug_mode()) or screen is None:
+        return
+    save_debug_image(screen, template_path, pos, step_name=step_name, debug_dir=DEBUG_DIR)
 
 def can_sxcam(serial: str) -> bool:
     """Kiểm tra xem đã đủ 30 phút kể từ lần chạy trước chưa."""
@@ -26,11 +47,13 @@ def _sleep(seconds, stop_event=None):
 def _should_stop(stop_event=None):
     return stop_event is not None and stop_event.is_set()
 
-def _tim_anh(adb, template_path: str, threshold: float = 0.85):
+def _tim_anh(adb, template_path: str, threshold: float = 0.85, step_name: str = "tim_anh"):
     screen = adb.screenshot_full()
     if screen is None:
         return None
-    return img.find_template_color(template_path=template_path, threshold=threshold, screen_img=screen)
+    pos = img.find_template_color(template_path=template_path, threshold=threshold, screen_img=screen)
+    _save_debug_screenshot(screen, template_path, pos, step_name)
+    return pos
 
 def _ve_tang_0(adb, stop_event=None):
     """Về tầng 0 bằng logic dùng chung trong utils.tim_may_v2."""
@@ -58,14 +81,16 @@ def run_sxcam(adb, serial: str = None, force: bool = False, stop_event=None) -> 
 
     _last_run_at[serial] = time.time()
     logger.info("[SXCAM] Bắt đầu tiến trình sản xuất cám cho %s", serial)
+    set_thread_status("Sản xuất cám (Về tầng 0)...")
     
     # 1. Về tầng 0
     _ve_tang_0(adb, stop_event=stop_event)
     if _should_stop(stop_event):
         return False
 
+    set_thread_status("Sản xuất cám (Soi)...")
     # 2. Ở tầng 0 tìm ảnh sxcam_soi.png -> tìm được tab vào. -> đợi 2-3s
-    pos_soi = _tim_anh(adb, "assets/items/core_sxcam_soi.png", threshold=0.85)
+    pos_soi = _tim_anh(adb, "assets/items/core_sxcam_soi.png", threshold=0.85, step_name="sxcam_soi")
     if not pos_soi:
         logger.warning("[SXCAM] Không tìm thấy sxcam_soi.png ở tầng 0")
         return False
@@ -78,18 +103,19 @@ def run_sxcam(adb, serial: str = None, force: bool = False, stop_event=None) -> 
         return False
 
     # 3. kiểm tra có sxcam_log.png thì nhấn tap_thoat_mac_dinh. -> kéo sang trái tìm hình ảnh sxcam_sx.png ->tab vào.
-    pos_log = _tim_anh(adb, "assets/items/core_sxcam_log.png", threshold=0.85)
+    pos_log = _tim_anh(adb, "assets/items/core_sxcam_log.png", threshold=0.85, step_name="sxcam_log")
     if pos_log:
         logger.info("[SXCAM] Phát hiện sxcam_log.png, nhấn thoát mặc định")
         _thoat_mac_dinh(adb, stop_event)
         if _should_stop(stop_event):
             return False
 
+    set_thread_status("Sản xuất cám (Tìm nút SX)...")
     found_sx = False
     for attempt in range(5):
         if _should_stop(stop_event):
             return False
-        pos_sx = _tim_anh(adb, "assets/items/core_sxcam_sx.png", threshold=0.8)
+        pos_sx = _tim_anh(adb, "assets/items/core_sxcam_sx.png", threshold=0.8, step_name=f"sxcam_sx_lan_{attempt + 1}")
         if pos_sx:
             logger.info("[SXCAM] Tìm thấy sxcam_sx.png tại %s, tap vào", pos_sx)
             adb.tap(*pos_sx)
@@ -110,8 +136,9 @@ def run_sxcam(adb, serial: str = None, force: bool = False, stop_event=None) -> 
     if _should_stop(stop_event):
         return False
 
+    set_thread_status("Sản xuất cám (Kéo lúa mì)...")
     # 4. tìm ảnh sxcam_luami.png thì kéo vị trí đó đến index_sxcam.
-    pos_luami = _tim_anh(adb, "assets/items/core_sxcam_luami.png", threshold=0.8)
+    pos_luami = _tim_anh(adb, "assets/items/core_sxcam_luami.png", threshold=0.8, step_name="sxcam_luami")
     if pos_luami:
         logger.info("[SXCAM] Tìm thấy sxcam_luami.png tại %s, kéo đến INDEX_SXCAM %s", pos_luami, INDEX_SXCAM)
         x_lm, y_lm = pos_luami
@@ -127,6 +154,7 @@ def run_sxcam(adb, serial: str = None, force: bool = False, stop_event=None) -> 
     if _should_stop(stop_event):
         return False
 
+    set_thread_status("Sản xuất cám (Về nhà)...")
     # 5. Bấm thoát mặc đinh. Tìm ảnh sxcam_venha.png để về ->đợi 5s chờ load lại màn hình
     logger.info("[SXCAM] Bấm thoát mặc định")
     _thoat_mac_dinh(adb, stop_event)
@@ -134,7 +162,7 @@ def run_sxcam(adb, serial: str = None, force: bool = False, stop_event=None) -> 
         return False
     _sleep(1.5, stop_event)
 
-    pos_venha = _tim_anh(adb, "assets/items/core_sxcam_venha.png", threshold=0.8)
+    pos_venha = _tim_anh(adb, "assets/items/core_sxcam_venha.png", threshold=0.8, step_name="sxcam_venha")
     if pos_venha:
         logger.info("[SXCAM] Tìm thấy sxcam_venha.png, click để về nhà")
         adb.tap(*pos_venha)
@@ -143,4 +171,5 @@ def run_sxcam(adb, serial: str = None, force: bool = False, stop_event=None) -> 
         logger.warning("[SXCAM] Không tìm thấy sxcam_venha.png để về nhà")
 
     logger.info("[SXCAM] Hoàn thành tiến trình sản xuất cám")
+    set_thread_status("Đã SX cám xong", "#27ae60")
     return True

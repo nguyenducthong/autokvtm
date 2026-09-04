@@ -8,7 +8,8 @@ from .image import ImageProcessor
 from utils.utils import (
     lay_toa_do_tu_indexs, tim_may, find_image_v2,
     setup_thread, _should_stop, _sleep, _get_adb, get_device_name,
-    set_state, get_state, PlayerState
+    set_state, get_state, PlayerState,
+    save_debug_image, is_debug_mode, set_thread_status
 )
 from config import (
     DEVICE_SERIAL, INDEX_HANG, CONFIG_TEMP_TC, INDEX_MAY,
@@ -25,6 +26,23 @@ from .san_xuat import xu_ly_may, sua_may, tim_vp
 THRESHOLD = 0.85
 logger = logging.getLogger(__name__)
 img = ImageProcessor()
+
+DEBUG_MODE = False
+DEBUG_DIR = "debug/trong_cay"
+
+def set_debug_mode(enabled: bool):
+    """Bật/tắt debug mode lưu ảnh cho phần trồng cây."""
+    global DEBUG_MODE
+    DEBUG_MODE = enabled
+    if enabled:
+        os.makedirs(DEBUG_DIR, exist_ok=True)
+        logger.info(f"[DEBUG] Trong cay debug mode ON — lưu ảnh tại {DEBUG_DIR}/")
+
+def _save_debug_screenshot(screen, template_path, pos, step_name, region=None):
+    """Lưu ảnh debug nếu debug mode bật."""
+    if not (DEBUG_MODE or is_debug_mode()) or screen is None:
+        return
+    save_debug_image(screen, template_path, pos, step_name=step_name, debug_dir=DEBUG_DIR, region=region)
 
 
 def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None,
@@ -73,10 +91,12 @@ def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None
 
         if type_item == "MAY":
             logger.info(f"Xử lý máy sản xuất hàng {item.get('row')}...")
+            set_thread_status(f"Máy SX hàng {config_row} ({idx}/{len(config)})...")
             set_state(PlayerState.MO_MAY)
             xu_ly_may(item, threshold=global_threshold or THRESHOLD, is_sua_may=is_sua_may)
 
         elif type_item == "TC":
+            set_thread_status(f"Kiểm tra hàng {config_row} ({idx}/{len(config)})...")
             path_cay = item.get('path_item')
             path_cay_default = item.get('path_item_default')
             region = item.get('region')
@@ -94,20 +114,24 @@ def main_tc(config: list, adb_instance=None, stop_event=None, stop_callback=None
             check_trong = check_trong_cay(threshold=item_threshold, is_retry=True, tap=(x, y))
             if check_trong == "chua_chin":
                 logger.info("Cây chưa chín, bỏ qua thu hoạch")
+                set_thread_status(f"Cây hàng {config_row} chưa chín", "#7f8c8d")
                 continue
             elif check_trong == "next_gieo":
                 logger.info("Chuyển sang cây tiếp theo")
                 if _should_stop():
                     break
+                set_thread_status(f"Trồng cây hàng {config_row}...")
                 set_state(PlayerState.TRONG_CAY)
                 trong_cay(path_cay, path_cay_default, listIndex, tap,
                           threshold=item_threshold, region=region)
             elif check_trong == "gio_hang":
                 logger.info("Tìm thấy giỏ hàng, tiến hành thu hoạch")
+                set_thread_status(f"Thu hoạch hàng {config_row}...")
                 set_state(PlayerState.THU_HOACH)
                 thuhoach(listIndex, tap, threshold=item_threshold)
                 adb.tap(x, y)
                 _sleep(TIME_SLEEP)
+                set_thread_status(f"Gieo hạt hàng {config_row}...")
                 set_state(PlayerState.TRONG_CAY)
                 trong_cay(path_cay, path_cay_default, listIndex, tap,
                           threshold=item_threshold, region=region)
@@ -154,6 +178,7 @@ def tim_cay_trong(template_path, template_path_default=None, count=1,
     # Tìm cây trên screenshot đã chụp (không retry, không chụp lại)
     pos = img.find_template_color(search_path, threshold=threshold, screen_img=screen,
                                   region=region)
+    _save_debug_screenshot(screen, search_path, pos, f"tim_cay_lan_{count}", region=region)
     if pos:
         logger.info(f"Tìm được {label} tại {pos} (lần {count}, threshold={threshold})")
         return pos
@@ -161,6 +186,7 @@ def tim_cay_trong(template_path, template_path_default=None, count=1,
     # Không thấy cây → tìm nút next_gieo trên cùng screenshot
     logger.info(f"Không tìm được {label} lần {count}")
     pos_next = img.find_template_color(next_gieo, threshold=threshold, screen_img=screen)
+    _save_debug_screenshot(screen, next_gieo, pos_next, f"tim_next_gieo_lan_{count}")
     if pos_next:
         x, y = pos_next
         adb.tap(x, y)
@@ -206,20 +232,26 @@ def check_trong_cay(threshold=None, is_retry = False, tap = None):
     # Tìm tất cả trên cùng 1 screenshot (không retry, không chụp lại)
     pos_TH = img.find_template_color("assets/items/core_thu_hoach.png", threshold=th, screen_img=screen)
     if pos_TH:
+        _save_debug_screenshot(screen, "assets/items/core_thu_hoach.png", pos_TH, "check_gio_hang")
         logger.info("Tìm được giỏ hàng (thu_hoach)")
         return "gio_hang"
     pos_TH = img.find_template_color("assets/items/core_thu_hoach_1.png", threshold=th, screen_img=screen)
     if pos_TH:
+        _save_debug_screenshot(screen, "assets/items/core_thu_hoach_1.png", pos_TH, "check_gio_hang_1")
         logger.info("Tìm được giỏ hàng (thu_hoach_1)")
         return "gio_hang"
     pos = img.find_template_color("assets/items/core_next_gieo.png", threshold=th, screen_img=screen)
     if pos:
+        _save_debug_screenshot(screen, "assets/items/core_next_gieo.png", pos, "check_next_gieo")
         logger.info("Tìm được nút next gieo")
         return "next_gieo"
     pos_cay_chin = img.find_template_color("assets/items/core_cay_chua_chin.png", threshold=th, screen_img=screen)
     if pos_cay_chin:
+        _save_debug_screenshot(screen, "assets/items/core_cay_chua_chin.png", pos_cay_chin, "check_cay_chua_chin")
         logger.info("Tìm được cây chưa chín")
         return "chua_chin"
+
+    _save_debug_screenshot(screen, "assets/items/core_thu_hoach.png", None, "check_trong_cay_khong_thay")
     if is_retry:
         logger.info("Chưa ấn vào cây, tiến hành ấn vào cây")
         adb.tap(tap[0], tap[1])

@@ -16,7 +16,7 @@
   "gemini_api_key": "",
   "gemini_model": "gemini-3.5-flash-lite",
   "bat_ai_recovery": true,
-  "bat_yolo": true,
+  "bat_yolo": false,
   "yolo_model_path": "configs/kvtm_yolo.onnx",
   "time_delays": {
     "time_sleep_trong_cay": 0.5,

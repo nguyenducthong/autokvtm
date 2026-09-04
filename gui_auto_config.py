@@ -38,7 +38,7 @@ from PIL import Image, ImageTk
 import config
 
 from config import CONFIG_LOAI_KHO, REGION_PRESETS, REGION_FROM_CROP, CURRENT_VERSION, GITHUB_API_URL
-from utils.daily_stats import format_daily_counts
+from utils.daily_stats import format_daily_counts, record_loop_run, get_today_stats_path
 
 logger = logging.getLogger(__name__)
 GUI_LOG_MAX_LINES = 1000
@@ -460,6 +460,9 @@ class AutoConfigGUI:
         tk.Button(dev_toolbar, text="Mở thư mục gỡ lỗi", command=self._open_debug_folder,
                   bg="#7f8c8d", fg="white", relief=tk.FLAT, cursor="hand2",
                   font=("Arial", 8), padx=6).pack(side=tk.LEFT, padx=4)
+        tk.Button(dev_toolbar, text="📊 CSV Thống kê", command=self._open_daily_stats_csv,
+                  bg="#2c3e50", fg="white", relief=tk.FLAT, cursor="hand2",
+                  font=("Arial", 8, "bold"), padx=6).pack(side=tk.LEFT, padx=4)
 
         action_bar = tk.Frame(dev_frame, bg="#ecf0f1")
         self.btn_selected_start_ld = tk.Button(action_bar, text="Mở LD", command=self._start_selected_ldplayer,
@@ -2051,14 +2054,25 @@ class AutoConfigGUI:
                 if is_debug:
                     from utils.utils import set_debug_mode as utils_debug
                     from core.ban_do import set_debug_mode as ban_do_debug
+                    from core.trong_cay import set_debug_mode as trong_cay_debug
+                    from core.thu_hoach import set_debug_mode as thu_hoach_debug
+                    from core.san_xuat import set_debug_mode as san_xuat_debug
+                    from core.sxcam import set_debug_mode as sxcam_debug
                     utils_debug(True)
                     ban_do_debug(True)
+                    trong_cay_debug(True)
+                    thu_hoach_debug(True)
+                    san_xuat_debug(True)
+                    sxcam_debug(True)
 
                 adb_inst = ADBController(serial=serial)
 
                 # Setup thread với device_name → tất cả log tự động có [tên nick]
+                def thread_status_cb(msg, color="#e67e22"):
+                    self._set_card_status(serial, f"{config_name} | {msg}", color)
+
                 from utils.utils import setup_thread
-                setup_thread(adb_inst, stop_ev, device_name=dev_name)
+                setup_thread(adb_inst, stop_ev, device_name=dev_name, status_callback=thread_status_cb)
 
                 # Đồng bộ cấu hình AI toàn cục từ Tab Cấu Hình Chung
                 import config as global_config
@@ -2148,6 +2162,7 @@ class AutoConfigGUI:
                             self._log(f"{dev_label} Không tìm thấy index của LDPlayer để restart!", "warning")
 
                     tong_i += 1
+                    loop_start_time = time.time()
                     if loop_tong_mode != "forever" and tong_i > loop_tong_count:
                         break
                     lbl = f"{tong_i}{'/' + str(loop_tong_count) if loop_tong_mode != 'forever' else ''}"
@@ -2163,6 +2178,8 @@ class AutoConfigGUI:
                             if opened:
                                 self._log(f"{dev_label} [{config_name}] Đã mở rương")
                                 self._set_card_status(serial, f"{config_name} | Đã mở rương", "#27ae60")
+                            else:
+                                self._set_card_status(serial, f"{config_name} | Chưa có rương", "#7f8c8d")
 
                     if settings.get("bat_giao_cu") and can_giao_cu(serial):
                         self._set_card_status(serial, f"{config_name} | Giao cú...", "#e67e22")
@@ -2202,15 +2219,27 @@ class AutoConfigGUI:
                             start_time_item = time.time()
                             if stop_ev.is_set():
                                 break
+                            lbl_loop = f" ({loop_i+1}/{loop_tc_may})" if loop_tc_may > 1 else ""
                             self._log(f"{dev_label} [{config_name}] TC+MAY {loop_i+1}/{loop_tc_may}")
+                            self._set_card_status(serial, f"{config_name} | Trồng cây & Máy{lbl_loop}...", "#e67e22")
                             main_tc(tc_tasks, adb_instance=adb_inst, stop_event=stop_ev,
                                     global_threshold=settings.get("threshold"), is_sua_may= (loop_i == loop_tc_may-1))
                             end_time_item = time.time()
                             elapsed = end_time_item - start_time_item
                             self._log(f"{dev_label} [{config_name}] TC+MAY {loop_i+1}/{loop_tc_may} hoàn thành trong {elapsed:.1f}s")
+                            record_loop_run(
+                                serial,
+                                loop_index=loop_i + 1,
+                                duration=elapsed,
+                                task="tc_may",
+                                note=f"[{config_name}] Lặp #{tong_i} - TC+MAY {loop_i+1}/{loop_tc_may}",
+                                update_summary=(loop_tc_may > 1)
+                            )
+                            self._ui_safe(lambda s=serial: self._update_device_row(s))
                         end_time = time.time()
                         elapsed = end_time - start_time
                         self._log(f"{dev_label} [{config_name}] TC+MAY x{loop_tc_may} hoàn thành trong {elapsed:.1f}s")
+                        self._set_card_status(serial, f"{config_name} | Đã xong TC+MAY", "#27ae60")
                         
                     if stop_ev.is_set():
                         break
@@ -2241,6 +2270,19 @@ class AutoConfigGUI:
                         if handled_sbb:
                             self._log(f"{dev_label} [{config_name}] Đã xử lý sang nhà bạn bè")
                             self._set_card_status(serial, f"{config_name} | Đã sang bạn", "#27ae60")
+
+                    # Ghi nhận tổng thời gian vòng lặp vào CSV thống kê
+                    loop_total_elapsed = time.time() - loop_start_time
+                    record_loop_run(
+                        serial,
+                        loop_index=tong_i,
+                        duration=loop_total_elapsed,
+                        task="vong_lap",
+                        note=f"[{config_name}] Vòng lặp #{tong_i} ({loop_total_elapsed:.1f}s)",
+                        update_summary=(loop_tc_may <= 1 or not tc_tasks)
+                    )
+                    self._ui_safe(lambda s=serial: self._update_device_row(s))
+                    self._log(f"{dev_label} [{config_name}] Vòng lặp #{tong_i} xong trong {loop_total_elapsed:.1f}s (Tốc độ: {loop_total_elapsed:.1f}s/vòng)")
 
                 if not stop_ev.is_set():
                     self._log(f"{dev_label} [{config_name}] Hoàn thành!")
@@ -2401,14 +2443,33 @@ class AutoConfigGUI:
         enabled = self.debug_mode_var.get()
         from core.ban_do import set_debug_mode as ban_do_debug
         from utils.utils import set_debug_mode as utils_debug
+        from core.trong_cay import set_debug_mode as trong_cay_debug
+        from core.thu_hoach import set_debug_mode as thu_hoach_debug
+        from core.san_xuat import set_debug_mode as san_xuat_debug
+        from core.sxcam import set_debug_mode as sxcam_debug
         ban_do_debug(enabled)
         utils_debug(enabled)
+        trong_cay_debug(enabled)
+        thu_hoach_debug(enabled)
+        san_xuat_debug(enabled)
+        sxcam_debug(enabled)
         self._log(f"Gỡ lỗi: {'Bật' if enabled else 'Tắt'}")
 
     def _open_debug_folder(self):
         debug_dir = os.path.abspath("debug")
         os.makedirs(debug_dir, exist_ok=True)
         os.startfile(debug_dir)
+
+    def _open_daily_stats_csv(self):
+        csv_path = os.path.abspath(get_today_stats_path())
+        if not os.path.exists(csv_path):
+            from utils.daily_stats import _write_rows
+            _write_rows(csv_path, [])
+        try:
+            os.startfile(csv_path)
+            self._log(f"Đã mở file thống kê: {csv_path}")
+        except Exception as e:
+            messagebox.showerror("Mở thống kê", f"Không thể mở file CSV thống kê:\n{e}")
 
     # ----------------------------------------------------------------
     # TAB 4: NHAT KY (LOG)

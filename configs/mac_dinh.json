@@ -2,7 +2,7 @@
   "settings": {
     "loop_tong_mode": "forever",
     "loop_tong": 1,
-    "loop": 3,
+    "loop": 1,
     "threshold": 0.85,
     "bat_trong_cay": true,
     "bat_may": true,
@@ -13,7 +13,7 @@
     "bat_giao_tom": false,
     "bat_sxcam": false,
     "bat_sang_ban_be": false,
-    "bat_cap_nhat_khoi_dong": true,
+    "bat_cap_nhat_khoi_dong": false,
     "bat_khoi_dong_lai_ld": false,
     "thoi_gian_khoi_dong_lai": 5.0
   },
