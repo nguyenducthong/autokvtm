@@ -1,4 +1,15 @@
-Phiên bản v1.0.22:
+Phiên bản v1.0.23:
 
-- Cập nhật vị trí tap và thời gian chờ khi thao tác trong module Trồng Cây (trong_cay.py).
-- Cải thiện độ ổn định và chính xác khi gieo trồng liên tục.
+- Tính năng Tạm dừng / Tiếp tục (Pause & Resume):
+  + Bổ sung 3 trạng thái điều khiển rõ ràng: Chạy (▶), Tạm dừng (⏸), Dừng hẳn (■) cho từng LDPlayer và nút điều khiển chung trên thanh công cụ.
+  + Cơ chế phản hồi nhanh (dưới 100ms) khi bấm Tạm dừng, giữ nguyên trạng thái tác vụ và tiến trình công việc, khi bấm Tiếp tục sẽ chạy tiếp tục mà không cần chạy lại từ đầu.
+- Nâng cấp giao diện bảng quản lý thiết bị:
+  + Căn chỉnh thẳng hàng 100% giữa tiêu đề cột và các nút bấm theo chuẩn pixel (70px/cột).
+  + Ẩn hoàn toàn các nút chưa khả dụng, loại bỏ các hình xám mờ (ghost icons) giúp giao diện sắc nét, hiện đại, trực quan với các màu trạng thái (⚡ Xanh dương, ▶ Xanh lá, ⏸ Cam, ■ Đỏ).
+- Sửa lỗi treo ứng dụng (Freeze UI):
+  + Tách tiến trình mở file CSV Thống kê và nhật ký sang tiến trình chạy nền độc lập, ngăn ngừa hiện tượng khóa cứng giao diện do DDE của Excel trên Windows.
+- Tối ưu hóa bộ nhớ & thư mục Debug:
+  + Giới hạn tự động dung lượng ảnh lưu gỡ lỗi (tối đa 200 ảnh hoặc 200 MB), tự động dọn dẹp các tệp debug cũ để tránh làm đầy ổ cứng.
+  + Hỗ trợ nút xóa nhanh toàn bộ ảnh debug trong giao diện.
+- Tối ưu hóa hiệu năng:
+  + Tối ưu hóa thao tác trồng cây, thu hoạch, sản xuất và nhận diện hình ảnh.
