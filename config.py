@@ -18,7 +18,7 @@ ENABLE_YOLO = False
 ENABLE_GEMINI_STOCK = False
 
 # Cấu hình phiên bản và tự động cập nhật
-CURRENT_VERSION = "1.0.23"
+CURRENT_VERSION = "1.0.24"
 GITHUB_API_URL = "https://api.github.com/repos/nguyenducthong/autokvtm/releases/latest"
 GITHUB_RELEASES_URL = "https://api.github.com/repos/nguyenducthong/autokvtm/releases"
 

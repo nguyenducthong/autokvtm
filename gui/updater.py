@@ -287,22 +287,29 @@ class UpdaterMixin:
             lbl_meta_tag.config(text=f"Phiên bản: {tag}")
             lbl_meta_date.config(text=f"Ngày phát hành: {pub_date}")
 
-            # Tìm file .exe
+            # Tìm gói cài đặt (.zip cho thư mục hoặc .exe độc lập)
             exe_asset = None
             for asset in release_data.get("assets", []):
-                if asset.get("name", "").endswith(".exe"):
+                aname = asset.get("name", "").lower()
+                if aname.endswith(".zip"):
                     exe_asset = asset
                     break
+            if not exe_asset:
+                for asset in release_data.get("assets", []):
+                    aname = asset.get("name", "").lower()
+                    if aname.endswith(".exe"):
+                        exe_asset = asset
+                        break
 
             if exe_asset:
                 size_str = format_file_size(exe_asset.get("size", 0))
                 lbl_meta_asset.config(
-                    text=f"File thực thi: {exe_asset['name']} ({size_str})",
+                    text=f"Gói cài đặt: {exe_asset['name']} ({size_str})",
                     fg="#2980b9"
                 )
             else:
                 lbl_meta_asset.config(
-                    text="File thực thi: Không tìm thấy file .exe trong bản phát hành này",
+                    text="Gói cài đặt: Không tìm thấy file .zip hoặc .exe trong bản phát hành này",
                     fg="#e74c3c"
                 )
 
@@ -429,14 +436,21 @@ class UpdaterMixin:
 
             exe_asset = None
             for asset in r.get("assets", []):
-                if asset.get("name", "").endswith(".exe"):
+                aname = asset.get("name", "").lower()
+                if aname.endswith(".zip"):
                     exe_asset = asset
                     break
+            if not exe_asset:
+                for asset in r.get("assets", []):
+                    aname = asset.get("name", "").lower()
+                    if aname.endswith(".exe"):
+                        exe_asset = asset
+                        break
 
             if not exe_asset:
                 if messagebox.askyesno(
-                    "Không có file .exe",
-                    f"Bản phát hành {tag} không có file thực thi (.exe) đính kèm.\n\n"
+                    "Không có gói cài đặt",
+                    f"Bản phát hành {tag} không có gói cài đặt (.zip hoặc .exe) đính kèm.\n\n"
                     f"Bạn có muốn mở trang GitHub để tải thủ công không?",
                     parent=win
                 ):
@@ -693,7 +707,10 @@ class UpdaterMixin:
                 dir_name = os.path.dirname(current_exe)
                 filename = os.path.basename(current_exe)
 
-                if is_frozen:
+                is_zip = download_url.lower().split("?")[0].endswith(".zip")
+                if is_zip:
+                    new_exe_name = "update_package.zip"
+                elif is_frozen:
                     base, ext = os.path.splitext(filename)
                     new_exe_name = f"{base}_new{ext}"
                 else:
@@ -789,6 +806,93 @@ class UpdaterMixin:
             current_exe_name = os.path.basename(current_exe)
             new_exe_name = os.path.basename(new_exe_path)
             bat_path = os.path.join(dir_name, "updater.bat")
+            ps1_path = os.path.join(dir_name, "apply_update.ps1")
+
+            # Tạo kịch bản PowerShell bảo vệ configs và assets tuyệt đối
+            ps1_content = f"""$ErrorActionPreference = "SilentlyContinue"
+
+# 1. Tu dong sao luu thu muc configs truoc khi cap nhat
+if (Test-Path "configs") {{
+    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $bkDir = "backup_configs\\backup_$timestamp"
+    New-Item -ItemType Directory -Path $bkDir -Force | Out-Null
+    Copy-Item "configs\\*" -Destination $bkDir -Recurse -Force
+}}
+
+$zip = "{new_exe_name}"
+if ($zip -like "*.zip" -and (Test-Path $zip)) {{
+    $tempDir = "_update_temp"
+    if (Test-Path $tempDir) {{
+        Remove-Item $tempDir -Recurse -Force
+    }}
+
+    # Giai nen goi cap nhat vao thu muc tam
+    Expand-Archive -Path $zip -DestinationPath $tempDir -Force
+
+    # Truong hop goi zip duoc dong goi boc trong thu muc con
+    $src = $tempDir
+    if (Test-Path "$tempDir\\autokvtm_pro\\autokvtm_pro.exe") {{
+        $src = "$tempDir\\autokvtm_pro"
+    }}
+
+    # Cap nhat file thuc thi chinh
+    if (Test-Path "$src\\{current_exe_name}") {{
+        Copy-Item "$src\\{current_exe_name}" -Destination ".\\{current_exe_name}" -Force
+    }}
+
+    # Cap nhat toan bo nhan code va thu vien he thong (_internal)
+    if (Test-Path "$src\\_internal") {{
+        Copy-Item "$src\\_internal\\*" -Destination ".\\_internal" -Recurse -Force
+    }}
+
+    # Cap nhat tools (tesseract) neu co
+    if (Test-Path "$src\\tools") {{
+        Copy-Item "$src\\tools\\*" -Destination ".\\tools" -Recurse -Force
+    }}
+
+    # BAO VE ASSETS: Chi bo sung anh moi, TUYET DOI KHONG ghi de anh cu cua nguoi dung
+    if (Test-Path "$src\\assets") {{
+        $baseSrc = (Resolve-Path "$src\\assets").Path
+        Get-ChildItem -Path "$src\\assets" -Recurse | ForEach-Object {{
+            if (-not $_.PSIsContainer) {{
+                $rel = $_.FullName.Substring($baseSrc.Length + 1)
+                $dst = Join-Path "assets" $rel
+                if (-not (Test-Path $dst)) {{
+                    $parent = Split-Path $dst -Parent
+                    if (-not (Test-Path $parent)) {{ New-Item -ItemType Directory -Path $parent -Force | Out-Null }}
+                    Copy-Item $_.FullName -Destination $dst -Force
+                }}
+            }}
+        }}
+    }}
+
+    # BAO VE CONFIGS: Chi bo sung file config moi tinh, TUYET DOI KHONG ghi de file da co
+    if (Test-Path "$src\\configs") {{
+        $baseSrcCfg = (Resolve-Path "$src\\configs").Path
+        Get-ChildItem -Path "$src\\configs" -Recurse | ForEach-Object {{
+            if (-not $_.PSIsContainer) {{
+                $rel = $_.FullName.Substring($baseSrcCfg.Length + 1)
+                $dst = Join-Path "configs" $rel
+                if (-not (Test-Path $dst)) {{
+                    $parent = Split-Path $dst -Parent
+                    if (-not (Test-Path $parent)) {{ New-Item -ItemType Directory -Path $parent -Force | Out-Null }}
+                    Copy-Item $_.FullName -Destination $dst -Force
+                }}
+            }}
+        }}
+    }}
+
+    # Don dep file tam
+    Remove-Item $tempDir -Recurse -Force
+    Remove-Item $zip -Force
+}} elseif (Test-Path "{new_exe_name}") {{
+    # Truong hop ha cap ve ban .exe don le cu
+    Copy-Item "{new_exe_name}" -Destination "{current_exe_name}" -Force
+    Remove-Item "{new_exe_name}" -Force
+}}
+"""
+            with open(ps1_path, "w", encoding="utf-8") as f:
+                f.write(ps1_content)
 
             bat_content = f"""@echo off
 set _MEIPASS=
@@ -805,15 +909,11 @@ timeout /t 1 /nobreak >nul
 :loop
 taskkill /f /im "{current_exe_name}" >nul 2>&1
 timeout /t 1 /nobreak >nul
-del /f /q "{current_exe}" >nul 2>&1
-if exist "{current_exe}" (
-    timeout /t 1 /nobreak >nul
-    goto loop
-)
-move /y "{new_exe_name}" "{current_exe_name}" >nul 2>&1
+powershell -ExecutionPolicy Bypass -File "apply_update.ps1"
 start "" "{current_exe_name}"
 timeout /t 1 /nobreak >nul
-del "%~f0"
+del "apply_update.ps1" >nul 2>&1
+del "%~f0" >nul 2>&1
 """
             with open(bat_path, "w", encoding="utf-8") as f:
                 f.write(bat_content)

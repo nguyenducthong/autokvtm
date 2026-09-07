@@ -1,5 +1,4 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.building.splash import Splash
 
 a = Analysis(
     ['gui_auto_config.py'],
@@ -20,32 +19,16 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-splash = Splash(
-    'assets/splash.png',
-    binaries=a.binaries,
-    datas=a.datas,
-    text_pos=(45, 235),
-    text_size=11,
-    text_color='#2ecc71',
-    text_default='Đang khởi động ứng dụng...',
-    always_on_top=True,
-)
-
 exe = EXE(
     pyz,
     a.scripts,
-    splash,
-    splash.binaries,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='autokvtm_pro',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -54,4 +37,25 @@ exe = EXE(
     entitlements_file=None,
     icon=['assets\\icon\\app.ico'],
 )
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='autokvtm_pro',
+)
+
+import os
+import shutil
+
+target_dir = os.path.join('dist', 'autokvtm_pro')
+for item in ['assets', 'configs', 'tools']:
+    src_path = item
+    dst_path = os.path.join(target_dir, item)
+    if os.path.exists(src_path):
+        if not os.path.exists(dst_path):
+            shutil.copytree(src_path, dst_path)
 

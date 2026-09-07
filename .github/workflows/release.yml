@@ -26,14 +26,21 @@ jobs:
         python -m pip install --upgrade pip
         pip install opencv-python numpy==1.26.4 pillow pytesseract pure-python-adb adbutils requests pyautogui keyboard mouse pyinstaller onnx
 
-    - name: Build EXE with PyInstaller
+    - name: Build with PyInstaller
       run: |
-        pyinstaller gui_auto_config.spec
+        pyinstaller gui_auto_config.spec --noconfirm
+
+    - name: Package Directory into Zip
+      shell: pwsh
+      run: |
+        Compress-Archive -Path "dist/autokvtm_pro/*" -DestinationPath "dist/autokvtm_pro.zip" -Force
 
     - name: Create Release and Upload Asset
       uses: softprops/action-gh-release@v2
       with:
-        files: dist/autokvtm_pro.exe
+        files: |
+          dist/autokvtm_pro.zip
+          dist/autokvtm_pro/autokvtm_pro.exe
         body_path: release_notes.txt
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
