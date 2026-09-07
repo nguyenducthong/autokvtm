@@ -125,16 +125,11 @@ class AutoFarm:
         # Bắt đầu từ giỏ → cây đầu → cây cuối
         path_points = [basket_pos, first_tree] + positions[1:]
 
-        logger.info(f"[FARM] Kéo giỏ qua {len(path_points)} điểm")
-
-        # Kéo theo đường path
-        for i in range(len(path_points) - 1):
-            start = path_points[i]
-            end = path_points[i + 1]
-            self.adb.swipe(start[0], start[1], end[0], end[1], 200)
-            time.sleep(0.1)
-
+        logger.info(f"[FARM] Kéo giỏ liên tục qua {len(path_points)} điểm")
+        self.adb.drag_smooth(path_points, total_duration_ms=800)
+        time.sleep(self.HARVEST_DELAY)
         logger.info(f"[FARM] Hoàn thành kéo giỏ thu hoạch hàng {row}")
+
 
     def plant_row(self, row: int, seed_icon_pos: Tuple[int, int] = None):
         """

@@ -199,14 +199,11 @@ class ImageProcessor:
         if th > screen.shape[0] or tw > screen.shape[1]:
             return None
 
-        # Chuyển sang grayscale để giảm ảnh hưởng màu sắc
+        # Chuyển sang grayscale
         gray_screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
         gray_template = cv2.cvtColor(template_rgb, cv2.COLOR_BGR2GRAY)
 
-        # Bình thường hóa tương phản ảnh mẫu
-        gray_template = cv2.equalizeHist(gray_template)
-
-        # Match trên grayscale
+        # Match trên grayscale chuẩn
         result_gray = cv2.matchTemplate(gray_screen, gray_template, cv2.TM_CCOEFF_NORMED)
         min_g, max_g, min_loc_g, max_loc_g = cv2.minMaxLoc(result_gray)
 
@@ -218,18 +215,30 @@ class ImageProcessor:
 
         template_name = os.path.basename(template_path)
         logger.debug(f"[MATCH] {template_name}: gray={max_g:.3f}, edge={max_e:.3f} (thresh={threshold})")
-        
-        # 🔥 DEBUG: log khi matching cao để debug false positive
-        if max_g >= 0.75 or max_e >= 0.75:
-            logger.info(f"[⚠️ HIGH_MATCH] {template_name}: gray={max_g:.3f}, edge={max_e:.3f}")
+
+        # Multi-scale nhẹ nếu chưa đạt threshold
+        best_scale = 1.0
+        if max_g < threshold and max_e < threshold:
+            for s in [0.92, 1.08]:
+                nw, nh = max(4, int(tw * s)), max(4, int(th * s))
+                if nh > screen.shape[0] or nw > screen.shape[1]:
+                    continue
+                interp = cv2.INTER_AREA if s < 1.0 else cv2.INTER_LINEAR
+                scaled_g = cv2.resize(gray_template, (nw, nh), interpolation=interp)
+                rg = cv2.matchTemplate(gray_screen, scaled_g, cv2.TM_CCOEFF_NORMED)
+                _, s_max_g, _, s_loc_g = cv2.minMaxLoc(rg)
+                if s_max_g > max_g:
+                    max_g = s_max_g
+                    max_loc_g = s_loc_g
+                    best_scale = s
+                    tw, th = nw, nh
 
         # Chọn kết quả tốt nhất giữa 2 phép match
         if max_g >= threshold or max_e >= threshold:
-            # Chọn score và location tốt nhất
             if max_g >= max_e:
                 best_score = max_g
                 chosen_loc = max_loc_g
-                match_method = "gray"
+                match_method = f"gray(s={best_scale:.2f})"
             else:
                 best_score = max_e
                 chosen_loc = max_loc_e
@@ -239,9 +248,8 @@ class ImageProcessor:
             cx = chosen_loc[0] + tw // 2
             cy = chosen_loc[1] + th // 2
 
-            # ===== COLOR VERIFICATION =====
+            # ===== COLOR VERIFICATION THÍCH ỨNG =====
             try:
-                # Extract template color info
                 tpl_has_alpha = (template.ndim == 3 and template.shape[2] == 4)
                 if tpl_has_alpha:
                     alpha = template[:, :, 3]
@@ -252,66 +260,42 @@ class ImageProcessor:
                     tpl_bgr = template_rgb
 
                 tpl_hsv = cv2.cvtColor(tpl_bgr, cv2.COLOR_BGR2HSV)
-
-                # Compute dominant hue via histogram (18 bins)
                 hist = cv2.calcHist([tpl_hsv], [0], tpl_mask, [18], [0, 180])
                 dominant_idx = int(np.argmax(hist))
                 dominant_hue = (dominant_idx + 0.5) * (180.0 / 18.0)
 
-                # Median saturation
                 tpl_sat = tpl_hsv[:, :, 1]
-                if tpl_mask is not None:
-                    sat_vals = tpl_sat[tpl_mask.astype(bool)]
-                else:
-                    sat_vals = tpl_sat.flatten()
+                sat_vals = tpl_sat[tpl_mask.astype(bool)] if tpl_mask is not None else tpl_sat.flatten()
                 mean_s = float(np.median(sat_vals)) if sat_vals.size > 0 else 0.0
 
-                # Only validate color if template is sufficiently saturated (lowered to 20 to catch pale colors)
-                if mean_s > 20:
-                    # Extract matched region from screen
+                if mean_s > 25:
                     x0 = int(max(chosen_loc[0], 0))
                     y0 = int(max(chosen_loc[1], 0))
                     x1 = int(min(chosen_loc[0] + tw, screen.shape[1]))
                     y1 = int(min(chosen_loc[1] + th, screen.shape[0]))
                     matched_region = screen[y0:y1, x0:x1]
-                    
-                    if matched_region.size == 0 or matched_region.shape[0] == 0 or matched_region.shape[1] == 0:
-                        return None
-                    
-                    reg_hsv = cv2.cvtColor(matched_region, cv2.COLOR_BGR2HSV)
 
-                    # Compute dominant hue for region
-                    reg_hist = cv2.calcHist([reg_hsv], [0], None, [18], [0, 180])
-                    reg_idx = int(np.argmax(reg_hist))
-                    reg_hue = (reg_idx + 0.5) * (180.0 / 18.0)
+                    if matched_region.size > 0:
+                        reg_hsv = cv2.cvtColor(matched_region, cv2.COLOR_BGR2HSV)
+                        reg_hist = cv2.calcHist([reg_hsv], [0], None, [18], [0, 180])
+                        reg_idx = int(np.argmax(reg_hist))
+                        reg_hue = (reg_idx + 0.5) * (180.0 / 18.0)
+                        reg_sat = float(np.median(reg_hsv[:, :, 1].flatten()))
 
-                    # Median saturation for region
-                    reg_sat = float(np.median(reg_hsv[:, :, 1].flatten()))
+                        hue_diff = abs(dominant_hue - reg_hue)
+                        hue_diff = min(hue_diff, 180 - hue_diff)
+                        sat_ratio = (reg_sat + 1.0) / (mean_s + 1.0)
 
-                    # Circular hue difference
-                    hue_diff = abs(dominant_hue - reg_hue)
-                    hue_diff = min(hue_diff, 180 - hue_diff)
-
-                    sat_ratio = (reg_sat + 1.0) / (mean_s + 1.0)
-
-                    # Stricter thresholds: hue_diff <= 10 deg, sat_ratio within [0.90, 1.25]
-                    if hue_diff > 10 or not (0.90 <= sat_ratio <= 1.25):
-                        logger.info(f"[COLOR_CHECK_REJECT] {template_name} at ({cx + rx},{cy + ry}): hue_diff={hue_diff:.1f}°, sat_ratio={sat_ratio:.2f} (tpl_h={dominant_hue:.1f}°, reg_h={reg_hue:.1f}°)")
-                        os.makedirs('debug/color_check', exist_ok=True)
-                        dbg_path = f"debug/color_check/{template_name}__{cx + rx}_{cy + ry}.png"
-                        cv2.imwrite(dbg_path, matched_region)
-                        return None
-                    else:
-                        logger.info(f"[COLOR_CHECK_PASS] {template_name}: hue_diff={hue_diff:.1f}°, sat_ratio={sat_ratio:.2f}")
-                        
+                        # Dung sai màu thích ứng: hue_diff <= 18 độ, sat_ratio [0.70, 1.45]
+                        if hue_diff > 18 or not (0.70 <= sat_ratio <= 1.45):
+                            logger.info(f"[COLOR_CHECK_REJECT] {template_name} at ({cx + rx},{cy + ry}): hue_diff={hue_diff:.1f}°, sat_ratio={sat_ratio:.2f}")
+                            return None
             except Exception as e:
-                logger.info(f"[COLOR_CHECK_ERROR] {template_name}: {e}")
-                # Nếu lỗi color check, vẫn trả về kết quả matching
-                pass
+                logger.debug(f"[COLOR_CHECK_ERROR] {template_name}: {e}")
 
-            # Trả về tọa độ tâm template
             logger.info(f"[MATCH_SUCCESS] {template_name} at ({cx + rx},{cy + ry}) score={best_score:.3f} method={match_method}")
             return (cx + rx, cy + ry)
+
 
         return None
 
@@ -410,9 +394,9 @@ class ImageProcessor:
         sat_ratio = (reg_sat_med + 1.0) / (tpl_sat_med + 1.0)
 
         if tpl_sat_med > 20:
-            if hue_diff > 12:
+            if hue_diff > 18:
                 return False
-            if not (0.85 <= sat_ratio <= 1.35):
+            if not (0.70 <= sat_ratio <= 1.45):
                 return False
             return True
 
@@ -420,7 +404,7 @@ class ImageProcessor:
         tpl_mean = np.mean(tpl_bgr.astype(np.float32), axis=(0, 1))
         reg_mean = np.mean(region_bgr.astype(np.float32), axis=(0, 1))
         color_dist = float(np.sqrt(np.sum((tpl_mean - reg_mean) ** 2)))
-        return color_dist <= 80
+        return color_dist <= 85
 
     def find_template_color_detail(
         self,
@@ -434,7 +418,7 @@ class ImageProcessor:
     ) -> Dict:
         """
         Tìm template với thuật toán kết hợp BGR/Alpha Mask Shape + 2D HSV Color Histogram.
-        Trả về dictionary chi tiết kết quả phục vụ vẽ khung, debug và phân tích so sánh.
+        Hỗ trợ multi-scale retry nếu tỷ lệ màn hình lệch nhẹ.
         """
         if screen_img is not None:
             screen = screen_img
@@ -496,7 +480,7 @@ class ImageProcessor:
                 "template_size": (tw, th)
             }
 
-        # BUG FIX 1: dùng masked matchTemplate nếu có alpha
+        # Masked matchTemplate nếu có alpha
         if alpha_mask is not None:
             result = cv2.matchTemplate(
                 screen, template_bgr, cv2.TM_CCORR_NORMED, mask=alpha_mask
@@ -518,6 +502,38 @@ class ImageProcessor:
                 score = float(result[pt[1], pt[0]])
                 candidates.append((pt[0], pt[1], score))
                 used.append(pt)
+
+        # Multi-scale nhẹ nếu tỷ lệ 1.0x chưa tìm thấy ứng viên
+        if not candidates:
+            for s in [0.92, 1.08]:
+                nw, nh = max(4, int(tw * s)), max(4, int(th * s))
+                if nh > screen.shape[0] or nw > screen.shape[1]:
+                    continue
+                interp = cv2.INTER_AREA if s < 1.0 else cv2.INTER_LINEAR
+                scaled_bgr = cv2.resize(template_bgr, (nw, nh), interpolation=interp)
+                scaled_mask = cv2.resize(alpha_mask, (nw, nh), interpolation=cv2.INTER_NEAREST) if alpha_mask is not None else None
+                if scaled_mask is not None:
+                    res_s = cv2.matchTemplate(screen, scaled_bgr, cv2.TM_CCORR_NORMED, mask=scaled_mask)
+                else:
+                    res_s = cv2.matchTemplate(screen, scaled_bgr, cv2.TM_CCOEFF_NORMED)
+                locs_s = np.where(res_s >= threshold)
+                if locs_s[0].size > 0:
+                    for pt in zip(*locs_s[::-1]):
+                        is_dup = False
+                        for u in used:
+                            if abs(pt[0] - u[0]) < nw // 2 and abs(pt[1] - u[1]) < nh // 2:
+                                is_dup = True
+                                break
+                        if not is_dup:
+                            score = float(res_s[pt[1], pt[0]])
+                            candidates.append((pt[0], pt[1], score))
+                            used.append(pt)
+                    if candidates:
+                        tw, th = nw, nh
+                        template_bgr = scaled_bgr
+                        alpha_mask = scaled_mask
+                        break
+
 
         if not candidates:
             logger.debug(f"[FIND_COLOR] {template_name} NOT found (no BGR match >= {threshold})")

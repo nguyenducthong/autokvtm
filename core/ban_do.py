@@ -14,7 +14,8 @@ import config
 from config import INDEX_CONG_1, INDEX_CUA_HANG_MAC_DINH, INDEX_TAT_QC,INDEX_DAT_BAN
 from utils.utils import (
     _detect_current_row, xuong_nha, xuong_may,
-    set_state, get_state, PlayerState
+    set_state, get_state, PlayerState,
+    save_debug_image, is_debug_mode
 )
 from utils.daily_stats import record_daily_stat
 import time
@@ -95,45 +96,9 @@ def _sleep(seconds):
 # ================================================================
 def _save_debug_screenshot(screen, template_path, pos, step_name):
     """Lưu screenshot debug với khung match (nếu tìm thấy)."""
-    if not DEBUG_MODE or screen is None:
+    if not (DEBUG_MODE or is_debug_mode()) or screen is None:
         return
-    try:
-        os.makedirs(DEBUG_DIR, exist_ok=True)
-        ts = datetime.now().strftime("%H%M%S_%f")[:-3]
-        tpl_name = os.path.basename(template_path).replace(".png", "")
-        status = "FOUND" if pos else "NOT_FOUND"
-        filename = f"{ts}_{step_name}_{tpl_name}_{status}.png"
-        save_path = os.path.join(DEBUG_DIR, filename)
-
-        debug_img = screen.copy()
-
-        if pos:
-            # Vẽ khung xanh lá quanh vị trí tìm thấy
-            template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
-            if template is not None:
-                th, tw = template.shape[:2]
-                cx, cy = pos
-                cv2.rectangle(debug_img,
-                              (cx - tw // 2, cy - th // 2),
-                              (cx + tw // 2, cy + th // 2),
-                              (0, 255, 0), 2)
-                cv2.putText(debug_img, f"FOUND ({cx},{cy})",
-                            (cx - tw // 2, cy - th // 2 - 8),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-        else:
-            # Vẽ chữ đỏ NOT FOUND
-            cv2.putText(debug_img, f"NOT FOUND: {tpl_name}",
-                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-
-        # Ghi tên step + thời gian
-        cv2.putText(debug_img, f"[{step_name}] {ts}",
-                    (10, debug_img.shape[0] - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
-
-        cv2.imwrite(save_path, debug_img)
-        logger.debug(f"[DEBUG] Saved: {save_path}")
-    except Exception as e:
-        logger.debug(f"[DEBUG] Lỗi lưu debug: {e}")
+    save_debug_image(screen, template_path, pos, step_name=step_name, debug_dir=DEBUG_DIR)
 
 
 def _find(adb, template_path, threshold=THRESHOLD, color_threshold=0.6, step_name="find",

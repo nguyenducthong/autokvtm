@@ -32,29 +32,53 @@ class ImageDetector:
         if threshold is None:
             threshold = self.threshold
 
-        # Đọc template
-        template = cv2.imread(template_path)
+        # Đọc template hỗ trợ alpha
+        template = cv2.imread(template_path, cv2.IMREAD_UNCHANGED)
         if template is None:
-            raise FileNotFoundError(f"Không tìm thấy template: {template_path}")
+            return None
 
-        # Convert sang grayscale
-        screenshot_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
-        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        has_alpha = (template.ndim == 3 and template.shape[2] == 4)
+        if has_alpha:
+            alpha = template[:, :, 3]
+            mask = (alpha > 15).astype(np.uint8) * 255
+            tpl_bgr = template[:, :, :3]
+        else:
+            tpl_bgr = template
+            mask = None
 
-        # Template matching
-        result = cv2.matchTemplate(screenshot_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+        h, w = tpl_bgr.shape[:2]
+        if h > screenshot.shape[0] or w > screenshot.shape[1]:
+            return None
 
-        # Tìm vị trí có độ tương đồng cao nhất
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        # Multi-scale matching
+        for scale in [1.0, 0.92, 1.08]:
+            if abs(scale - 1.0) < 0.01:
+                cur_tpl = tpl_bgr
+                cur_mask = mask
+            else:
+                nw, nh = max(4, int(w * scale)), max(4, int(h * scale))
+                if nh > screenshot.shape[0] or nw > screenshot.shape[1]:
+                    continue
+                interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
+                cur_tpl = cv2.resize(tpl_bgr, (nw, nh), interpolation=interp)
+                cur_mask = cv2.resize(mask, (nw, nh), interpolation=cv2.INTER_NEAREST) if mask is not None else None
 
-        if max_val >= threshold:
-            # Lấy tâm của template
-            h, w = template_gray.shape
-            center_x = max_loc[0] + w // 2
-            center_y = max_loc[1] + h // 2
-            return (center_x, center_y)
+            ch, cw = cur_tpl.shape[:2]
+            if cur_mask is not None:
+                res = cv2.matchTemplate(screenshot, cur_tpl, cv2.TM_CCORR_NORMED, mask=cur_mask)
+            else:
+                s_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+                t_gray = cv2.cvtColor(cur_tpl, cv2.COLOR_BGR2GRAY)
+                res = cv2.matchTemplate(s_gray, t_gray, cv2.TM_CCOEFF_NORMED)
+
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            if max_val >= threshold:
+                center_x = max_loc[0] + cw // 2
+                center_y = max_loc[1] + ch // 2
+                return (center_x, center_y)
 
         return None
+
 
     def detect_basket(self, screenshot: np.ndarray, basket_template_path: str = "assets/items/core_thu_hoach.png") -> Optional[Tuple[int, int]]:
         """

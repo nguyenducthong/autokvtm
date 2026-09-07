@@ -2,7 +2,6 @@ import logging
 import os
 import time
 from core.image import ImageProcessor, get_resource_path
-from utils.daily_stats import record_daily_stat
 
 logger = logging.getLogger(__name__)
 img = ImageProcessor()
@@ -101,7 +100,6 @@ def sang_ban_be(adb, serial: str = None, force: bool = False, stop_event=None) -
     _sleep(1.5, stop_event)
     if pos_ban_be_lai:
         logger.info("[SANG BẠN BÈ] Đã quay về nhà thành công (thấy core_ban_be.png)")
-        record_daily_stat(serial, "sang_ban_be")
         return True
     else:
         # xử lý nếu không về được nhà thì chạy lại bước 3  rồi đợi 3s
@@ -114,7 +112,6 @@ def sang_ban_be(adb, serial: str = None, force: bool = False, stop_event=None) -
             _sleep(1.5, stop_event)
             if pos_ban_be_lai:
                 logger.info("[SANG BẠN BÈ] Đã quay về nhà thành công (thấy core_ban_be.png)")
-                record_daily_stat(serial, "sang_ban_be")
                 return True
         logger.warning("[SANG BẠN BÈ] Không thấy core_ban_be.png sau khi quay về")
         return False

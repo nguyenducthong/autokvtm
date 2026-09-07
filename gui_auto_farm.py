@@ -870,8 +870,32 @@ class AutoFarmGUI:
 
         def run():
             try:
-                # Lọc config theo type TC
+                # Ưu tiên nạp config từ thư mục configs bên ngoài nếu có
+                from config import get_configs_dir
+                configs_dir = get_configs_dir()
                 tc_configs = CONFIG_TEMP_TC
+                if os.path.exists(configs_dir):
+                    import glob, json
+                    mac_dinh_path = os.path.join(configs_dir, "mac_dinh.json")
+                    target_json = mac_dinh_path if os.path.exists(mac_dinh_path) else None
+                    if not target_json:
+                        json_files = glob.glob(os.path.join(configs_dir, "*.json"))
+                        for jf in json_files:
+                            if not os.path.basename(jf).startswith("global_setting"):
+                                target_json = jf
+                                break
+                    if target_json and os.path.exists(target_json):
+                        try:
+                            with open(target_json, "r", encoding="utf-8") as f:
+                                raw = json.load(f)
+                            if isinstance(raw, dict) and "tasks" in raw:
+                                loaded_tc = [t for t in raw["tasks"] if t.get("type") == "TC"]
+                                if loaded_tc:
+                                    tc_configs = loaded_tc
+                                    self.log(f"📋 Nạp cấu hình trồng cây từ bên ngoài: {os.path.basename(target_json)}")
+                        except Exception as e:
+                            self.log(f"⚠️ Lỗi đọc {target_json}: {e}")
+
 
                 self.log(f"🌾 Tìm thấy {len(tc_configs)} config trồng cây (TC)")
 

@@ -91,17 +91,28 @@ def _get_stop_event():
     return getattr(_ctx, 'stop_event', None)
 
 
-def setup_thread(adb_instance, stop_event=None, device_name=None):
-    """Gọi đầu mỗi thread để set ADB + stop_event + tên thiết bị + state cho thread đó."""
+def _get_pause_event():
+    """Lấy pause_event của thread hiện tại."""
+    return getattr(_ctx, 'pause_event', None)
+
+
+def setup_thread(adb_instance, stop_event=None, pause_event=None, device_name=None, status_callback=None):
+    """Gọi đầu mỗi thread để set ADB + stop_event + pause_event + tên thiết bị + state + status_callback cho thread đó."""
     if adb_instance is not None:
         _ctx.adb = adb_instance
     if stop_event is not None:
         _ctx.stop_event = stop_event
+    if pause_event is not None:
+        _ctx.pause_event = pause_event
     _ctx._last_screen = None
     if device_name is not None:
         _ctx.device_name = device_name
     elif not hasattr(_ctx, 'device_name'):
         _ctx.device_name = None
+    if status_callback is not None:
+        _ctx.status_callback = status_callback
+    elif not hasattr(_ctx, 'status_callback'):
+        _ctx.status_callback = None
     if not hasattr(_ctx, 'state') or _ctx.state is None:
         _ctx.state = PlayerState.UNKNOWN
 
@@ -111,18 +122,52 @@ def get_device_name():
     return getattr(_ctx, 'device_name', None)
 
 
+def set_thread_status(status_msg: str, color: str = "#e67e22"):
+    """Cập nhật trạng thái card tác vụ trên GUI từ thread hiện tại."""
+    cb = getattr(_ctx, 'status_callback', None)
+    if cb:
+        try:
+            cb(status_msg, color)
+        except Exception:
+            pass
+
+
 def _should_stop():
     ev = _get_stop_event()
     return ev is not None and ev.is_set()
 
 
+def check_pause():
+    """Nếu thread đang ở trạng thái pause, tạm dừng chờ cho đến khi pause được gỡ hoặc stop_event được set."""
+    p_ev = _get_pause_event()
+    s_ev = _get_stop_event()
+    if p_ev is not None and p_ev.is_set():
+        while p_ev.is_set():
+            if s_ev is not None and s_ev.is_set():
+                break
+            time.sleep(0.15)
+
+
 def _sleep(seconds):
-    """Sleep có thể bị interrupt bởi stop_event."""
+    """Sleep có thể bị interrupt bởi stop_event hoặc pause_event (phản hồi ngay trong 0.1s)."""
+    check_pause()
     ev = _get_stop_event()
-    if ev is not None:
-        ev.wait(seconds)
-    else:
-        time.sleep(seconds)
+    p_ev = _get_pause_event()
+    rem = float(seconds)
+    while rem > 0:
+        if ev is not None and ev.is_set():
+            break
+        if p_ev is not None and p_ev.is_set():
+            check_pause()
+            if ev is not None and ev.is_set():
+                break
+        chunk = min(rem, 0.1)
+        if ev is not None:
+            ev.wait(chunk)
+        else:
+            time.sleep(chunk)
+        rem -= chunk
+    check_pause()
 
 
 def init_adb(serial=None, adb: ADBController=None):
@@ -199,13 +244,19 @@ def _detect_current_row(take_screenshot=True, threshold=None):
         best_row = None
         best_score = 0.0
 
-        # Tìm số có điểm kết hợp cao nhất (best match) để tránh nhận diện nhầm số tương tự (5 vs 8, 3 vs 8)
+        # Tối ưu ROI: Biển số tầng mây nằm ở cột bên phải (x: 600..730, y: 520..800)
+        # Giảm thời gian tìm 11 số từ 1200ms xuống còn ~50ms và không nhận diện nhầm số ở nơi khác
+        region_may = (600, 520, 130, 280)
+
+        # 1. Tìm trên ROI biển số mây bằng color detail
         for i in range(0, 11):
             may_i = f"assets/items/num/{i}.png"
             if not os.path.exists(may_i):
                 continue
-
-            detail = img.find_template_color_detail(may_i, threshold=th, color_threshold=0.6, screen_img=screen)
+            if (i == 0):
+                detail = img.find_template_color_detail(may_i, threshold=th, color_threshold=0.6, screen_img=screen)
+            else:
+                detail = img.find_template_color_detail(may_i, threshold=th, color_threshold=0.6, screen_img=screen, region=region_may)
             if detail.get("found"):
                 combined = detail.get("combined_score", 0.0)
                 if combined > best_score:
@@ -213,22 +264,37 @@ def _detect_current_row(take_screenshot=True, threshold=None):
                     best_row = i
 
         if best_row is not None and best_score >= th:
-            logger.info(f"Nhận diện hàng hiện tại: {best_row} (best match score: {best_score:.3f}, lần {attempt+1})")
+            logger.info(f"Nhận diện hàng hiện tại (ROI mây): {best_row} (score: {best_score:.3f}, lần {attempt+1})")
             set_state(_row_to_state(best_row))
             return best_row
 
-        # Fallback sang basic match nếu color match không ra
+        # 2. Fallback sang basic match trên ROI
         for i in range(0, 11):
             may_i = f"assets/items/num/{i}.png"
             if not os.path.exists(may_i):
                 continue
-            pos_basic = img.find_template(may_i, threshold=max(0.75, th - 0.05), screen_img=screen)
+            if (i == 0):
+                pos_basic = img.find_template(may_i, threshold=max(0.74, th - 0.06), screen_img=screen)
+            else:
+                pos_basic = img.find_template(may_i, threshold=max(0.74, th - 0.06), screen_img=screen, region=region_may)
             if pos_basic:
-                logger.info(f"Nhận diện hàng hiện tại (fallback match): {i} (lần {attempt+1})")
+                logger.info(f"Nhận diện hàng hiện tại (ROI fallback): {i} (lần {attempt+1})")
                 set_state(_row_to_state(i))
                 return i
 
-    return None
+        # 3. Fallback cuối cùng: Toàn màn hình nếu không thấy trong ROI
+        for i in range(0, 11):
+            may_i = f"assets/items/num/{i}.png"
+            if not os.path.exists(may_i):
+                continue
+            pos_full = img.find_template(may_i, threshold=max(0.75, th - 0.05), screen_img=screen)
+            if pos_full:
+                logger.info(f"Nhận diện hàng hiện tại (toàn màn hình): {i} (lần {attempt+1})")
+                set_state(_row_to_state(i))
+                return i
+
+        return None
+
 
 
 def _try_ai_recovery(reason=""):
@@ -280,12 +346,22 @@ def tim_may_v2(template_path, config_row, max_retry=2):
         return False
 
     target_level = _row_to_level(config_row)
+    region_may = (600, 520, 130, 280)
 
-    # === BƯỚC 0: Kiểm tra nhanh nếu đã ở đúng template máy (chỉ áp dụng cho máy không phải số) ===
-    is_num_template = template_path and ("num" in template_path or "assets/items/num" in template_path)
-    if template_path and not is_num_template and os.path.exists(template_path):
-        screen = _get_screen(True)
-        if screen is not None:
+    # === BƯỚC 0: Kiểm tra nhanh nếu đã ở đúng tầng/máy đích (Mất ~5ms) ===
+    screen = _get_screen(True)
+    if screen is not None:
+        # Nếu là hàng số cây trồng (TC), kiểm tra nhanh số hàng trong ROI biển số
+        target_num_file = f"assets/items/num/{config_row}.png"
+        if os.path.exists(target_num_file):
+            if img.find_template(target_num_file, threshold=0.76, screen_img=screen, region=region_may):
+                logger.info(f"Đã ở đúng hàng đích {config_row} (kiểm tra nhanh 5ms), không cần scroll")
+                set_state(_row_to_state(config_row))
+                return True
+
+        # Nếu là máy sản xuất, kiểm tra nhanh icon máy trên màn hình
+        is_num_template = template_path and ("num" in template_path or "assets/items/num" in template_path)
+        if template_path and not is_num_template and os.path.exists(template_path):
             pos_target = img.find_template_color(template_path, threshold=THRESHOLD, color_threshold=0.6, screen_img=screen)
             if not pos_target:
                 pos_target = img.find_template(template_path, threshold=0.80, screen_img=screen)
@@ -294,14 +370,14 @@ def tim_may_v2(template_path, config_row, max_retry=2):
                 set_state(_row_to_state(config_row))
                 return True
 
-    # === BƯỚC 1: Nhận diện hàng hiện tại (có retry) ===
+    # === BƯỚC 1: Nhận diện hàng hiện tại (dùng ROI nhanh) ===
     current_row = _detect_current_row(take_screenshot=False)
     if current_row is None:
         current_row = _detect_current_row(take_screenshot=True)
 
     if current_row is None:
         logger.warning("Không nhận diện được hàng, thử lại...")
-        _sleep(0.8)
+        _sleep(0.35)
         current_row = _detect_current_row(take_screenshot=True)
 
     if current_row is None:
@@ -326,51 +402,58 @@ def tim_may_v2(template_path, config_row, max_retry=2):
     if _should_stop():
         return False
 
-    # === BƯỚC 3: Scroll theo chênh lệch level ===
+    # === BƯỚC 3: Scroll theo chênh lệch level (giảm delay từ 0.8s xuống 0.35s) ===
     level_diff = target_level - current_level  # dương = lên, âm = xuống
     abs_diff = abs(level_diff)
 
-    # nếu xuống nhà >= 3 level → ưu tiên về nhà trước rồi scroll lên, tránh lỗi nhận diện hàng do bóng/lag khi scroll nhiều
     if level_diff < 0 and abs_diff >= 3:
         logger.info(f"Khoảng cách xa ({abs_diff} level), về nhà trước")
-        xuong_nha()
+        xuong_nha(sleep=0.35)
         if _should_stop():
             return False
-        # Từ nhà (level 0), scroll lên đến target_level
         if target_level > 0:
             logger.info(f"Từ nhà, scroll lên {target_level} lần")
-            len_may(target_level)
+            len_may(target_level, sleep=0.35)
     elif level_diff > 0:
         logger.info(f"Scroll lên {abs_diff} lần (level {current_level} → {target_level})")
-        len_may(abs_diff)
+        len_may(abs_diff, sleep=0.35)
     else:
         logger.info(f"Scroll xuống {abs_diff} lần (level {current_level} → {target_level})")
-        xuong_may(abs_diff)
+        xuong_may(abs_diff, sleep=0.35)
 
     if _should_stop():
         return False
 
-    # === BƯỚC 4: Verify — chụp lại kiểm tra ===
-    _sleep(0.8)
+    # === BƯỚC 4: Verify — kiểm tra nhanh đích trước khi quét toàn bộ ===
+    _sleep(0.35)
     for retry in range(max_retry):
         if _should_stop():
             return False
 
-        # Kiểm tra nhanh template máy đích nếu có (không áp dụng cho số)
-        if template_path and not is_num_template and os.path.exists(template_path):
-            scr = _get_screen(True)
-            if scr is not None:
+        scr = _get_screen(True)
+        if scr is not None:
+            # Kiểm tra nhanh số tầng đích trong ROI biển số
+            target_num_file = f"assets/items/num/{config_row}.png"
+            if os.path.exists(target_num_file):
+                if img.find_template(target_num_file, threshold=0.76, screen_img=scr, region=region_may):
+                    logger.info(f"Verify siêu tốc OK: Đã thấy số tầng {config_row}")
+                    set_state(_row_to_state(config_row))
+                    return True
+
+            # Kiểm tra template máy đích nếu có
+            is_num_template = template_path and ("num" in template_path or "assets/items/num" in template_path)
+            if template_path and not is_num_template and os.path.exists(template_path):
                 if img.find_template_color(template_path, threshold=THRESHOLD, color_threshold=0.6, screen_img=scr) or \
                    img.find_template(template_path, threshold=0.80, screen_img=scr):
                     logger.info(f"Verify OK: Thấy template máy {template_path} trên màn hình")
                     set_state(_row_to_state(config_row))
                     return True
 
-        verify_row = _detect_current_row(take_screenshot=True)
+        verify_row = _detect_current_row(take_screenshot=False)
 
         if verify_row is None:
             logger.warning(f"Verify lần {retry+1}: không nhận diện được hàng, thử lại...")
-            _sleep(0.8)
+            _sleep(0.35)
             continue
 
         verify_level = _row_to_level(verify_row)
@@ -384,17 +467,17 @@ def tim_may_v2(template_path, config_row, max_retry=2):
         logger.warning(f"Verify lần {retry+1}: hàng {verify_row} (level {verify_level}), "
                        f"cần level {target_level}, adjust {micro}")
         if micro > 0:
-            len_may(abs(micro))
+            len_may(abs(micro), sleep=0.35)
         else:
-            xuong_may(abs(micro))
-        _sleep(0.8)
+            xuong_may(abs(micro), sleep=0.35)
+        _sleep(0.35)
 
-    # Kiểm tra lần cuối cho template máy
-    if template_path and not is_num_template and os.path.exists(template_path):
+    # Kiểm tra lần cuối
+    target_num_file = f"assets/items/num/{config_row}.png"
+    if os.path.exists(target_num_file):
         scr = _get_screen(True)
-        if scr is not None and (img.find_template_color(template_path, threshold=THRESHOLD, color_threshold=0.6, screen_img=scr) or \
-                                img.find_template(template_path, threshold=0.80, screen_img=scr)):
-            logger.info(f"Verify cuối cùng OK: Thấy template máy {template_path}")
+        if scr is not None and img.find_template(target_num_file, threshold=0.76, screen_img=scr, region=region_may):
+            logger.info(f"Verify cuối cùng OK: Đã thấy tầng {config_row}")
             return True
 
     final_row = _detect_current_row(take_screenshot=True)
@@ -419,7 +502,7 @@ def _len_1_may(duration: int=70):
     adb.scroll_up(450, 500, 70, duration)
 
 
-def len_2_may(count: int=1, duration: int=70, sleep: float=0.8):
+def len_2_may(count: int=1, duration: int=70, sleep: float=0.35):
     adb = _get_adb()
     set_state(PlayerState.DANG_SCROLL)
     for _ in range(count):
@@ -428,7 +511,7 @@ def len_2_may(count: int=1, duration: int=70, sleep: float=0.8):
         adb.tap(*TAB_LEN_2_HANG)
         _sleep(sleep)
 
-def len_may(count: int=1, duration: int=70, sleep: float=0.8): 
+def len_may(count: int=1, duration: int=70, sleep: float=0.35): 
     set_state(PlayerState.DANG_SCROLL)
     for _ in range(count):
         if _should_stop():
@@ -436,7 +519,7 @@ def len_may(count: int=1, duration: int=70, sleep: float=0.8):
         _len_1_may(duration=duration)
         _sleep(sleep)
 
-def xuong_may(count: int=1, duration: int=70, sleep: float=0.8):
+def xuong_may(count: int=1, duration: int=70, sleep: float=0.35):
     adb = _get_adb()
     set_state(PlayerState.DANG_SCROLL)
     for _ in range(count):
@@ -446,7 +529,7 @@ def xuong_may(count: int=1, duration: int=70, sleep: float=0.8):
         _sleep(sleep)
 
 
-def xuong_nha(duration: int=70, sleep: float=0.8, threshold=None):
+def xuong_nha(duration: int=70, sleep: float=0.35, threshold=None):
     adb = _get_adb()
     set_state(PlayerState.DANG_SCROLL)
     th = threshold or THRESHOLD
@@ -458,6 +541,7 @@ def xuong_nha(duration: int=70, sleep: float=0.8, threshold=None):
         logger.info("Tìm được xuống nhà")
         (x, y) = pos
         adb.tap(x, y)
+
         _sleep(sleep)
     else:
         logger.info("Không tìm được tab mặc định")
@@ -479,50 +563,156 @@ def find_image(template_path, screen, screen_img=None, region=None):
 # Debug mode cho utils (trong_cay, v.v.)
 _debug_mode = False
 _DEBUG_DIR = "debug/utils"
+MAX_DEBUG_FILES = 200       # Giới hạn tối đa 200 ảnh mới nhất
+MAX_DEBUG_SIZE_MB = 200     # Giới hạn dung lượng tối đa 200 MB
+_save_debug_counter = 0
+
+
+def cleanup_debug_files(debug_root="debug", max_files=MAX_DEBUG_FILES, max_size_mb=MAX_DEBUG_SIZE_MB):
+    """
+    Quét và tự động dọn dẹp thư mục debug:
+    - Giữ tối đa `max_files` ảnh mới nhất (mặc định 200 ảnh).
+    - Giới hạn tổng dung lượng không vượt quá `max_size_mb` (mặc định 200 MB).
+    - Xóa các file cũ nhất trước (FIFO) nếu vượt ngưỡng.
+    """
+    try:
+        if not os.path.exists(debug_root):
+            return
+
+        image_files = []
+        total_size = 0
+        max_bytes = max_size_mb * 1024 * 1024
+
+        for root, _, files in os.walk(debug_root):
+            for f in files:
+                ext = os.path.splitext(f)[1].lower()
+                if ext in ('.png', '.jpg', '.jpeg'):
+                    fpath = os.path.join(root, f)
+                    try:
+                        stat = os.stat(fpath)
+                        image_files.append((fpath, stat.st_mtime, stat.st_size))
+                        total_size += stat.st_size
+                    except OSError:
+                        continue
+
+        if len(image_files) > max_files or total_size > max_bytes:
+            # Sắp xếp theo thời gian sửa đổi cũ nhất đứng đầu
+            image_files.sort(key=lambda x: x[1])
+            deleted_count = 0
+            i = 0
+            while i < len(image_files) and (len(image_files) - deleted_count > max_files or total_size > max_bytes):
+                fpath, _, fsize = image_files[i]
+                try:
+                    if os.path.exists(fpath):
+                        os.remove(fpath)
+                    total_size -= fsize
+                    deleted_count += 1
+                except OSError:
+                    pass
+                i += 1
+
+            if deleted_count > 0:
+                logger.info(f"[DEBUG] Đã tự động dọn dẹp {deleted_count} file ảnh debug cũ (giới hạn: {max_files} ảnh / {max_size_mb} MB).")
+    except Exception as e:
+        logger.debug(f"[DEBUG] Lỗi dọn dẹp file debug: {e}")
+
+
+def is_debug_mode() -> bool:
+    """Kiểm tra trạng thái bật/tắt chế độ debug toàn cục."""
+    return _debug_mode
+
 
 def set_debug_mode(enabled: bool):
+    """Bật/tắt chế độ debug, đồng thời đồng bộ tới các phân hệ nếu có."""
     global _debug_mode
     _debug_mode = enabled
     if enabled:
         os.makedirs(_DEBUG_DIR, exist_ok=True)
-        logger.info(f"[DEBUG] Utils debug mode ON — lưu ảnh tại {_DEBUG_DIR}/")
+        cleanup_debug_files("debug", MAX_DEBUG_FILES, MAX_DEBUG_SIZE_MB)
+        logger.info(f"[DEBUG] Utils debug mode ON — lưu ảnh tại {_DEBUG_DIR}/ (Giới hạn: {MAX_DEBUG_FILES} ảnh / {MAX_DEBUG_SIZE_MB} MB)")
+
+    # Đồng bộ sang các module khác (dùng try-except tránh import vòng)
+    for mod_name in ("core.ban_do", "core.trong_cay", "core.thu_hoach", "core.san_xuat", "core.sxcam"):
+        try:
+            mod = sys.modules.get(mod_name)
+            if mod and hasattr(mod, "set_debug_mode"):
+                mod.set_debug_mode(enabled)
+        except Exception:
+            pass
 
 
-def _save_debug(screen, template_path, pos, step_name="find"):
-    """Lưu screenshot debug nếu debug mode bật."""
-    if not _debug_mode or screen is None:
-        return
+def save_debug_image(screen, template_path, pos, step_name="find", debug_dir=_DEBUG_DIR, region=None):
+    """Lưu screenshot debug với khung match (hoặc NOT FOUND).
+    Dùng chung cho ban_do, trong_cay, thu_hoach, san_xuat, sxcam, utils...
+    Tự động dọn dẹp xoay vòng nếu vượt quá MAX_DEBUG_FILES hoặc MAX_DEBUG_SIZE_MB.
+    """
+    global _save_debug_counter
     try:
         import cv2
         from datetime import datetime
-        os.makedirs(_DEBUG_DIR, exist_ok=True)
+        os.makedirs(debug_dir, exist_ok=True)
         ts = datetime.now().strftime("%H%M%S_%f")[:-3]
-        tpl_name = os.path.basename(template_path).replace(".png", "")
+        tpl_name = os.path.basename(str(template_path)).replace(".png", "") if template_path else "unknown"
         status = "FOUND" if pos else "NOT_FOUND"
         filename = f"{ts}_{step_name}_{tpl_name}_{status}.png"
-        save_path = os.path.join(_DEBUG_DIR, filename)
+        save_path = os.path.join(debug_dir, filename)
 
         debug_img = screen.copy()
+
+        # Nếu có vẽ vùng giới hạn tìm kiếm (region)
+        if region:
+            rx, ry, rw, rh = region
+            cv2.rectangle(debug_img, (rx, ry), (rx + rw, ry + rh), (255, 255, 0), 1)
+
         if pos:
-            template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
+            # Vẽ khung xanh lá quanh vị trí tìm thấy
+            template = None
+            if template_path and os.path.exists(str(template_path)):
+                template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
+            cx, cy = pos
             if template is not None:
                 th, tw = template.shape[:2]
-                cx, cy = pos
                 cv2.rectangle(debug_img,
                               (cx - tw // 2, cy - th // 2),
                               (cx + tw // 2, cy + th // 2),
                               (0, 255, 0), 2)
                 cv2.putText(debug_img, f"FOUND ({cx},{cy})",
-                            (cx - tw // 2, cy - th // 2 - 8),
+                            (cx - tw // 2, max(12, cy - th // 2 - 8)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            else:
+                cv2.circle(debug_img, (cx, cy), 15, (0, 255, 0), 2)
+                cv2.putText(debug_img, f"FOUND ({cx},{cy})",
+                            (max(10, cx - 30), max(15, cy - 20)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
         else:
+            # Vẽ chữ đỏ NOT FOUND
             cv2.putText(debug_img, f"NOT FOUND: {tpl_name}",
                         (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
+        # Ghi tên step + thời gian
+        cv2.putText(debug_img, f"[{step_name}] {ts}",
+                    (10, debug_img.shape[0] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+
         cv2.imwrite(save_path, debug_img)
         logger.debug(f"[DEBUG] Saved: {save_path}")
+
+        # Tự động dọn dẹp xoay vòng mỗi 10 ảnh lưu mới
+        _save_debug_counter += 1
+        if _save_debug_counter % 10 == 0:
+            cleanup_debug_files("debug", MAX_DEBUG_FILES, MAX_DEBUG_SIZE_MB)
+
+        return save_path
     except Exception as e:
         logger.debug(f"[DEBUG] Lỗi lưu debug: {e}")
+        return None
+
+
+def _save_debug(screen, template_path, pos, step_name="find"):
+    """Lưu screenshot debug nếu debug mode bật (backward-compatible cho utils)."""
+    if not _debug_mode or screen is None:
+        return
+    save_debug_image(screen, template_path, pos, step_name=step_name, debug_dir=_DEBUG_DIR)
 
 
 def _get_screen(screen_flag, screen_img=None):
@@ -568,12 +758,16 @@ def find_image_v2(template_path, screen, screen_img=None, threshold=THRESHOLD,
 
     pos = img.find_template_color(template_path=template_path, threshold=threshold,
                                   screen_img=use_screen, region=region)
+    if not pos:
+        pos = img.find_template(template_path=template_path, threshold=max(0.72, threshold - 0.05),
+                                screen_img=use_screen, region=region)
 
     # Lưu debug
     _save_debug(use_screen, template_path, pos, _step)
 
     if pos:
         return pos
+
 
     # Retry: chụp mới rồi tìm lại
     if retry < max_retry:
