@@ -182,6 +182,16 @@ def tim_cay_trong(template_path, template_path_default=None, count=1,
     if pos:
         logger.info(f"Tìm được {label} tại {pos} (lần {count}, threshold={threshold})")
         return pos
+    # retry 1 lần nữa với count lần đầu tiên chụp lại hình ảnh
+    if (count == 1):
+        _sleep(TIME_SLEEP_SHORT)
+        screen = adb.screenshot_full()
+        pos = img.find_template_color(search_path, threshold=threshold, screen_img=screen, region=region)
+        _save_debug_screenshot(screen, search_path, pos, f"tim_cay_lan_{count}", region=region)
+        if pos:
+            logger.info(f"Tìm được {label} tại {pos} (lần {count}, threshold={threshold})")
+            return pos
+
 
     # Không thấy cây → tìm nút next_gieo trên cùng screenshot
     logger.info(f"Không tìm được {label} lần {count}")
