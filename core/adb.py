@@ -120,15 +120,27 @@ class ADBController:
     # =============================================================
     # 2. TAP / CLICK
     # =============================================================
+    def _check_pause(self):
+        try:
+            from utils.utils import check_pause
+            check_pause()
+        except Exception:
+            pass
+
     def tap(self, x: int, y: int, delay: float = 0.1):
         """Tap vào tọa độ tuyệt đối"""
+        self._check_pause()
         self.device.shell(f"input tap {x} {y}")
         logger.debug(f"[TAP] ({x}, {y})")
         time.sleep(delay)
+        self._check_pause()
+
     def taps(self, x: int, y: int, count: int= 1, delay: float = 0.01):
         """Tap nhiều vào tọa độ tuyệt đối"""
+        self._check_pause()
         for i in range(count):
             self.tap(x, y, delay)
+            self._check_pause()
 
     def tap_fast(self, x: int, y: int, count: int = 1):
         """
@@ -137,10 +149,12 @@ class ADBController:
         """
         if count <= 0:
             return
+        self._check_pause()
         # Gộp nhiều lệnh tap thành 1 chuỗi
         cmd = " && ".join([f"input tap {x} {y}" for _ in range(count)])
         self.device.shell(cmd)
         logger.debug(f"[TAP_FAST] ({x}, {y}) x{count}")
+        self._check_pause()
 
     def tap_sendevent_fast(self, x: int, y: int, count: int = 1, event: str = "/dev/input/event2"):
         """Tap nhanh bang sendevent. Dung tot tren LDPlayer khi event2 dung la touch device."""
@@ -179,9 +193,11 @@ class ADBController:
         Kéo từ (start) → (end)
         :param duration: Thời gian kéo (ms), 300–1000
         """
+        self._check_pause()
         self.device.shell(f"input swipe {start_x} {start_y} {end_x} {end_y} {duration}")
         logger.debug(f"[SWIPE] ({start_x},{start_y}) → ({end_x},{end_y}) [{duration}ms]")
         time.sleep(max(0.5, duration / 1000 + 0.3))
+        self._check_pause()
 
     # =============================================================
     # 4. NHẬP VĂN BẢN
@@ -361,6 +377,7 @@ class ADBController:
         Tối ưu: Giữ touch 120ms ở điểm đầu để game kịp nhấc giỏ/hạt giống,
         kéo mượt mà qua các chậu (22-25 điểm) thay vì 73 điểm làm giật lag.
         """
+        self._check_pause()
         if len(points) < 2:
             return
 

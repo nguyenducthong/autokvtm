@@ -91,12 +91,19 @@ def _get_stop_event():
     return getattr(_ctx, 'stop_event', None)
 
 
-def setup_thread(adb_instance, stop_event=None, device_name=None, status_callback=None):
-    """Gọi đầu mỗi thread để set ADB + stop_event + tên thiết bị + state + status_callback cho thread đó."""
+def _get_pause_event():
+    """Lấy pause_event của thread hiện tại."""
+    return getattr(_ctx, 'pause_event', None)
+
+
+def setup_thread(adb_instance, stop_event=None, pause_event=None, device_name=None, status_callback=None):
+    """Gọi đầu mỗi thread để set ADB + stop_event + pause_event + tên thiết bị + state + status_callback cho thread đó."""
     if adb_instance is not None:
         _ctx.adb = adb_instance
     if stop_event is not None:
         _ctx.stop_event = stop_event
+    if pause_event is not None:
+        _ctx.pause_event = pause_event
     _ctx._last_screen = None
     if device_name is not None:
         _ctx.device_name = device_name
@@ -130,13 +137,37 @@ def _should_stop():
     return ev is not None and ev.is_set()
 
 
+def check_pause():
+    """Nếu thread đang ở trạng thái pause, tạm dừng chờ cho đến khi pause được gỡ hoặc stop_event được set."""
+    p_ev = _get_pause_event()
+    s_ev = _get_stop_event()
+    if p_ev is not None and p_ev.is_set():
+        while p_ev.is_set():
+            if s_ev is not None and s_ev.is_set():
+                break
+            time.sleep(0.15)
+
+
 def _sleep(seconds):
-    """Sleep có thể bị interrupt bởi stop_event."""
+    """Sleep có thể bị interrupt bởi stop_event hoặc pause_event (phản hồi ngay trong 0.1s)."""
+    check_pause()
     ev = _get_stop_event()
-    if ev is not None:
-        ev.wait(seconds)
-    else:
-        time.sleep(seconds)
+    p_ev = _get_pause_event()
+    rem = float(seconds)
+    while rem > 0:
+        if ev is not None and ev.is_set():
+            break
+        if p_ev is not None and p_ev.is_set():
+            check_pause()
+            if ev is not None and ev.is_set():
+                break
+        chunk = min(rem, 0.1)
+        if ev is not None:
+            ev.wait(chunk)
+        else:
+            time.sleep(chunk)
+        rem -= chunk
+    check_pause()
 
 
 def init_adb(serial=None, adb: ADBController=None):
@@ -532,10 +563,64 @@ def find_image(template_path, screen, screen_img=None, region=None):
 # Debug mode cho utils (trong_cay, v.v.)
 _debug_mode = False
 _DEBUG_DIR = "debug/utils"
+MAX_DEBUG_FILES = 200       # Giới hạn tối đa 200 ảnh mới nhất
+MAX_DEBUG_SIZE_MB = 200     # Giới hạn dung lượng tối đa 200 MB
+_save_debug_counter = 0
+
+
+def cleanup_debug_files(debug_root="debug", max_files=MAX_DEBUG_FILES, max_size_mb=MAX_DEBUG_SIZE_MB):
+    """
+    Quét và tự động dọn dẹp thư mục debug:
+    - Giữ tối đa `max_files` ảnh mới nhất (mặc định 200 ảnh).
+    - Giới hạn tổng dung lượng không vượt quá `max_size_mb` (mặc định 200 MB).
+    - Xóa các file cũ nhất trước (FIFO) nếu vượt ngưỡng.
+    """
+    try:
+        if not os.path.exists(debug_root):
+            return
+
+        image_files = []
+        total_size = 0
+        max_bytes = max_size_mb * 1024 * 1024
+
+        for root, _, files in os.walk(debug_root):
+            for f in files:
+                ext = os.path.splitext(f)[1].lower()
+                if ext in ('.png', '.jpg', '.jpeg'):
+                    fpath = os.path.join(root, f)
+                    try:
+                        stat = os.stat(fpath)
+                        image_files.append((fpath, stat.st_mtime, stat.st_size))
+                        total_size += stat.st_size
+                    except OSError:
+                        continue
+
+        if len(image_files) > max_files or total_size > max_bytes:
+            # Sắp xếp theo thời gian sửa đổi cũ nhất đứng đầu
+            image_files.sort(key=lambda x: x[1])
+            deleted_count = 0
+            i = 0
+            while i < len(image_files) and (len(image_files) - deleted_count > max_files or total_size > max_bytes):
+                fpath, _, fsize = image_files[i]
+                try:
+                    if os.path.exists(fpath):
+                        os.remove(fpath)
+                    total_size -= fsize
+                    deleted_count += 1
+                except OSError:
+                    pass
+                i += 1
+
+            if deleted_count > 0:
+                logger.info(f"[DEBUG] Đã tự động dọn dẹp {deleted_count} file ảnh debug cũ (giới hạn: {max_files} ảnh / {max_size_mb} MB).")
+    except Exception as e:
+        logger.debug(f"[DEBUG] Lỗi dọn dẹp file debug: {e}")
+
 
 def is_debug_mode() -> bool:
     """Kiểm tra trạng thái bật/tắt chế độ debug toàn cục."""
     return _debug_mode
+
 
 def set_debug_mode(enabled: bool):
     """Bật/tắt chế độ debug, đồng thời đồng bộ tới các phân hệ nếu có."""
@@ -543,7 +628,8 @@ def set_debug_mode(enabled: bool):
     _debug_mode = enabled
     if enabled:
         os.makedirs(_DEBUG_DIR, exist_ok=True)
-        logger.info(f"[DEBUG] Utils debug mode ON — lưu ảnh tại {_DEBUG_DIR}/")
+        cleanup_debug_files("debug", MAX_DEBUG_FILES, MAX_DEBUG_SIZE_MB)
+        logger.info(f"[DEBUG] Utils debug mode ON — lưu ảnh tại {_DEBUG_DIR}/ (Giới hạn: {MAX_DEBUG_FILES} ảnh / {MAX_DEBUG_SIZE_MB} MB)")
 
     # Đồng bộ sang các module khác (dùng try-except tránh import vòng)
     for mod_name in ("core.ban_do", "core.trong_cay", "core.thu_hoach", "core.san_xuat", "core.sxcam"):
@@ -558,7 +644,9 @@ def set_debug_mode(enabled: bool):
 def save_debug_image(screen, template_path, pos, step_name="find", debug_dir=_DEBUG_DIR, region=None):
     """Lưu screenshot debug với khung match (hoặc NOT FOUND).
     Dùng chung cho ban_do, trong_cay, thu_hoach, san_xuat, sxcam, utils...
+    Tự động dọn dẹp xoay vòng nếu vượt quá MAX_DEBUG_FILES hoặc MAX_DEBUG_SIZE_MB.
     """
+    global _save_debug_counter
     try:
         import cv2
         from datetime import datetime
@@ -608,6 +696,12 @@ def save_debug_image(screen, template_path, pos, step_name="find", debug_dir=_DE
 
         cv2.imwrite(save_path, debug_img)
         logger.debug(f"[DEBUG] Saved: {save_path}")
+
+        # Tự động dọn dẹp xoay vòng mỗi 10 ảnh lưu mới
+        _save_debug_counter += 1
+        if _save_debug_counter % 10 == 0:
+            cleanup_debug_files("debug", MAX_DEBUG_FILES, MAX_DEBUG_SIZE_MB)
+
         return save_path
     except Exception as e:
         logger.debug(f"[DEBUG] Lỗi lưu debug: {e}")

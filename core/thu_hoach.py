@@ -7,7 +7,7 @@ from .adb import ADBController
 from .image import ImageProcessor
 from utils.utils import (
     lay_toa_do_tu_indexs, tim_may, find_image_v2, _get_adb,
-    set_state, PlayerState, save_debug_image, is_debug_mode
+    set_state, PlayerState, save_debug_image, is_debug_mode, _sleep
 )
 from config import CLICK_DELAY_THU_HOACH as CLICK_DELAY
 
@@ -53,7 +53,7 @@ def thuhoach(points: list, tap, duration_ms: int = 800, threshold: float = None)
     if not pos:
         logger.info("Chưa thấy giỏ thu hoạch ngay, tap lại chậu để mở popup...")
         adb.tap(x, y)
-        time.sleep(CLICK_DELAY)
+        _sleep(CLICK_DELAY)
         pos = tim_gio_thu_hoach(threshold=th)
 
     if pos:
@@ -61,7 +61,7 @@ def thuhoach(points: list, tap, duration_ms: int = 800, threshold: float = None)
         path_points = [pos] + list(points)
         logger.info(f"Tìm thấy giỏ tại {pos}, kéo mượt liên tục qua {len(path_points)} điểm")
         adb.drag_smooth(path_points, total_duration_ms=duration_ms)
-        time.sleep(0.3)
+        _sleep(0.3)
     else:
         logger.warning("Không tìm thấy giỏ thu hoạch sau các lần thử")
         adb.tap(x, y)

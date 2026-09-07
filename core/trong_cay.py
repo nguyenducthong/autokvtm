@@ -223,7 +223,7 @@ def trong_cay(template_path, template_path_default, points: list, tap,
         path_points = [pos] + list(points)
         logger.info(f"Kéo cây từ {pos} qua {len(path_points)-1} vị trí")
         adb.drag_smooth(path_points, total_duration_ms=duration_ms)
-        time.sleep(0.3)
+        _sleep(0.3)
     else:
         logger.warning("Không tìm thấy loại cây, tap lại")
         adb.tap(*INDEX_THOAT_SAN_XUAT_MAC_DINH)
