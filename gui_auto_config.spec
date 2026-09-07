@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-
+from PyInstaller.building.splash import Splash
 
 a = Analysis(
     ['gui_auto_config.py'],
@@ -20,9 +20,22 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+splash = Splash(
+    'assets/splash.png',
+    binaries=a.binaries,
+    datas=a.datas,
+    text_pos=(45, 235),
+    text_size=11,
+    text_color='#2ecc71',
+    text_default='Đang khởi động ứng dụng...',
+    always_on_top=True,
+)
+
 exe = EXE(
     pyz,
     a.scripts,
+    splash,
+    splash.binaries,
     a.binaries,
     a.datas,
     [],
@@ -30,7 +43,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
@@ -41,3 +54,4 @@ exe = EXE(
     entitlements_file=None,
     icon=['assets\\icon\\app.ico'],
 )
+

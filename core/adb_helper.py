@@ -46,7 +46,7 @@ class ADBHelper:
         # Thử dùng đường dẫn ADB đã lưu trong cấu hình
         saved_path = self._load_saved_adb_path()
         if saved_path:
-            print(f"[OK] Sử dụng ADB từ cấu hình: {saved_path}")
+            print(f"[OK] Su dung ADB tu cau hinh: {saved_path}")
             return saved_path
 
         # Thử tìm thư mục LDPlayer và dùng adb.exe trong đó
@@ -56,37 +56,69 @@ class ADBHelper:
             if os.path.isfile(adb_path):
                 self.ldplayer_dir = ldplayer_dir
                 print(f"[OK] Tim thay ADB trong LDPlayer: {adb_path}")
+                self._save_detected_adb(ldplayer_dir, adb_path)
                 return adb_path
+
+        # Thử tìm adb.exe tích hợp sẵn trong thư mục scrcpy
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        scrcpy_adb = os.path.join(base_dir, "scrcpy", "adb.exe")
+        if os.path.isfile(scrcpy_adb):
+            print(f"[OK] Su dung ADB du phong tu scrcpy: {scrcpy_adb}")
+            return scrcpy_adb
 
         # Không tìm thấy
         print("[ERROR] Khong tim thay ADB!")
         return None
 
-    def _load_saved_adb_path(self) -> Optional[str]:
-        config_file = "selected_device.json"
-        if not os.path.isfile(config_file):
-            return None
+    def _save_detected_adb(self, ldplayer_dir: str, adb_path: str):
+        """Tự động lưu lại cấu hình ADB khi dò tìm thành công."""
         try:
-            with open(config_file, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-
-            ldplayer_dir = saved.get("ldplayer_dir")
-            if ldplayer_dir and os.path.isdir(ldplayer_dir):
-                self.ldplayer_dir = ldplayer_dir  # Lưu lại để dùng sau
-                adb_path = os.path.join(ldplayer_dir, "adb.exe")
-                if os.path.isfile(adb_path):
-                    return adb_path
-
-            path = saved.get("adb_path")
-            if path:
-                if os.path.isdir(path):
-                    adb_path = os.path.join(path, "adb.exe")
-                    if os.path.isfile(adb_path):
-                        return adb_path
-                elif os.path.isfile(path) and os.path.basename(path).lower() == "adb.exe":
-                    return path
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            config_file = os.path.join(base_dir, "selected_device.json")
+            data = {}
+            if os.path.isfile(config_file):
+                try:
+                    with open(config_file, "r", encoding="utf-8") as f:
+                        data = json.load(f) or {}
+                except Exception:
+                    data = {}
+            data["ldplayer_dir"] = ldplayer_dir
+            data["adb_path"] = adb_path
+            with open(config_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception:
             pass
+
+    def _load_saved_adb_path(self) -> Optional[str]:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_files = [
+            os.path.join(base_dir, "selected_device.json"),
+            "selected_device.json",
+        ]
+        for config_file in config_files:
+            if not os.path.isfile(config_file):
+                continue
+            try:
+                with open(config_file, "r", encoding="utf-8") as f:
+                    saved = json.load(f)
+
+                ldplayer_dir = saved.get("ldplayer_dir")
+                if ldplayer_dir and os.path.isdir(ldplayer_dir):
+                    self.ldplayer_dir = ldplayer_dir
+                    adb_path = os.path.join(ldplayer_dir, "adb.exe")
+                    if os.path.isfile(adb_path):
+                        return adb_path
+
+                path = saved.get("adb_path")
+                if path:
+                    if os.path.isdir(path):
+                        adb_path = os.path.join(path, "adb.exe")
+                        if os.path.isfile(adb_path):
+                            return adb_path
+                    elif os.path.isfile(path) and os.path.basename(path).lower() == "adb.exe":
+                        return path
+            except Exception:
+                pass
         return None
 
     def run_adb(self, args: list, timeout: int = 5) -> subprocess.CompletedProcess:
@@ -331,42 +363,95 @@ class ADBHelper:
             return False
 
 
+    @staticmethod
+    def _find_from_registry() -> list:
+        """Dò tìm thư mục cài đặt LDPlayer từ Windows Registry."""
+        found = []
+        if os.name != "nt":
+            return found
+        try:
+            import winreg
+            keys_to_check = [
+                r"SOFTWARE\leidian\ldplayer9",
+                r"SOFTWARE\XuanZhi\LDPlayer9",
+                r"SOFTWARE\leidian\ldplayer",
+                r"SOFTWARE\XuanZhi\LDPlayer",
+                r"SOFTWARE\WOW6432Node\leidian\ldplayer9",
+                r"SOFTWARE\WOW6432Node\XuanZhi\LDPlayer9",
+                r"SOFTWARE\WOW6432Node\leidian\ldplayer",
+                r"SOFTWARE\WOW6432Node\XuanZhi\LDPlayer",
+            ]
+            for root_key in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                for sub in keys_to_check:
+                    try:
+                        with winreg.OpenKey(root_key, sub) as key:
+                            for val_name in ("InstallDir", "InstallPath", "path"):
+                                try:
+                                    val, _ = winreg.QueryValueEx(key, val_name)
+                                    if val and os.path.isdir(str(val)):
+                                        found.append(os.path.abspath(str(val)))
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return list(dict.fromkeys(found))
+
     def _find_ldplayer_dir(self):
-        
-        """Tìm thư mục cài đặt LDPlayer."""
+        """Tìm thư mục cài đặt LDPlayer tự động qua Registry và các ổ đĩa."""
         if self.ldplayer_dir and os.path.isdir(self.ldplayer_dir):
-            return self.ldplayer_dir
+            if os.path.isfile(os.path.join(self.ldplayer_dir, "adb.exe")):
+                return self.ldplayer_dir
+
         candidates = []
 
-        # Các đường dẫn LDPlayer thường gặp
-        candidates.extend([
-            r"D:\LDPlayer\LDPlayer9",
-            r"D:\LDPlayer\LDPlayer4",
-            r"C:\LDPlayer\LDPlayer9",
-            r"C:\LDPlayer\LDPlayer4",
-            r"C:\Program Files\LDPlayer\LDPlayer9",
-            r"C:\Program Files\LDPlayer\LDPlayer4",
-            r"C:\Program Files (x86)\LDPlayer\LDPlayer9",
-            r"C:\Program Files (x86)\LDPlayer\LDPlayer4",
-            r"C:\Program Files\LDPlayer",
-            r"C:\Program Files (x86)\LDPlayer",
-            r"D:\LDPlayer",
-            r"C:\LDPlayer",
-        ])
+        # 1. Thử từ Registry Windows trước (chính xác 100% theo máy người dùng)
+        reg_paths = self._find_from_registry()
+        candidates.extend(reg_paths)
 
-        # Thử dựng từ adb_path nếu đã biết
+        # 2. Thử dựng từ adb_path nếu đã biết
         adb_path_value = getattr(self, 'adb_path', None)
-        print(f"[DEBUG] adb_path_value: {adb_path_value}")
         if isinstance(adb_path_value, str) and os.path.isabs(adb_path_value):
             adb_parent = os.path.dirname(adb_path_value)
             if os.path.isdir(adb_parent):
                 candidates.insert(0, adb_parent)
-        
-        # print(f"[DEBUG] Candidates after adding from adb_path: {candidates}")
-        # Duyệt qua các ứng cử viên
+
+        # 3. Quét tất cả các ổ đĩa thông dụng (C, D, E, F, G, H)
+        drives = ["C", "D", "E", "F", "G", "H", "I"]
+        subdirs = [
+            r"LDPlayer\LDPlayer9",
+            r"leidian\LDPlayer9",
+            r"LDPlayer\LDPlayer4",
+            r"leidian\LDPlayer4",
+            r"Program Files\LDPlayer\LDPlayer9",
+            r"Program Files\leidian\LDPlayer9",
+            r"Program Files (x86)\LDPlayer\LDPlayer9",
+            r"Program Files (x86)\leidian\LDPlayer9",
+            r"Program Files\LDPlayer",
+            r"Program Files (x86)\LDPlayer",
+            r"LDPlayer",
+            r"leidian",
+        ]
+        for drive in drives:
+            for s in subdirs:
+                cand = f"{drive}:\\{s}"
+                if os.path.isdir(cand):
+                    candidates.append(cand)
+
+        # 4. Duyệt qua các ứng cử viên và kiểm tra adb.exe
         for d in candidates:
-            if os.path.isdir(d):
+            if not os.path.isdir(d):
+                continue
+            # Nếu adb.exe nằm ngay trong thư mục này
+            if os.path.isfile(os.path.join(d, "adb.exe")):
                 return d
+            # Nếu người dùng chọn thư mục cha (ví dụ E:\LDPlayer), kiểm tra thư mục con LDPlayer9/4
+            for sub in ("LDPlayer9", "leidian9", "LDPlayer4", "leidian4"):
+                nested = os.path.join(d, sub)
+                if os.path.isdir(nested) and os.path.isfile(os.path.join(nested, "adb.exe")):
+                    return nested
+
         return None
 
     def _build_serial_name_map(self):
